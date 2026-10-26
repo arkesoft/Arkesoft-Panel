@@ -20,6 +20,11 @@ out/
 .vite/
 coverage/
 
+# Prisma generate çıktısı — schema.prisma'dan üretilir, commit edilmez (T-001/R-A6)
+# Not: sondaki "/" bilinçli olarak YOK — dizin henüz diskte yoksa (ST-2 öncesi)
+# dizin-özel desen `git check-ignore` ile eşleşmeyebilir; önekli bu hali her durumda eşleşir.
+packages/db/generated
+
 # Test artefaktları
 playwright-report/
 test-results/

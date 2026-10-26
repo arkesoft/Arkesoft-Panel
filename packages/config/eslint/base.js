@@ -40,6 +40,11 @@ const arkesoftRules = {
   // console.* yerine enjekte edilen logger kullanılır.
   'no-console': 'error',
   // Sınıf tabanlı React bileşeni yasak; React.Component'a erişimi kes.
+  // Prisma istemcisi yalnızca @arkesoft/db üzerinden tüketilir (CLAUDE.md §3,
+  // T-001/AC4) — apps/* ve diğer packages/* doğrudan @prisma/client import
+  // edemez; @arkesoft/db kendi iç #prisma subpath dolaylamasıyla muaf tutulur
+  // (bu kural eslint "no-restricted-imports" kapsamında istisna tanımlamaz,
+  // @arkesoft/db @prisma/client'ı hiç import etmez — #prisma kullanır).
   'no-restricted-imports': [
     'error',
     {
@@ -49,6 +54,16 @@ const arkesoftRules = {
           importNames: ['Component', 'PureComponent'],
           message:
             'Sınıf tabanlı React bileşeni yasak (CLAUDE.md §2). Fonksiyon bileşeni + hook kullan.',
+        },
+        {
+          name: '@prisma/client',
+          message: 'Prisma istemcisi yalnızca @arkesoft/db üzerinden tüketilir (CLAUDE.md §3).',
+        },
+      ],
+      patterns: [
+        {
+          group: ['@prisma/client/*', '.prisma/client', '.prisma/client/*'],
+          message: 'Prisma istemcisi yalnızca @arkesoft/db üzerinden tüketilir (CLAUDE.md §3).',
         },
       ],
     },

@@ -28,6 +28,32 @@ pnpm changeset
 > **Not:** Changesets `v0.0.12`'de kurulacak. `0.0.1` – `0.0.11` arası girdiler bu nedenle
 > elle yazılmıştır; `v0.0.12`'den sonra bu bölüm tamamen Changesets tarafından üretilir.
 
+## 0.0.3 — 2026-10-26
+
+Veritabanı katmanının temel modelleri ve Prisma kurulumu. Çok kiracılı veri izolasyonunun temeli.
+
+- **Prisma 7.10.1 kurulumu** — `@prisma/adapter-pg` + `pg` + `@types/pg` zorunlu bağımlılık
+  (Prisma 7 mimarisi).
+- **`@arkesoft/db` paketi** — `Tenant`, `User`, `TenantMembership` modelleri ve ilk migration
+  (`20261026082729_init`). Şema RLS'e hazırlanmış: tenant'a bağlı tablolarda `tenant_id TEXT NOT NULL`,
+  ön kolon indeks, v0.0.13'ten itibaren zorlayıcı RLS politikaları gelecek.
+- **Konvansiyonlar:** Cuid2 `text` PK (uzunluk-sınırsız), `Timestamptz(3)` zaman alanları, soft
+  delete `deletedAt`, platform seviyesi vs. tenant'a bağlı tablolar taksonomi ile ayrılmış.
+  Detay: ADR-0003.
+- **Seed ve migration:** `pnpm db:reset && pnpm db:seed` iki kez üst üste exit 0 (idempotans).
+  Demo tenant (`demo-magaza`) ve demo owner kullanıcısı (`demo-yonetici@arkesoft.test`).
+- **Script yüzeyinde güvenlik:** `db:push` ve `db:reset` yıkıcı komutları allowlist'li sarmalayıcıdan
+  geçiyor; host kontrolü (yalnızca localhost/127.0.0.1), `NODE_ENV` varsayılan-reddet, kaçış kapısı
+  (ARKESOFT_CONFIRM_DESTRUCTIVE). Diğer veri komutları (`db:seed`, `migrate dev`, `migrate reset`)
+  da aynı mekanizmada.
+- **Test altyapısı:** Vitest kurulumu, seri koşum (gerçek DB ortağı), tenant izolasyon süiti v0.0.13.
+- **`packages/config` devDep → dep** — tek doğrulama noktası: `packages/db/src/env.ts` →
+  `readDatabaseEnv()`.
+- **Kabul kriteri geçti:** 4 test dosyası / 63 test (%100 yeşil, 0 skipped), lint/typecheck/build/format
+  tümü exit 0, AC4 kuralı lint ile zorlanıyor (`packages/config/eslint/base.js`).
+- RLS politikaları, rol ayrımı, `FORCE ROW LEVEL SECURITY`, tenant context kancası **v0.0.13**'de
+  gelecek. Bu sürümde şema hazırlanmış, yönetim henüz değil (AC8 teknik borç).
+
 ## 0.0.2 — 2026-10-26
 
 Yerel geliştirme altyapısı. Tek komutla beş servis ayağa kalkıyor.

@@ -1,6 +1,6 @@
 {
   "name": "@arkesoft/db",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "private": true,
   "type": "module",
   "description": "Prisma şeması, migration’lar, seed ve RLS politikaları",
@@ -10,21 +10,44 @@
       "default": "./dist/index.js"
     }
   },
+  "imports": {
+    "#prisma": {
+      "types": "./dist/generated/client.d.ts",
+      "default": "./dist/generated/client.js"
+    }
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json --declaration --declarationMap",
+    "generate": "prisma generate && tsc -p tsconfig.prisma.json",
+    "build": "tsc -p tsconfig.build.json --declaration --declarationMap",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
-    "clean": "rm -rf dist .turbo"
+    "clean": "rm -rf dist generated .turbo",
+    "migrate": "pnpm run build && node dist/run-guarded-prisma.js migrate dev",
+    "deploy": "prisma migrate deploy",
+    "push": "pnpm run build && node dist/run-guarded-prisma.js db push",
+    "seed": "pnpm run build && node dist/run-guarded-prisma.js db seed",
+    "studio": "pnpm run build && node dist/run-guarded-prisma.js studio",
+    "reset": "pnpm run build && node dist/run-guarded-prisma.js migrate reset",
+    "verify": "prisma validate && prisma format --check && prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@arkesoft/config": "workspace:*",
+    "@prisma/adapter-pg": "catalog:",
+    "@prisma/client": "catalog:",
+    "pg": "catalog:"
   },
   "devDependencies": {
-    "@arkesoft/config": "workspace:*",
     "@types/node": "catalog:",
+    "@types/pg": "catalog:",
     "eslint": "catalog:",
-    "typescript": "catalog:"
+    "prisma": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

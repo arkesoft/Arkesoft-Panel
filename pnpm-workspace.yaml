@@ -8,6 +8,35 @@ packages:
   - 'packages/*'
   - 'packages/themes/*'
 
+# Hiçbir bağımlılığın postinstall script'i çalıştırmasına izin verilmez.
+# Gerekirse paket adı buraya açıkça eklenir (gerekçesi commit mesajında).
+#
+# R1 (T-001) bağlayıcı kararı: blanket izin yok, kök `postinstall` EKLENMEDİ —
+# generate hâlâ `turbo.json`'daki açık "generate" task'ı ile çalışır (packages/db:
+# "prisma generate && tsc -p tsconfig.prisma.json"), kurulum adımından ayrı ve
+# görünür kalır.
+#
+# NOT: Bu alan mimari tasarımda `onlyBuiltDependencies` (dizi) olarak yazıldı;
+# kurulu pnpm 12.15.0 bunu OKUMUYOR — gerçek şema `allowBuilds` (paket → bool
+# haritası). `pnpm approve-builds --all` ile doğrulandı: pnpm bu anahtarı kendisi
+# bu biçimde yazıyor ve `pnpm config get allowBuilds` aynı iki paketi haritada
+# gösteriyor. Niyet birebir aynı (asgari, sıralı, blanket izin yok); yalnızca
+# anahtar adı/biçimi bu pnpm sürümüne uyarlandı.
+#
+# Liste BOŞ DEĞİL: temiz `pnpm install`, `ERR_PNPM_IGNORED_BUILDS: Ignored build
+# scripts: @prisma/engines@7.10.1, prisma@7.10.1` ile başarısız oluyordu — pnpm bu
+# iki paketin build script'ini varsayılan olarak engelliyor, ikisi de aşağıya
+# **gerçekten flag'lenmiş oldukları için** eklendi:
+#   1) '@prisma/engines' — motor ikililerini (binary) indiren asıl paket; bu
+#      install script koşmadan `prisma generate`/`migrate dev` motor bulamaz.
+#   2) 'prisma'          — CLI paketinin kendi build script'i de aynı hata
+#      çıktısında flag'lendi; CLI'nin generate/migrate çağrıları için gerekli.
+# '@prisma/client' BİLEREK EKLENMEDİ: test edilen kurulumda hiçbir build script
+# uyarısı üretmedi (flag'lenmedi) — ihtiyaç doğmadan izin eklemek R1'i ihlal eder.
+allowBuilds:
+  '@prisma/engines': true
+  prisma: true
+
 catalog:
   '@eslint/js': ^10.0.1
   '@types/node': ^24.19.2
@@ -24,7 +53,28 @@ catalog:
   # Zod: ortam değişkeni, tRPC girdi/çıktı ve JSONB okuma şemalarının tamamı.
   # ADR-0001'de "dış dünyadan gelen her veri parse edilir" kuralının aracı.
   zod: ^4.6.7
-
-# Hiçbir bağımlılığın postinstall script'i çalıştırmasına izin verilmez.
-# Gerekirse paket adı buraya açıkça eklenir (gerekçesi commit mesajında).
-onlyBuiltDependencies: []
+  # Prisma CLI: npm "latest" etiketi şu an 8.0.0-rc.27 (yayın öncesi aday) gösteriyor;
+  # bilinçli olarak ATLANDI. @prisma/client ile AYNI sürüme sabitlendi (7.10.1) —
+  # CLI ve üretilen istemcinin sürümü uyuşmazsa generate/migrate çalışma zamanında
+  # belirsiz davranır. ROADMAP v0.0.3, T-001 R1/A-V12.
+  prisma: 7.10.1
+  # @prisma/client: schema.prisma'daki "prisma-client" generator'ı (A yolu, T-001
+  # architect tasarımı) bu sürümle doğrulandı. CLI (prisma) ile aynı sabit sürüm —
+  # yukarıdaki not geçerli.
+  '@prisma/client': 7.10.1
+  # @prisma/adapter-pg: Prisma 7 hattında Rust tabanlı sorgu motoru kaldırıldı, PG
+  # bağlantısı için driver adapter zorunlu. Yeni ana bağımlılık — Kullanıcı Onayı #1
+  # (T-001) ile kabul edildi. pg.Pool packages/db dışına açılmaz (R1/architect notu).
+  '@prisma/adapter-pg': 7.10.1
+  # pg: @prisma/adapter-pg'nin peer bağımlılığı (dependencies: "pg": "^8.16.3").
+  # Kullanıcı Onayı #1 ile kabul edildi; doğrudan apps/* veya başka packages/*
+  # tarafından kullanılmaz, yalnızca packages/db'nin adapter kurulumunda tüketilir.
+  pg: 8.23.1
+  # @types/pg: pg'nin tip tanımları (devDep). Kullanıcı Onayı #1 ile kabul edildi.
+  '@types/pg': 8.23.1
+  # Vitest: ROADMAP v0.0.3'ten itibaren birim/entegrasyon test aracı (ADR-0001 +
+  # CLAUDE.md yığın tablosu ile onaylı kabul edilir — V5). Not: paket motoru
+  # "^22.12.0 || ^24.0.0 || >=26.0.0" istiyor; yerel Node 25.8.1 bu aralığın dışında
+  # (R6/R-A9, teknik borç olarak izleniyor) — engine-strict kapalı, kurulum uyarıyla
+  # devam eder.
+  vitest: 5.0.5

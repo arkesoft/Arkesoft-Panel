@@ -1,6 +1,6 @@
 {
   "name": "arkesoft",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "private": true,
   "type": "module",
   "description": "Arkesoft — çok kiracılı SaaS e-ticaret ve kurumsal web sitesi platformu",
@@ -25,7 +25,15 @@
     "infra:down": "docker compose --env-file .env -f infra/docker-compose.yml down",
     "infra:reset": "docker compose --env-file .env -f infra/docker-compose.yml down -v && pnpm infra:up",
     "infra:ps": "docker compose --env-file .env -f infra/docker-compose.yml ps",
-    "infra:logs": "docker compose --env-file .env -f infra/docker-compose.yml logs -f"
+    "infra:logs": "docker compose --env-file .env -f infra/docker-compose.yml logs -f",
+    "db:generate": "pnpm --filter @arkesoft/db run generate",
+    "db:migrate": "pnpm --filter @arkesoft/db run migrate",
+    "db:deploy": "pnpm --filter @arkesoft/db run deploy",
+    "db:push": "pnpm --filter @arkesoft/db run push",
+    "db:seed": "pnpm --filter @arkesoft/db run seed",
+    "db:studio": "pnpm --filter @arkesoft/db run studio",
+    "db:reset": "pnpm --filter @arkesoft/db run reset",
+    "db:verify": "pnpm --filter @arkesoft/db run verify"
   },
   "devDependencies": {
     "@arkesoft/config": "workspace:*",

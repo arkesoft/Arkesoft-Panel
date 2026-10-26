@@ -23,6 +23,11 @@ services:
     container_name: arkesoft-postgres
     restart: unless-stopped
     environment:
+      # TEKNİK BORÇ (bilinçli, v0.0.13'e kadar): bu rol süper kullanıcı +
+      # BYPASSRLS taşıyor ve üç tablonun sahibi. Yerelde migration için
+      # bilinçli bir seçim (shadow DB `CREATEDB` ister). v0.0.13, süper
+      # olmayan, tablo sahibi olmayan, `NOBYPASSRLS` taşıyan `arkesoft_app`
+      # rolünü getirecek; çalışma zamanı YALNIZCA o rolü kullanacak.
       POSTGRES_USER: ${POSTGRES_USER:-arkesoft}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-arkesoft_dev_only}
       POSTGRES_DB: ${POSTGRES_DB:-arkesoft}

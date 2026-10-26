@@ -120,6 +120,31 @@ pnpm lint && pnpm typecheck && pnpm build && pnpm format:check
 
 ---
 
+## Veritabanı komutları (v0.0.3+)
+
+Komutlar yalnızca yerel geliştirme veritabanına karşı çalışır. Yıkıcı işlemler allowlist'li guard'dan geçer.
+
+### Allowlist ve güvenlik
+
+Yıkıcı komutlar (`db:push`, `db:reset`, `db:seed`, `migrate dev`, `migrate reset`, `studio`) beforetesi guard'lı sarmalayıcıdan (`run-guarded-prisma`) geçer:
+
+**Host kontrolü:** Yalnızca `localhost`, `127.0.0.1`, `::1` izin verilir. Uzak hostname'e karşı çalışmak reddedilir.
+
+**`NODE_ENV` kontrolü:** Varsayılan-reddet politikası. Yalnızca `undefined`, `development`, `test` değerleri geçer; `staging`, `production` ve diğer tüm değerler reddedilir.
+
+**Kaçış kapısı:** `ARKESOFT_CONFIRM_DESTRUCTIVE` ortam değişkeni hedef veritabanı adına **birebir eşit** olmalı. Örneğin, `ARKESOFT_CONFIRM_DESTRUCTIVE=arkesoft` yerel `arkesoft` veritabanına `db:reset` çalıştırır. Yanlış değer veya boş dize reddedilir. **Kapı, üretim açısından çoklu katman savunmasının bir parçasıdır; birinci savunma kimlik bilgisi ayrımıdır (geliştirici kabuğunda üretim `DATABASE_URL` bulunmaması).**
+
+**Guard kapsamı:** Guard **repo script yüzeyini** korur, keyfi çağrıları korumaz. `pnpm exec prisma db push --url=…` ve `npx prisma …` guard'sızdır. Üretim kazasına karşı gerçek savunma v0.0.13'ün rol ayrımı (uygulama rolü `NOSUPERUSER`, `NOBYPASSRLS`) ve v0.0.12 CI sırlarıdır. **Guard bir hız kesicidir, izolasyon sınırı değildir.**
+
+### Açık script'ler (guard'sız)
+
+- `db:generate` — Prisma istemcisi oluştur (DB'ye bağlanmaz, güvenli)
+- `db:migrate` — `prisma migrate dev` (geliştirme, shadow DB oluşturma)
+- `db:deploy` — `prisma migrate deploy` (üretim, migration'ları uygula; bu yolun kendi auth mekanizması var)
+- `db:verify` — doğrulama (`prisma validate`, `format --check`, `migrate diff`)
+
+---
+
 ## Bilinmesi gereken tuzaklar
 
 ### `localhost` yerine `127.0.0.1`
@@ -150,6 +175,24 @@ anonim erişimde `GET /` boş `<Buckets>` döner. Bucket içi listeleme
 (`GET /arkesoft-dev?list-type=2`) ve nesne işlemleri normal çalışır.
 Uygulama kodu `ListBuckets` çağırmaz — bucket adı yapılandırmadan gelir.
 Ayrıntı: [ADR-0005](./adr/0005-yerel-s3-depolama.md).
+
+### Veritabanı guard'ı ve derleme tazeliği
+
+`pnpm db:push` ve `pnpm db:reset` guard'lı sarmalayıcıdan geçer ve `dist/` olmadan çalışırsa `ERR_MODULE_NOT_FOUND` ile fail-closed davranış gösterir. Guard kodu derlenmiş halden çalışır; kaynak değişti ama `dist/` güncellenmemişse:
+
+```bash
+pnpm --filter @arkesoft/db run build
+```
+
+Bu durumu çözer. Turbo cache bayat dosya tutabilir; yeniden derleme için:
+
+```bash
+pnpm --filter @arkesoft/db run clean  # dist/ + dist/generated sil
+pnpm db:generate                       # prisma client yeniden üret
+pnpm --filter @arkesoft/db run build   # guard derle
+```
+
+**`--name` charset sınırlaması:** `migrate dev --name <ad>` bayrak değeri `/^[a-z0-9_]{1,64}$/` regex'ini izlemek zorunda. Prisma'nın kabul ettiği kümeden daha dar (büyük harf, boşluk, ekli çizgi yasak). Detayı ROADMAP v0.0.3 → Teknik Borç (T2-2).
 
 ---
 

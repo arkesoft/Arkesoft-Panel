@@ -4,8 +4,12 @@
   "globalDependencies": ["pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc"],
   "globalEnv": ["NODE_ENV", "CI"],
   "tasks": {
+    "generate": {
+      "inputs": ["prisma/**"],
+      "outputs": ["generated/**", "dist/generated/**"]
+    },
     "build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "generate"],
       "outputs": ["dist/**"]
     },
     "dev": {
@@ -13,14 +17,15 @@
       "persistent": true
     },
     "lint": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build", "generate"]
     },
     "typecheck": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build", "generate"]
     },
     "test": {
-      "dependsOn": ["^build"],
-      "outputs": ["coverage/**"]
+      "dependsOn": ["^build", "generate"],
+      "outputs": ["coverage/**"],
+      "cache": false
     },
     "clean": {
       "cache": false

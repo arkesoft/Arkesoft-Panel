@@ -9,3 +9,7 @@ pnpm-lock.yaml
 *.tsbuildinfo
 playwright-report/
 test-results/
+
+# Prisma generate çıktısı — .gitignore'dan bağımsız olarak Prettier burada da
+# açıkça hariç tutulmalı, aksi halde `format:check` üretilen kodu tarar (T-001/R-A6)
+packages/db/generated
