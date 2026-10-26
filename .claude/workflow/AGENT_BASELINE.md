@@ -66,6 +66,12 @@ BULGULAR:
 
 Bulgu yoksa `BULGULAR: yok` yaz.
 
+**Gate ajanları raporu diske de yazar:**
+`.claude/workflow/reviews/<task>-<gate>-tur<n>.md` (örn. `T-001-security-tur2.md`).
+Dosyanın başına tarih, sürüm ve `GATE:`/`SONUÇ:` bloğunu koy; gövdede bulguları ve
+`ÖLÇÜMLER`'i aynen tekrarla. Handoff paketini **ayrıca** Orkestratöre döndür — dosya kalıcı
+denetim kaydı, handoff ise döngünün taşıyıcısı.
+
 ---
 
 ## 4. Gate FAIL kuralı
@@ -98,6 +104,17 @@ Kararı sen verme, kurala uy:
 - **Git commit / push yapma.** Commit mesajını yalnızca `release` ajanı hazırlar; commit'i kullanıcı onaylar.
 - **Testi gevşetme.** Kabul kriterini geçirmek için eşik düşürme, `skip`, görsel referans güncelleme yasak.
 - **Sonuç uydurma.** Komut çalıştırdıysan gerçek çıktısını raporla. Çalıştırmadıysan "çalıştırılmadı" yaz.
+- **Başka ajanın dosyasını değiştirme — biçimlendirme komutu dahil.** `prettier --write`,
+  `eslint --fix`, `prisma format` gibi komutlar **dosyayı değiştirir**; teşhis amacıyla bile
+  sahibi olmadığın bir dosyada çalıştırma. Teşhis için `--check`/`--list-different` kullan,
+  bulguyu `RİSKLER`de bildir ve düzeltmeyi dosya sahibine bırak.
+  (T-001'de `release` ajanı `docs`'un ADR dosyasında `prettier --write` çalıştırdı; dosya git'te
+  takip edilmediği için geri alınamadı.)
+- **Yıkıcı veritabanı komutlarında kullanıcı onayı tek kullanımlıktır.** `prisma migrate reset`
+  gibi komutlar bir AI ajanı tarafından çağrıldığında Prisma kullanıcının onay mesajının
+  **birebir metnini** `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION` içinde ister. Bu kapıyı
+  atlatmak **yasak**; ortam değişkenini kendin üretme, önceki bir onayı yeniden kullanma.
+  Onay gerekiyorsa `DURUM: NEEDS_INPUT` ile Orkestratöre dön.
 
 ---
 

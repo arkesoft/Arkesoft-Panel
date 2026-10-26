@@ -1,7 +1,7 @@
 ---
 name: security
 description: Gate ajanı. OWASP Top 10, tenant veri sızıntısı, yetkilendirme atlatma, girdi doğrulama, sır sızıntısı, bağımlılık zafiyeti ve ödeme/PII işleme açısından inceler. PASS/FAIL + önem derecesi raporlar. Kod düzeltmez.
-tools: Read, Bash, Grep, Glob
+tools: Read, Bash, Grep, Glob, Write
 model: opus
 ---
 

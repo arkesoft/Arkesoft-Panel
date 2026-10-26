@@ -69,6 +69,9 @@ Kullanıcı isteği
 | Kapanış | `docs`      | haiku  | README, ADR, changeset, CHANGELOG         |
 | Kapanış | `release`   | sonnet | Versiyon bump, ROADMAP, commit mesajı     |
 
+Her gate ajanı raporunu **hem** handoff olarak Orkestratöre döndürür **hem de**
+`.claude/workflow/reviews/<task>-<gate>-tur<n>.md` dosyasına yazar.
+
 Ortak sözleşme: `.claude/workflow/AGENT_BASELINE.md`
 
 ---
@@ -121,6 +124,19 @@ işaretlerse [2]–[5] atlanır; yalnızca ilgili üretim ajanı + `solid` + `qa
 
 Diğer her belirsizlikte Orkestratör en makul varsayımı seçer, Task dosyasına
 `VARSAYIM:` olarak yazar ve kesintisiz devam eder.
+
+### 6. koşulun özel hâli: yıkıcı veritabanı komutları
+
+`prisma migrate reset` (ve `db push --force-reset`) bir AI ajanı tarafından çağrıldığında
+Prisma kendi güvenlik kapısını devreye sokar: komut, kullanıcının onay mesajının **birebir
+metni** `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION` ortam değişkenine yazılmadan çalışmaz.
+
+- Onay **tek kullanımlıktır.** Her yeni çağrı dizisi için yeniden sorulur.
+- Orkestratör sorarken Prisma'nın şart koştuğu beş şeyi söylemek zorundadır: tam CLI komutu,
+  gerekçe, verinin **geri dönüşsüz** silineceği, bunun yalnızca geliştirme veritabanları için
+  olduğu ve hedefin üretim olup olmadığına dair kendi değerlendirmesi.
+- Ajanlar bu kapıyı **atlatamaz**; ortam değişkenini kendileri üretemez. Gerekirse
+  `DURUM: NEEDS_INPUT` ile Orkestratöre dönerler.
 
 ---
 

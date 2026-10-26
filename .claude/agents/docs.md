@@ -1,7 +1,7 @@
 ---
 name: docs
 description: Tüm gate'ler PASS olduktan sonra çalışır. Değişen her modülün README/ADR/API dokümanını günceller, changeset yazar, CHANGELOG girdisini hazırlar. Türkçe, kullanıcıya dönük dil.
-tools: Read, Write, Grep, Glob
+tools: Read, Edit, Write, Grep, Glob
 model: haiku
 ---
 

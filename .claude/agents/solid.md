@@ -1,7 +1,7 @@
 ---
 name: solid
 description: Gate ajanı. Kod kalitesini inceler — SOLID, DRY, KISS, isimlendirme, katman ihlali, any kullanımı, hata yönetimi deseni, test kalitesi, döngüsel bağımlılık, ölü kod. dosya:satır bazlı PASS/FAIL raporlar. Kod düzeltmez.
-tools: Read, Grep, Glob
+tools: Read, Grep, Glob, Write
 model: opus
 ---
 

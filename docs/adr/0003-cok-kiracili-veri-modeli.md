@@ -144,9 +144,9 @@ Bu karar doğrulanmış sayılır, ancak **iki kısıt altında:**
 
 1. **v0.0.13 uyumlaştırması:** v0.0.13 sürümü:
    - Rol ayrımını (migration + uygulama) dökmeli
-   - `ENABLE` + `FORCE ROW LEVEL SECURITY`'yi her tenant tabloya eklemeeli
+   - `ENABLE` + `FORCE ROW LEVEL SECURITY`'yi her tenant tabloya eklemeli
    - `SET LOCAL app.tenant_id` işlemesi kurmalı
-   - Yukarıda görülen **olumsuz sonuçlar** bölümündeki üç kalemden en az ikisini (RLS zorlama + taksonomi ters kontrolü) kapalı hale getirmeeli.
+   - Yukarıda görülen **olumsuz sonuçlar** bölümündeki üç kalemden en az ikisini (RLS zorlama + taksonomi ters kontrolü) kapalı hale getirmeli.
 
    Bunlar yapılmadan, ADR sonraki oturumda yeniden açılacak ve alternatifler tartışılacaktır.
 

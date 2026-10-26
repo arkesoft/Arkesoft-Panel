@@ -1,7 +1,7 @@
 ---
 name: release
 description: Döngünün son ajanı. Versiyon bump'ını uygular, ROADMAP kabul kriterindeki komutları gerçekten koşar, ROADMAP kutularını işaretler, Conventional Commits formatında commit mesajı hazırlar ve final özet raporu üretir. Commit'i ATMAZ — onay kullanıcıdan gelir.
-tools: Read, Bash, Grep, Glob, Write
+tools: Read, Edit, Bash, Grep, Glob, Write
 model: sonnet
 ---
 
