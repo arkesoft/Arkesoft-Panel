@@ -1,0 +1,41 @@
+/*
+ * Arkesoft Tailwind tema iskeleti — ROADMAP v0.0.1
+ *
+ * Tailwind v4 CSS-öncelikli yapılandırma kullanır: tasarım token'ları JS preset'i
+ * yerine `@theme` bloğunda tanımlanır. Bu dosya admin, superadmin ve storefront
+ * tarafından içe alınır.
+ *
+ * Token değerleri v0.0.7'de (admin iskeleti + shadcn kurulumu) kesinleşecek.
+ * Tema sistemi, tenant'ın seçtiği tema ayarlarını çalışma zamanında bu
+ * değişkenlerin üzerine yazar (bkz. ROADMAP v0.0.10 ve v0.3.0).
+ *
+ * ŞU AN YER TUTUCU: Tailwind henüz kurulu değil, bu dosya hiçbir yerden
+ * içe alınmıyor. Yapı ve isimlendirme sözleşmesini sabitlemek için duruyor.
+ */
+
+@theme {
+  /* --- Marka renkleri (tenant teması tarafından geçersiz kılınır) --- */
+  --color-brand-50: oklch(97% 0.02 250);
+  --color-brand-500: oklch(60% 0.18 250);
+  --color-brand-900: oklch(30% 0.1 250);
+
+  /* --- Anlamsal yüzeyler --- */
+  --color-surface: oklch(100% 0 0);
+  --color-surface-muted: oklch(97% 0 0);
+  --color-border: oklch(90% 0 0);
+  --color-foreground: oklch(20% 0 0);
+  --color-foreground-muted: oklch(50% 0 0);
+
+  /* --- Durum renkleri --- */
+  --color-success: oklch(65% 0.17 145);
+  --color-warning: oklch(75% 0.15 85);
+  --color-danger: oklch(60% 0.2 25);
+
+  /* --- Tipografi --- */
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* --- Yarıçap --- */
+  --radius-card: 0.75rem;
+  --radius-control: 0.5rem;
+}

@@ -1,6 +1,7 @@
 # Bağımlılıklar
 node_modules/
 vendor/
+.pnpm-store/
 
 # Ortam değişkenleri
 .env
@@ -11,8 +12,18 @@ vendor/
 dist/
 build/
 out/
-.next/
-.nuxt/
+*.tsbuildinfo
+
+# Araç önbellekleri
+.turbo/
+.astro/
+.vite/
+coverage/
+
+# Test artefaktları
+playwright-report/
+test-results/
+blob-report/
 
 # Loglar
 *.log

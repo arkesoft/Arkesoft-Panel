@@ -1,0 +1,30 @@
+{
+  "name": "@arkesoft/api",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "NestJS API — iş mantığı, tRPC router implementasyonu, kuyruk worker’ı",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json --declaration --declarationMap",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "clean": "rm -rf dist .turbo"
+  },
+  "devDependencies": {
+    "@arkesoft/config": "workspace:*",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -1,0 +1,27 @@
+# Arkesoft workspace tanımı — ROADMAP v0.0.1
+#
+# Araç sürümleri tek yerde (catalog) tutulur; paketler "catalog:" ile referans verir.
+# Böylece monorepo genelinde sürüm kayması (drift) oluşmaz.
+
+packages:
+  - 'apps/*'
+  - 'packages/*'
+  - 'packages/themes/*'
+
+catalog:
+  '@eslint/js': ^10.0.1
+  '@types/node': ^24.19.2
+  eslint: ^10.13.0
+  eslint-config-prettier: ^10.1.8
+  globals: ^17.13.0
+  prettier: ^3.9.10
+  turbo: ^2.11.10
+  # TypeScript 6.0.3'e sabitlendi: typescript-eslint 8.x type-aware lint için
+  # "typescript >=4.8.4 <6.1.0" istiyor. TS 7 (native port) henüz desteklenmiyor.
+  # Bkz. ROADMAP.md → Varsayımlar A13.
+  typescript: 6.0.3
+  typescript-eslint: ^8.72.0
+
+# Hiçbir bağımlılığın postinstall script'i çalıştırmasına izin verilmez.
+# Gerekirse paket adı buraya açıkça eklenir (gerekçesi commit mesajında).
+onlyBuiltDependencies: []
