@@ -59,6 +59,7 @@ arkesoft/
 │   └── storefront/     # Astro SSR — çok kiracılı vitrin, tema runtime
 ├── packages/
 │   ├── db/             # Prisma şeması, migration, seed, RLS politikaları
+│   ├── errors/         # AppError hiyerarşi tabanı, hata gövdesi tel sözleşmesi, redaction
 │   ├── trpc/           # Router tipleri, Zod şemaları, istemci factory
 │   ├── ui/             # Paylaşılan shadcn bileşenleri, şema→form motoru
 │   ├── theme-sdk/      # Tema sözleşmesi, theme.json şeması, migration API
@@ -84,12 +85,13 @@ arkesoft/
 | `apps/admin` / `apps/superadmin` | Sunum, form durumu, istemci tarafı doğrulama                          | İş kuralı; doğrulama her zaman sunucuda tekrar edilir |
 | `apps/storefront`                | Tema render, SEO, önbellek                                            | Yazma işlemi (API üzerinden gider)                    |
 | `packages/db`                    | Şema, migration, RLS, seed                                            | İş mantığı                                            |
+| `packages/errors`                | `AppError` hiyerarşi tabanı, hata gövdesi tel sözleşmesi, redaction   | Domain hatası tanımı; i18n çözümlemesi; log yazma     |
 | `packages/trpc`                  | Sözleşme (girdi/çıktı şemaları) ve tipler                             | İş mantığı                                            |
 | `packages/theme-sdk`             | Tema sözleşmesi ve doğrulama                                          | Tenant verisine erişim                                |
 | `packages/integrations`          | Dış sağlayıcı adaptörleri                                             | Veritabanına yazma — sonucu çağırana döner            |
 | `packages/ui`                    | Sunum bileşenleri                                                     | Veri çekme, tRPC bağımlılığı                          |
 
-**Bağımlılık yönü:** `apps/*` → `packages/*`. Paketler arası döngüsel bağımlılık yasak. `packages/ui` hiçbir uygulamaya veya `trpc`'ye bağımlı olmaz.
+**Bağımlılık yönü:** `apps/*` → `packages/*`. Paketler arası döngüsel bağımlılık yasak. `packages/ui` hiçbir uygulamaya veya `trpc`'ye bağımlı olmaz. **`packages/errors` hiçbir iç pakete bağımlı değildir** (yalnızca `zod`).
 
 ---
 

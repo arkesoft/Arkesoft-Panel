@@ -28,6 +28,21 @@ pnpm changeset
 > **Not:** Changesets `v0.0.12`'de kurulacak. `0.0.1` – `0.0.11` arası girdiler bu nedenle
 > elle yazılmıştır; `v0.0.12`'den sonra bu bölüm tamamen Changesets tarafından üretilir.
 
+## 0.0.4 — 2026-10-26
+
+Platformun ilk HTTP yüzeyini açan, her istekte tenant bağlamını taşıyan ve merkezi hata yönetimini kuran NestJS API iskeletinin tamamlanması.
+
+- **NestJS 12.2.0 API iskeleti** — `main.ts`, global Zod doğrulama pipe, graceful shutdown, `/health` (liveness) ve `/health/ready` (readiness) endpoint'leri
+- **Tenant context yönetimi** — AsyncLocalStorage ile istek scope'a tenant bilgisi; host adından veya `x-arkesoft-tenant` başlığından (geliştirme ortamında) çözüm
+- **Fail-closed tasarım** — middleware çözümlemez, guard exhaustive switch ile kararlar; bilinmeyen host'ta TENANT_NOT_FOUND 404'ü
+- **Standart hata sözleşmesi** — `{ code, message, details, requestId }` yapısı; tüm yanıtlara birebir uyumlu
+- **`@arkesoft/errors` iç paketi** — `AppError`, `AppErrorBody` Zod şeması, `maskEmail` + redaction ilkelleri
+- **Yapılandırılmış JSON log (pino)** — `requestId` korelasyonu, sır/PII maskeleme, tenant bağlamı her kaydında
+- **Zod doğrulama** — `ValidatedBody/Query/Params` dekoratörleri, `class-validator` **çıkarıldı**
+- **Paket sürümleri:** kök **0.0.4**, `@arkesoft/api` **0.0.4**, `@arkesoft/db` **0.0.4**, `@arkesoft/errors` **0.0.4** (yeni), `@arkesoft/config` **0.0.3** (değişmedi)
+- **Kabul kriteri:** 14 dosya / 112 API test, 0 failed / 0 skipped; `/health` 200; bilinmeyen host 404; `demo-magaza.arkesoft.localhost` tenant çözümü
+- **Uyarı:** v0.0.13'e kadar tenant izolasyonunun tek savunma hattı uygulama katmanıdır; RLS politikaları henüz yok
+
 ## 0.0.3 — 2026-10-26
 
 Veritabanı katmanının temel modelleri ve Prisma kurulumu. Çok kiracılı veri izolasyonunun temeli.

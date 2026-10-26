@@ -112,6 +112,103 @@ pnpm --filter @arkesoft/api dev
 pnpm --filter @arkesoft/config run typecheck
 ```
 
+### API'yi çalıştırma (v0.0.4+)
+
+NestJS API uygulaması:
+
+```bash
+pnpm --filter @arkesoft/api dev      # geliştirme, dosya izlemesi
+pnpm --filter @arkesoft/api start    # üretim, `dist/main.js`
+```
+
+Ortam değişkenleri: `API_PORT` (3000), `API_HOST` (0.0.0.0), `LOG_LEVEL` (debug).
+
+**Host adından tenant çözümü:** API, `Host` başlığından otomatik tenant çözümü yapar.
+Geliştirmede `*.arkesoft.localhost` adresler tarayıcı tarafından `127.0.0.1` olarak
+çözülür; `/etc/hosts` düzenlemeye gerek yok.
+
+```bash
+# Tarayıcıda: http://demo-magaza.arkesoft.localhost:3000
+# veya curl'de:
+curl http://demo-magaza.arkesoft.localhost:3000/health
+# veya (lokal host başlığı testi):
+curl -H 'Host: demo-magaza.arkesoft.localhost' http://localhost:3000/health
+```
+
+**Geliştirmede yalnızca:** `NODE_ENV=development` iken `x-arkesoft-tenant: <slug>` başlığı
+ile tenant seçimi yapılabilir; üretimde bu başlık yok sayılır.
+
+```bash
+curl -H 'x-arkesoft-tenant: demo-magaza' http://localhost:3000/health
+```
+
+**İçeri:** `/health` ve `/health/ready` bilinmeyen host ile bile **200** döner
+(allowlist korunur); diğer tüm uçlar tenant bağlamı gerektirir.
+
+### Hata sözleşmesi ve log (v0.0.4+)
+
+Tüm hata yanıtları aşağıdaki yapıyı taşır:
+
+```json
+{
+  "code": "TENANT_NOT_FOUND",
+  "message": "errors.tenant.notFound",
+  "details": {},
+  "requestId": "req_<uuid>"
+}
+```
+
+- **`code`:** Makine okunur hata tanımlayıcısı (SCREAMING_SNAKE_CASE)
+- **`message`:** v0.0.18'e kadar **i18n anahtarı** (Türkçe metin değil)
+- **`details`:** Taliye verisi (doğrulama hataları `details.fields` altında)
+- **`requestId`:** İstekte benzersiz kimlik (log korelasyonu için)
+- **`context` alanı asla yanıta yazılmaz** — yalnızca server log'unda görülür
+
+Tüm istekler pino yapılandırılmış log'a yazılır:
+
+```json
+{
+  "level": "info",
+  "time": "2026-10-26T09:12:33.001Z",
+  "service": "api",
+  "version": "0.0.4",
+  "requestId": "req_01J...",
+  "method": "GET",
+  "path": "/products",
+  "statusCode": 200,
+  "tenantId": "tnt_01J...",
+  "durationMs": 42
+}
+```
+
+`GET /health` istekleri `tenantId` alanı **içermez** (bilinmeyen host'ta çözülmez).
+
+### ⚠️ v0.0.4'ün Güvenlik Özü: Tenant İzolasyonu
+
+**v0.0.4 ile uygulama katmanı, tenant izolasyonunun TEK savunma hattı oldu.**
+
+RLS politikaları v0.0.13'te geliyor. Bu pencerede `TenantContextMiddleware`,
+`TenantGuard` ve `getTenantContext()` zincirindeki bir hata **doğrudan çapraz tenant
+veri sızıntısıdır** ve veritabanı bunu yakalamaz.
+
+`apps/api/src/tenancy/**` ve `src/request-context/**` değiştirilirken:
+
+1. `src/__tests__/resolve-host.test.ts` (35+ vaka) — tüm host normalizasyonu ve
+   saldırı vektörleri kapsamlı biçimde test edilmeli
+2. `src/__tests__/tenant-exempt-paths.test.ts` — allowlist (`/health`, `/health/ready`)
+   değişmesi algılanmalı
+3. `src/__tests__/concurrency.test.ts` (20 eşzamanlı istek) — ALS sızıntısı, shared
+   mutable state ve child logger karışması testsiz kalmamalı
+
+Bu üç test **mutlaka yeşil** kalmalıdır.
+
+**Üretim notları:**
+
+- `X-Forwarded-Host` başlığı **okunmaz** (`trust proxy` kapalı) — proxy allowlist'i
+  olmadan herkes tenant seçebilir. Üretim ingress'i `Host` başlığını **korumak
+  zorundadır**.
+- Servis-servis çağrılarda (v0.0.5+), güvenilir bir belirteç mekanizması kurulacak.
+
 **Bir sürümü kapatmadan önce geçmesi zorunlu kapı:**
 
 ```bash

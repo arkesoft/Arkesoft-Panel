@@ -30,6 +30,8 @@
 // üyeliğinin onaysız upsert edilmesini (gerçek bir owner yetkisi doğurmasını)
 // engeller.
 
+import { maskEmail } from '@arkesoft/errors'
+
 import { createPrismaClient } from './client.js'
 import { readDatabaseEnv } from './env.js'
 import { evaluateTargetDatabase } from './guard-policy.js'
@@ -91,8 +93,11 @@ async function main(): Promise<void> {
       })
     })
 
+    // Onay #2 (T-002): stdout'a yazılan e-posta maskelenir — bu değer RFC 2606
+    // `.test` fixture'ı olsa da amaç pino'ya geçişte aynı deseni (ham e-posta
+    // loglama) kopyalamayı engellemek (CLAUDE.md §4 maskeleme kuralı).
     process.stdout.write(
-      `[seed] Demo tenant ("${DEMO_SEED.tenant.slug}") ve sahip kullanıcı ("${DEMO_SEED.owner.email}") hazır.\n`,
+      `[seed] Demo tenant ("${DEMO_SEED.tenant.slug}") ve sahip kullanıcı ("${maskEmail(DEMO_SEED.owner.email)}") hazır.\n`,
     )
   } finally {
     await prisma.$disconnect()
@@ -100,6 +105,10 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  process.stderr.write(`[seed] Beklenmeyen hata: ${String(error)}\n`)
+  // Onay #2 (T-002): `String(error)` yığın izini (stack trace) kaybediyordu;
+  // dosyanın :44 satırındaki daraltma deseniyle tutarlı hâle getirildi — hata
+  // yine YUTULMUYOR, exit 1 korunuyor.
+  const message = error instanceof Error ? (error.stack ?? error.message) : 'bilinmeyen hata'
+  process.stderr.write(`[seed] Beklenmeyen hata: ${message}\n`)
   process.exit(1)
 })

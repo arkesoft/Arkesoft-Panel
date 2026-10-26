@@ -11,6 +11,8 @@
 export { createPrismaClient } from './client.js'
 export type { CreatePrismaClientOptions, PrismaDatabase, TransactionClient } from './client.js'
 
+export { checkDatabaseConnection } from './health.js'
+
 export { isUniqueConstraintError } from './errors.js'
 
 export { PLATFORM_LEVEL_TABLES, TENANT_SCOPED_TABLES } from './tenancy.js'

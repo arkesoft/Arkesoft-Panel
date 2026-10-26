@@ -1,0 +1,12 @@
+{
+  // Tip kontrolü projesi: src/ kaynakları + kök düzeyindeki yapılandırma dosyaları
+  // (vitest.config.ts) denetlenir. Derleme için ayrı proje kullanılır:
+  // tsconfig.build.json (bkz. packages/db deseni).
+  "extends": "@arkesoft/config/tsconfig/node.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*", "*.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}
