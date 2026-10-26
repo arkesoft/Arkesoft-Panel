@@ -1,0 +1,29 @@
+# Bağımlılıklar
+node_modules/
+vendor/
+
+# Ortam değişkenleri
+.env
+.env.local
+.env.*.local
+
+# Build çıktıları
+dist/
+build/
+out/
+.next/
+.nuxt/
+
+# Loglar
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editör / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+Thumbs.db
