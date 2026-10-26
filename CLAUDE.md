@@ -199,6 +199,46 @@ Yapılandırılmış JSON (pino). Her kayıtta şunlar bulunur:
 
 ---
 
+## 4.5 Çalışma Döngüsü
+
+**Kullanıcıdan gelen her istek önce Orkestratör tarafından bir Task dosyasına
+dönüştürülür ve çok ajanlı döngüden geçirilir. Doğrudan kod yazma yasaktır.**
+
+Ana oturum **Orkestratör**dür: ajanları çağırır, handoff paketlerini taşır, gate
+sonuçlarını toplar, kullanıcıya rapor eder. Ajanlar birbirini çağırmaz; her şey
+Orkestratör üzerinden geçer.
+
+```
+istek → pm → architect → po → [ux → ui] → [db → backend ║ frontend ║ devops]
+      → [qa ║ security ║ solid ║ wcag ║ perf] → (FAIL ise düzeltme, en fazla 3 tur)
+      → docs → release → kullanıcı onayı → commit
+```
+
+| Komut                        | Ne yapar                                         |
+| ---------------------------- | ------------------------------------------------ |
+| `/run <görev>`               | Görevi tam döngüden geçirir                      |
+| `/run v0.3.0`                | ROADMAP sürümünü Task'a çevirip döngüden geçirir |
+| `/run --full <görev>`        | Trivial kısayolunu devre dışı bırakır            |
+| `/run --skip-design <görev>` | UX/UI adımlarını atlar                           |
+| `/run --gates-only T-xxx`    | Mevcut Task'ı yalnızca gate'lerden geçirir       |
+| `/status`                    | Task durumları ve teknik borç özeti              |
+
+Döngünün tamamı, 16 ajanın rolleri, paralellik ve gate FAIL kuralları:
+**`.claude/workflow/WORKFLOW.md`**. Ajanların ortak sözleşmesi:
+**`.claude/workflow/AGENT_BASELINE.md`**.
+
+Orkestratör kullanıcıya **yalnızca** şu altı durumda sorar; diğer her belirsizlikte en
+makul varsayımı seçip Task dosyasına `VARSAYIM:` olarak yazar ve devam eder:
+
+1. PM kapsamı daralttı veya değiştirdi
+2. Architect `major` (kırıcı) versiyon etkisi tespit etti
+3. Yeni ana bağımlılık gerekiyor
+4. 3 düzeltme turundan sonra hâlâ FAIL var
+5. Bir ajan `NEEDS_INPUT` döndü ve makul varsayımla ilerlenemiyor
+6. Git commit / push / dış servise yazma
+
+---
+
 ## 5. Çalışma akışı
 
 **Her değişiklik `ROADMAP.md`'deki bir versiyona bağlı olmak zorundadır.**
