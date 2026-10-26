@@ -1,9 +1,9 @@
 {
   "name": "@arkesoft/config",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "type": "module",
-  "description": "Paylaşılan tsconfig, ESLint, Prettier ve Tailwind preset'leri",
+  "description": "Paylaşılan tsconfig, ESLint, Prettier, Tailwind preset'leri ve ortam değişkeni şemaları",
   "exports": {
     "./tsconfig/base.json": "./tsconfig/base.json",
     "./tsconfig/node.json": "./tsconfig/node.json",
@@ -12,24 +12,31 @@
     "./eslint/node": "./eslint/node.js",
     "./eslint/react": "./eslint/react.js",
     "./prettier": "./prettier/index.js",
-    "./tailwind/theme.css": "./tailwind/theme.css"
+    "./tailwind/theme.css": "./tailwind/theme.css",
+    "./env": {
+      "types": "./dist/env.d.ts",
+      "default": "./dist/env.js"
+    }
   },
   "files": [
+    "dist",
     "eslint",
     "prettier",
     "tailwind",
     "tsconfig"
   ],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json --declaration --declarationMap",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
-    "clean": "rm -rf .turbo"
+    "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "dependencies": {
     "@eslint/js": "catalog:",
     "eslint-config-prettier": "catalog:",
     "globals": "catalog:",
-    "typescript-eslint": "catalog:"
+    "typescript-eslint": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

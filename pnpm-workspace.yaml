@@ -21,6 +21,9 @@ catalog:
   # Bkz. ROADMAP.md → Varsayımlar A13.
   typescript: 6.0.3
   typescript-eslint: ^8.72.0
+  # Zod: ortam değişkeni, tRPC girdi/çıktı ve JSONB okuma şemalarının tamamı.
+  # ADR-0001'de "dış dünyadan gelen her veri parse edilir" kuralının aracı.
+  zod: ^4.6.7
 
 # Hiçbir bağımlılığın postinstall script'i çalıştırmasına izin verilmez.
 # Gerekirse paket adı buraya açıkça eklenir (gerekçesi commit mesajında).

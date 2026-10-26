@@ -1,15 +1,14 @@
 {
-  // Bu paket JSDoc ile tiplenmiş .js dosyalarından oluşur (ESLint ve Prettier
-  // yapılandırmaları TypeScript'e derlenmez; araçlar bunları doğrudan çalıştırır).
-  // Yine de tsc ile denetlenir: preset'lerdeki JSDoc hataları burada yakalanır.
+  // Tip kontrolü projesi: hem TypeScript kaynakları (src) hem de JSDoc ile
+  // tiplenmiş araç yapılandırmaları (eslint, prettier) denetlenir.
+  // Derleme için ayrı proje kullanılır: tsconfig.build.json
   "extends": "./tsconfig/node.json",
   "compilerOptions": {
     "allowJs": true,
     "checkJs": true,
     "noEmit": true,
-    // JSDoc'ta ESLint/typescript-eslint tiplerini kullanabilmek için gerekli.
     "types": ["node"]
   },
-  "include": ["eslint/**/*.js", "prettier/**/*.js"],
+  "include": ["src/**/*", "eslint/**/*.js", "prettier/**/*.js"],
   "exclude": ["node_modules", "dist"]
 }

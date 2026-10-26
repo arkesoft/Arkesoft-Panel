@@ -63,20 +63,32 @@ Bu fazın tamamı "çalışan ama ürün olmayan" iskelet kurar. Her adım tek o
 
 ---
 
-## v0.0.2 — Yerel altyapı servisleri
+## v0.0.2 — Yerel altyapı servisleri ✅ (tamamlandı: 2026-10-26)
 
-**Hedef:** Tek komutla Postgres, Redis, Meilisearch, MinIO ve Mailpit ayağa kalksın.
+**Hedef:** Tek komutla Postgres, Redis, Meilisearch, S3 uyumlu depolama ve Mailpit ayağa kalksın.
 **Kapsam:**
 
-- [ ] `infra/docker-compose.yml`: postgres:16, redis:7, meilisearch, minio (+ minio-init bucket oluşturma), mailpit
-- [ ] Sağlık kontrolleri (`healthcheck`) ve kalıcı volume'lar
-- [ ] `.env.example` ve `packages/config/env` içinde Zod tabanlı env şeması
-- [ ] Kök `package.json`'a `infra:up`, `infra:down`, `infra:reset` script'leri
-- [ ] `docs/development.md`: yerel kurulum adımları
-      **Dokunulan paketler:** infra, packages/config, kök
-      **Kabul kriteri:** `pnpm infra:up` sonrası beş servis `healthy`. `pnpm infra:reset` veriyi temizleyip yeniden kurar.
-      **Bağımlılık:** v0.0.1
-      **Tahmini büyüklük:** S
+- [x] `infra/docker-compose.yml`: postgres:17.11-alpine, redis:8.10-alpine, meilisearch:v1.55, seaweedfs:4.51 (+ bucket oluşturma işi), mailpit:v1.32
+- [x] Sağlık kontrolleri (`healthcheck`) ve kalıcı volume'lar
+- [x] `.env.example` ve `packages/config/src/env.ts` içinde Zod tabanlı env şeması (+ `pnpm env:check` doğrulayıcısı)
+- [x] Kök `package.json`'a `infra:up`, `infra:down`, `infra:reset`, `infra:ps`, `infra:logs`, `env:init`, `env:check` script'leri
+- [x] `docs/development.md`: yerel kurulum adımları, bilinen tuzaklar, sorun giderme
+
+**Dokunulan paketler:** infra, packages/config, docs, kök
+**Kabul kriteri:** `pnpm infra:up` sonrası beş servis `healthy`. `pnpm infra:reset` veriyi temizleyip yeniden kurar.
+**Bağımlılık:** v0.0.1
+**Tahmini büyüklük:** S
+
+**Uygulama notları:**
+
+- Kabul kriteri geçti: `pnpm infra:reset` → exit 0, `5/5 healthy`, bucket yeniden oluşturuldu. İkinci `pnpm infra:up` "bucket zaten var" diyerek idempotent davranıyor.
+- Kalıcılık ve silme ayrı ayrı doğrulandı: `infra:down` + `infra:up` sonrası Postgres satırı, Redis anahtarı, Meilisearch indeksi ve S3 nesnesi **korundu**; `infra:reset` sonrası **dördü de silindi**.
+- Beş servis host'tan erişilebilir doğrulandı (psql, redis-cli PONG, Meili `/health` 200, S3 PUT+GET, SMTP 220 banner, Mailpit `/readyz` 200).
+- **MinIO kullanılamadı:** public Docker imajları artık anonim çekilemiyor (`authentication required`). Yerel S3 servisi **SeaweedFS** oldu — gerekçe, değerlendirilen alternatifler ve kabul edilen maliyetler: [ADR-0005](docs/adr/0005-yerel-s3-depolama.md). Üretim depolaması (Cloudflare R2) etkilenmedi.
+- Üç tuzak çözüldü ve `docs/development.md`'ye yazıldı: (1) konteyner içinde `localhost` önce `::1`'e çözülüyor, Meilisearch ve SeaweedFS yalnızca IPv4 dinliyor → healthcheck'ler `127.0.0.1` kullanıyor; (2) Compose, compose dosyasındaki `$VAR` biçimini kendisi yorumluyor → betik içindeki kabuk değişkenleri `$$` ile kaçırıldı; (3) `up --wait` tek seferlik konteynerin bitmesini güvenilir biçimde beklemiyor → bucket kurulumu `init` profiline alınıp `docker compose run --rm` ile senkron çalıştırılıyor.
+- Postgres'te veritabanı seviyesinde `tr-TR` collation **bilinçli olarak ayarlanmadı** (noktasız ı / noktalı i karşılaştırması `LOWER()` aramalarını ve unique kısıtlarını bozuyor). Türkçe sıralama kolon/sorgu seviyesinde v0.4.0'da uygulanacak.
+- Yeni varsayımlar: **A15** (Postgres 17), **A16** (Redis 8), **A17** (yerel S3 → SeaweedFS).
+- Yeni ana bağımlılık: `zod@^4.6.7` — gerekçesi `pnpm-workspace.yaml` catalog'unda yorumda.
 
 ---
 
@@ -1173,6 +1185,9 @@ Briefingde belirtilmeyen ve makul varsayımla ilerlenen noktalar. Her biri ilgil
 | A12 | Mobil uygulama ayrı bir repoda geliştirilir; bu yol haritası yalnızca gereken API yüzeyini kapsar.                                                                                                                                                                                                                                                                                                                                                                                     | v1.11.0             |
 | A13 | TypeScript **6.0.3**'e sabitlendi (en güncel sürüm 7.0.2 olmasına rağmen). Gerekçe: `typescript-eslint` 8.x, tip bilgisine dayalı lint için `typescript >=4.8.4 <6.1.0` istiyor; TypeScript 7 (Go ile yazılmış native port) henüz desteklenmiyor. Katı tip-aware lint, CLAUDE.md'nin `any` yasağını ve hata yönetimi kurallarını zorlayan asıl mekanizma olduğu için TS 7'ye geçmek yerine TS 6.0'da kalındı. `typescript-eslint` TS 7 desteği yayınlayınca yükseltilir.               | v0.0.1              |
 | A14 | pnpm `npm install -g pnpm` ile global kuruldu (sürüm 12.15.0, `packageManager` alanında sabit). Gerekçe: Node 25 dağıtımında corepack artık gelmiyor. CI'da pnpm/action-setup kullanılacak.                                                                                                                                                                                                                                                                                            | v0.0.1              |
+| A15 | **Postgres 17** (17.11-alpine) kullanılır; ROADMAP'te başta `postgres:16` yazıyordu. Gerekçe: PG17 desteği 2029-11'e kadar sürüyor (PG16 2028-11), PG18 ise bir aylık. Sistemin kayıt defteri olan bileşende olgun sürüm tercih edildi.                                                                                                                                                                                                                                                | v0.0.2              |
+| A16 | **Redis 8** (8.10-alpine) kullanılır; ROADMAP'te başta `redis:7` yazıyordu. Gerekçe: güncel kararlı hat, BullMQ uyumlu. **Teyit edilmeli:** Redis'in 7.4 sonrası lisans değişiklikleri; üretimde yönetilen Redis kullanılacağı için (v0.18.0) risk sağlayıcıda kalıyor, ama ticari kullanım öncesi lisans doğrulanmalı.                                                                                                                                                                | v0.0.2              |
+| A17 | Yerel S3 uyumlu depolama **MinIO yerine SeaweedFS**. MinIO imajları anonim çekilemiyor. Üretim (Cloudflare R2) değişmedi. Ön imzalı URL ve CORS uyumluluğu v0.0.16'da ayrıca doğrulanmalı. Bkz. ADR-0005.                                                                                                                                                                                                                                                                              | v0.0.2, v0.0.16     |
 
 ---
 

@@ -147,3 +147,15 @@ Bu ADR şu durumlarda yeniden değerlendirilir:
 - Tek Postgres örneği tenant sayısı veya yazma yükü nedeniyle ölçeklenemez hale gelirse (parçalama/sharding kararı).
 - Vitrin performans hedefleri Astro ile tutulamazsa.
 - Ana bağımlılıklardan biri bakımsız kalırsa veya lisansı değişirse.
+
+---
+
+## Sonraki güncellemeler
+
+Bu ADR geçmişe dönük düzenlenmez. Kararlarından biri değiştiğinde buraya
+yalnızca bir işaretçi eklenir:
+
+- **2026-10-26 — yerel geliştirmede nesne depolama:** MinIO'nun public Docker
+  imajları anonim erişimden kalktığı için yerel S3 servisi **SeaweedFS** olarak
+  değişti. Üretim depolaması (Cloudflare R2) etkilenmedi. Bkz.
+  [ADR-0005](./0005-yerel-s3-depolama.md).

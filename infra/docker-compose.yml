@@ -1,0 +1,184 @@
+# Arkesoft yerel geliştirme altyapısı — ROADMAP v0.0.2
+#
+# Kullanım (repo kökünden):
+#   pnpm infra:up      # ayağa kaldır, hepsi healthy olana kadar bekle
+#   pnpm infra:down    # durdur (veri korunur)
+#   pnpm infra:reset    # verileri silip yeniden kur
+#
+# Bu dosya YALNIZCA geliştirme içindir. Üretim altyapısı Pulumi + Helm ile
+# kurulur (ROADMAP v0.18.0) ve yönetilen servisler kullanır.
+
+name: arkesoft
+
+services:
+  # --- PostgreSQL: tek veritabanı, tenant_id + RLS ile izolasyon -------------
+  #
+  # Veritabanı seviyesinde Türkçe (tr-TR) collation BİLİNÇLİ OLARAK
+  # ayarlanmadı. Türkçe collation, noktasız ı / noktalı i karşılaştırmasını
+  # değiştirdiği için LOWER() tabanlı aramalarda ve unique kısıtlarında
+  # sürprizlere yol açar. Türkçe sıralama gereken yerlerde (ürün adı listeleri)
+  # kolon veya sorgu seviyesinde COLLATE uygulanacak — ROADMAP v0.4.0.
+  postgres:
+    image: postgres:17.11-alpine
+    container_name: arkesoft-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-arkesoft}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-arkesoft_dev_only}
+      POSTGRES_DB: ${POSTGRES_DB:-arkesoft}
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8'
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U "${POSTGRES_USER:-arkesoft}" -d "${POSTGRES_DB:-arkesoft}"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # --- Redis: önbellek + BullMQ kuyruğu -------------------------------------
+  #
+  # appendonly: kuyruktaki işler container yeniden başlayınca kaybolmasın.
+  redis:
+    image: redis:8.10-alpine
+    container_name: arkesoft-redis
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes', '--save', '60', '1']
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  # --- Meilisearch: ürün arama ----------------------------------------------
+  #
+  # Tenant başına indeks (products_{tenantId}) + kapsamlı anahtar ile
+  # izolasyon sağlanacak — ROADMAP v0.6.0.
+  #
+  # HTTP healthcheck'lerde `localhost` DEĞİL `127.0.0.1` kullanılır: konteyner
+  # /etc/hosts'unda `localhost` hem ::1 hem 127.0.0.1'e çözülüyor ve busybox
+  # wget önce ::1'i deniyor. Meilisearch ve SeaweedFS yalnızca IPv4 dinlediği
+  # için `localhost` ile healthcheck "connection refused" alıp servisi
+  # yanlışlıkla unhealthy işaretliyor.
+  meilisearch:
+    image: getmeili/meilisearch:v1.55
+    container_name: arkesoft-meilisearch
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-arkesoft_dev_master_key_change_me}
+      MEILI_ENV: development
+      MEILI_NO_ANALYTICS: 'true'
+    ports:
+      - '${MEILI_PORT:-7700}:7700'
+    volumes:
+      - meilisearch-data:/meili_data
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:7700/health || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  # --- SeaweedFS: S3 uyumlu nesne depolama ----------------------------------
+  #
+  # Geliştirmede MinIO yerine SeaweedFS kullanılıyor: MinIO'nun public Docker
+  # imajları artık anonim çekilemiyor. Gerekçe ve alternatifler: ADR-0005.
+  # Üretimde Cloudflare R2 kullanılır; StorageAdapter soyutlaması ikisini de
+  # aynı arayüzün arkasında tutar (ROADMAP v0.0.16).
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.51
+    container_name: arkesoft-seaweedfs
+    restart: unless-stopped
+    command:
+      - server
+      - -dir=/data
+      - -s3
+      - -s3.port=8333
+      - -master.volumeSizeLimitMB=1024
+    ports:
+      # S3 API
+      - '${S3_PORT:-8333}:8333'
+      # Master arayüzü (yalnızca geliştirme teşhisi için)
+      - '${SEAWEEDFS_MASTER_PORT:-9333}:9333'
+    volumes:
+      - seaweedfs-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:8333/status || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # --- SeaweedFS bucket kurulumu (tek seferlik) -----------------------------
+  #
+  # Aynı imajın `weed shell` aracını kullanır; ek bir S3 istemcisine gerek yok.
+  # `s3.bucket.create` idempotent olmadığı için var olan bucket hatası yutulur.
+  seaweedfs-init:
+    image: chrislusf/seaweedfs:4.51
+    restart: 'no'
+    # `init` profili: `up` bu servisi başlatmaz. `pnpm infra:up` onu ayrıca
+    # `docker compose run --rm` ile senkron çalıştırır. Gerekçe: `up --wait`
+    # tek seferlik (one-shot) konteynerin bitmesini güvenilir biçimde
+    # beklemiyor; `run` ise çıkış kodunu doğrudan geçiriyor.
+    profiles: ['init']
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+    environment:
+      # Compose, compose dosyasındaki $VAR ve ${VAR} biçimlerini KENDİSİ
+      # yorumlar. Betik içindeki kabuk değişkenleri bu yüzden `$$` ile
+      # kaçırılır; bucket adı da buradan ortam değişkeni olarak geçirilir.
+      S3_BUCKET: ${S3_BUCKET:-arkesoft-dev}
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      # if/else kullanılıyor: `grep -q X && { ... }` biçimi `set -e` altında
+      # kabuk uygulamasına göre betiği yarıda kesebiliyor.
+      # `ls /buckets` her bucket'ı kendi satırında yazar; `grep -qx` ile tam
+      # satır eşleşmesi aranır (benzer adlı bucket yanlış pozitif vermesin).
+      - |
+        set -eu
+        MASTER="seaweedfs:9333"
+        if echo "ls /buckets" | weed shell -master="$$MASTER" | grep -qx "$$S3_BUCKET"; then
+          echo "bucket '$$S3_BUCKET' zaten var"
+        else
+          echo "s3.bucket.create -name $$S3_BUCKET" | weed shell -master="$$MASTER"
+          echo "bucket '$$S3_BUCKET' olusturuldu"
+        fi
+
+  # --- Mailpit: giden e-postaları yakalar -----------------------------------
+  #
+  # Geliştirmede hiçbir e-posta dışarı çıkmaz; hepsi web arayüzünde görülür.
+  # Doğrulama ve bildirim akışlarının testleri buradan okur (ROADMAP v0.9.0).
+  mailpit:
+    image: axllent/mailpit:v1.32
+    container_name: arkesoft-mailpit
+    restart: unless-stopped
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+      MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
+      MP_MAX_MESSAGES: '2000'
+    ports:
+      # SMTP
+      - '${SMTP_PORT:-1025}:1025'
+      # Web arayüzü
+      - '${MAILPIT_UI_PORT:-8025}:8025'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:8025/readyz || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+volumes:
+  postgres-data:
+  redis-data:
+  meilisearch-data:
+  seaweedfs-data:
