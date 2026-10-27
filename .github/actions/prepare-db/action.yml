@@ -13,6 +13,29 @@ description: >-
 runs:
   using: 'composite'
   steps:
+    # T-003 ST-9 düzeltme turu 1, kusur 2 — temiz (Ubuntu) runner'da
+    # "pnpm db:seed" kendi paket içi "build" script'iyle (yalnızca
+    # "tsc -p tsconfig.build.json", "@arkesoft/db"nin KENDİ src/'i) çöküyordu:
+    # "src/env.ts" → "@arkesoft/config/env", "src/seed.ts" → "@arkesoft/errors",
+    # "src/client.ts"/"src/index.ts"/"src/seed.ts" → "#prisma" (Prisma'nın
+    # ürettiği "dist/generated/client.d.ts"). Bu üçü de o ana kadar HİÇ
+    # DERLENMEMİŞ olabilir: iş akışı bu adıma gelene kadar "@arkesoft/config"
+    # ve "@arkesoft/errors"ın "dist/"i YOK, "@arkesoft/db"nin kendi "generate"
+    # görevi (prisma generate + onun çıktısını "dist/generated/"e derleyen
+    # "tsc -p tsconfig.prisma.json") de HENÜZ KOŞMAMIŞ — "run-gates"in build'i
+    # bu adımdan SONRA gelir. Yerelde önceki koşumlardan kalan "dist/"/
+    # "generated/" olduğu için sessizce geçiyordu; temiz runner'da yok.
+    # Düzeltme: "db:deploy"/"db:seed" çağrılmadan ÖNCE turbo'nun KENDİ
+    # bağımlılık grafiğini ("@arkesoft/db..." — bu paket + bağımlılıkları,
+    # "turbo.json"daki "build: dependsOn: [\"^build\",\"generate\"]" zincirini
+    # izler: "@arkesoft/config#build/generate", "@arkesoft/errors#build",
+    # "@arkesoft/db#generate/build") koşturarak önkoşulu AÇIKÇA garanti et —
+    # "turbo.json"daki zincire dokunmadan (ölçüldü: `turbo run build
+    # --filter='@arkesoft/db...' --dry=json` → tam bu altı görevi listeliyor).
+    - name: '@arkesoft/db bağımlılık grafiğini derle (generate + build önkoşulu)'
+      shell: bash
+      run: pnpm exec turbo run build --filter='@arkesoft/db...'
+
     - name: Migration'ı uygula (ileri yönlü — bilinçli olarak sarmalanmamış komut, T-003 K-B4)
       shell: bash
       run: pnpm db:deploy

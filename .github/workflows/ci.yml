@@ -454,8 +454,34 @@ jobs:
           # runner'ında "/tmp" adımlar arasında KALICIDIR.
           printf '%s\n' "$targets" > /tmp/ac-workflow-action-targets.txt
           echo 'R-6 kanıtı (2/2) — jeton dosyası hariç gerçek tarama hedefinde:'
+          # T-003 ST-9 düzeltme turu 1, kusur 1 — gerçek (Ubuntu/GNU) runner'da
+          # kırmızıya düşüyordu, yerelde (macOS/BSD) geçiyordu: "grep" EŞLEŞME
+          # YOKKEN 1 ile çıkar (bu taramanın ARANAN/İYİ sonucu — hiç yasak jeton
+          # yok demek); "xargs" alt sürecin 1..125 arası HER çıkış kodunu KENDİ
+          # 123 koduna ÇEVİRİR (xargs(1): "if any invocation of the command
+          # exits with a status of 1-125, xargs exits with status 123"). Alttaki
+          # "grep_exit -gt 1" dalı bu 123'ü "gerçek okuma hatası" sanıp exit 1
+          # veriyordu — yani AC13 "eşleşme yok" (geçmesi gereken) sonucu "hata"
+          # ZANNEDİP düşüyordu. Düzeltme: "xargs" tamamen KALDIRILDI — hedef
+          # küme bilinen/küçük (bugün 5 dosya, R-6 ile korunan .txt'ler hâlâ
+          # dışında); dosya listesi bir diziye alınıp "grep"e doğrudan argüman
+          # olarak verilir. Böylece "grep"in KENDİ 0/1/2 çıkış semantiği hiçbir
+          # ara katman tarafından bozulmadan okunur (0 = eşleşme VAR → FAIL,
+          # 1 = eşleşme YOK → PASS, ≥2 = gerçek hata, ör. dosya okunamadı →
+          # FAIL). Hedef küme ileride büyüyüp "xargs" gerekirse, "xargs"ın 123
+          # çıkışı "grep"in 1'ine (eşleşme yok) GERİ ÇEVRİLMEDEN kullanılamaz.
+          # Diziye dönüştürme "mapfile" İLE DEĞİL ("mapfile"/"readarray" bash
+          # 4+ gerektirir; runner'ın "ubuntu-latest" bash'i bunu karşılar ama
+          # yerel iki yönlü doğrulama bu adımı macOS'un öntanımlı bash 3.2'sinde
+          # de koşturabilsin diye taşınabilir "while read" ile yapılır — aynı
+          # sonuç, daha geniş uyumluluk) bir "while read" döngüsüyle yapılır.
+          target_array=()
+          while IFS= read -r target_line; do
+            [ -z "$target_line" ] && continue
+            target_array+=("$target_line")
+          done <<< "$targets"
           set +e
-          match_output="$(printf '%s\n' "$targets" | xargs grep -nFf "$pattern_file")"
+          match_output="$(grep -nFf "$pattern_file" "${target_array[@]}")"
           grep_exit=$?
           set -e
           if [ "$grep_exit" -eq 0 ]; then
