@@ -1,0 +1,115 @@
+// @arkesoft/db — Prisma şeması (ROADMAP v0.0.3, T-001 architect tasarımı)
+//
+// Ortak konvansiyon (ADR-0003):
+//   - R2: `id` = `String @id @default(cuid(2))`, PostgreSQL tipi `text`, UZUNLUK SINIRI
+//     YOK (`@db.VarChar` yasak), öneksiz. `@default(cuid(2))` Prisma'nın İSTEMCİ
+//     tarafında üretilir, DDL'de bir `DEFAULT` ifadesi YOKTUR → ham SQL ile satır
+//     eklerken `id` elle verilmek zorundadır (@paralleldrive/cuid2 eklenmez).
+//   - R3: PostgreSQL'de `user` ayrılmış kelimedir (`SELECT user` bir rol döner).
+//     Model adı `User` kalır (Better Auth v0.0.5 model adıyla eşler) ama tablo adı
+//     `app_user`'dır — elle yazılan RLS/DDL SQL'i ve psql hata ayıklaması tırnaklı
+//     `"user"`'a bağımlı kalmasın. Ayrılmış kelimeyle çakışan her platform tablosuna
+//     aynı `app_` öneki konvansiyonu uygulanır.
+//   - Zaman alanları `@db.Timestamptz(3)`; trigger yok, `updatedAt` istemci tarafında
+//     `@updatedAt` ile yönetilir.
+//   - Soft delete yalnızca VARLIK tablolarında (`Tenant`, `User`); saf ilişki tablosu
+//     `TenantMembership`'te yoktur — kaldırma hard delete'tir (bkz. ADR-0003 madde 3).
+//   - `Tenant` ve `User` PLATFORM SEVİYESİDİR, `tenant_id` TAŞIMAZLAR (V4). Tenant'a
+//     bağlı tek tablo `TenantMembership`; RLS politikaları v0.0.13'te elle SQL olarak
+//     eklenecek (bu şema dosyası RLS üretmez — AC6 sapma riskine girmesin).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated"
+  runtime      = "nodejs"
+  moduleFormat = "esm"
+}
+
+// Prisma 7: `datasource.url` şema dosyasında artık desteklenmiyor. Migrate için
+// bağlantı URL'si `prisma.config.ts` → `datasource.url`'de; çalışma zamanında
+// istemciye `@prisma/adapter-pg` üzerinden `pg.Pool` adaptörü verilir (R-A4).
+datasource db {
+  provider = "postgresql"
+}
+
+/// Platform seviyesi kiracı (mağaza) kaydı. `tenant_id` taşımaz — bu tablonun
+/// kendisi tenant kimliğinin kaynağıdır (V4).
+model Tenant {
+  id            String       @id @default(cuid(2))
+  slug          String       @unique
+  name          String
+  status        TenantStatus @default(pending)
+  planId        String?      @map("plan_id")
+  primaryDomain String?      @unique @map("primary_domain")
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt     DateTime?    @map("deleted_at") @db.Timestamptz(3)
+
+  memberships TenantMembership[]
+
+  @@map("tenant")
+}
+
+/// Platform seviyesi kullanıcı kaydı. Tablo adı `app_user` (R3) — model adı `User`.
+model User {
+  id        String     @id @default(cuid(2))
+  email     String     @unique
+  name      String
+  status    UserStatus @default(active)
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt DateTime?  @map("deleted_at") @db.Timestamptz(3)
+
+  memberships TenantMembership[]
+
+  @@map("app_user")
+}
+
+/// Tenant'a bağlı TEK tablo. RLS hazırlığı: `tenant_id` kolonu tam olarak bu adla,
+/// `text`, NOT NULL ve en az bir bileşik indeksin öncü kolonu (v0.0.13 politika zemini).
+/// Soft delete YOK — üyelik kaldırma hard delete'tir (ADR-0003 madde 3).
+model TenantMembership {
+  id        String     @id @default(cuid(2))
+  tenantId  String     @map("tenant_id")
+  userId    String     @map("user_id")
+  role      TenantRole
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+  @@map("tenant_membership")
+}
+
+/// Kiracı durumu. `deleted` değeri YOKTUR (A-V8) — silinmişliğin tek doğruluk
+/// kaynağı `Tenant.deletedAt`'tir.
+enum TenantStatus {
+  pending
+  provisioning
+  active
+  suspended
+
+  @@map("tenant_status")
+}
+
+/// Kullanıcı durumu. Abonelik/ödeme durumları bu alana karışmaz (V3).
+enum UserStatus {
+  active
+  suspended
+
+  @@map("user_status")
+}
+
+/// Üyelik rolü. `platform_admin` YOKTUR — platform yetkisi, üyelik değildir.
+enum TenantRole {
+  owner
+  admin
+  staff
+  support
+  readonly
+
+  @@map("tenant_role")
+}

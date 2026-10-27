@@ -1,0 +1,30 @@
+{
+  "name": "@arkesoft/theme-sdk",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Tema sözleşmesi, theme.json şeması ve ayar migration API’si",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json --declaration --declarationMap",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "clean": "rm -rf dist .turbo"
+  },
+  "devDependencies": {
+    "@arkesoft/config": "workspace:*",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "arkesoft",
+  "version": "0.0.4",
+  "private": true,
+  "type": "module",
+  "description": "Arkesoft — çok kiracılı SaaS e-ticaret ve kurumsal web sitesi platformu",
+  "packageManager": "pnpm@12.15.0",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=12.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint -- --fix",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "clean": "turbo run clean && rm -rf .turbo",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "env:init": "[ -f .env ] || (cp .env.example .env && echo '.env olusturuldu (.env.example kopyalandi)')",
+    "env:check": "pnpm --filter @arkesoft/config run build && node --env-file=.env packages/config/dist/check-env.js",
+    "infra:up": "pnpm env:init && docker compose --env-file .env -f infra/docker-compose.yml up -d --wait && docker compose --env-file .env -f infra/docker-compose.yml run --rm seaweedfs-init",
+    "infra:down": "docker compose --env-file .env -f infra/docker-compose.yml down",
+    "infra:reset": "docker compose --env-file .env -f infra/docker-compose.yml down -v && pnpm infra:up",
+    "infra:ps": "docker compose --env-file .env -f infra/docker-compose.yml ps",
+    "infra:logs": "docker compose --env-file .env -f infra/docker-compose.yml logs -f",
+    "db:generate": "pnpm --filter @arkesoft/db run generate",
+    "db:migrate": "pnpm --filter @arkesoft/db run migrate",
+    "db:deploy": "pnpm --filter @arkesoft/db run deploy",
+    "db:push": "pnpm --filter @arkesoft/db run push",
+    "db:seed": "pnpm --filter @arkesoft/db run seed",
+    "db:studio": "pnpm --filter @arkesoft/db run studio",
+    "db:reset": "pnpm --filter @arkesoft/db run reset",
+    "db:verify": "pnpm --filter @arkesoft/db run verify"
+  },
+  "devDependencies": {
+    "@arkesoft/config": "workspace:*",
+    "prettier": "catalog:",
+    "turbo": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "name": "@arkesoft/api",
+  "version": "0.0.4",
+  "private": true,
+  "type": "module",
+  "description": "NestJS API — iş mantığı, tRPC router implementasyonu, kuyruk worker’ı",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json --declaration --declarationMap",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "clean": "rm -rf dist .turbo",
+    "test": "vitest run",
+    "start": "node dist/main.js",
+    "dev": "tsc -p tsconfig.build.json --watch & node --watch dist/main.js"
+  },
+  "dependencies": {
+    "@arkesoft/config": "workspace:*",
+    "@arkesoft/db": "workspace:*",
+    "@arkesoft/errors": "workspace:*",
+    "@nestjs/common": "catalog:",
+    "@nestjs/core": "catalog:",
+    "@nestjs/platform-express": "catalog:",
+    "ioredis": "catalog:",
+    "pino": "catalog:",
+    "reflect-metadata": "catalog:",
+    "rxjs": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "catalog:",
+    "@types/node": "catalog:",
+    "@types/supertest": "catalog:",
+    "eslint": "catalog:",
+    "supertest": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

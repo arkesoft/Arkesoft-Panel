@@ -1,0 +1,30 @@
+{
+  // Tip kontrolü projesi: src/ kaynakları + kök düzeyindeki yapılandırma dosyaları
+  // (vitest.config.ts) denetlenir. Testler (`src/__tests__/**`) BİLEREK include'da —
+  // ESLint'in `projectService: true` ayarı (packages/config/eslint/base.js) her
+  // dosya için en yakın tsconfig.json'ı otomatik bulur; testler burada olmazsa
+  // lint onları hiç göremez (PO A-P3). Derleme için ayrı proje kullanılır:
+  // tsconfig.build.json (packages/db deseninin birebir kopyası).
+  "extends": "@arkesoft/config/tsconfig/node.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+
+    // --- NestJS dekoratör uyumu (architect R2 bağlayıcı kararı, ST-0 spike'ıyla
+    // doğrulandı — tasarım yeniden açılmaz) ---
+    // Nest'in dekoratörleri legacy semantik ister; TS 6.0'da bu seçenek
+    // kaldırılmadı.
+    "experimentalDecorators": true,
+    // `target: ES2023` (base'den gelir) bunu varsayılan `true` yapar; legacy
+    // dekoratör + alan semantiği tsc/esbuild arasında sapmasın diye elle `false`.
+    "useDefineForClassFields": false
+    // `emitDecoratorMetadata` BİLİNÇLİ OLARAK BURADA YOK (açılması YASAK):
+    // (a) esbuild (vitest) bunu hiç üretemez → "build'de çalışır, testte DI
+    // patlar" sapması; (b) repo lint'i (`consistent-type-imports`,
+    // packages/config/eslint/base.js) metadata'yı zaten boşaltıyor. DI açık
+    // `@Inject(TOKEN)` ile kurulur, metadata'ya dayanmaz — property injection
+    // ve tip çıkarımına dayanan DI yasak.
+  },
+  "include": ["src/**/*", "*.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}

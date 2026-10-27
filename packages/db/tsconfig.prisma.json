@@ -1,0 +1,25 @@
+{
+  // `prisma generate` (A yolu, provider "prisma-client") çıktısını (generated/)
+  // dist/generated/'e derler — "#prisma" iç yüzeyinin gerçek hedefi. Üretilen
+  // dosyalar `// @ts-nocheck` taşır ve bizim kaynağımız değildir; bu yüzden
+  // yalnızca HİJYEN bayrakları gevşetilir. `strict: true` (dolayısıyla
+  // `strictNullChecks`) KORUNUR — çünkü bu dosya tsc'nin kendi .d.ts üretimini
+  // etkiler; katılığı tamamen kapatmak tip çıkarımını da bozar (R-A2).
+  "extends": "@arkesoft/config/tsconfig/node.json",
+  "compilerOptions": {
+    "outDir": "dist/generated",
+    "rootDir": "generated",
+    "tsBuildInfoFile": "dist/generated/.tsbuildinfo",
+    "declaration": true,
+    "declarationMap": false,
+    "sourceMap": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noUncheckedIndexedAccess": false,
+    "exactOptionalPropertyTypes": false,
+    "noPropertyAccessFromIndexSignature": false,
+    "noImplicitOverride": false
+  },
+  "include": ["generated/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,6 +1,7 @@
 # Bağımlılıklar
 node_modules/
 vendor/
+.pnpm-store/
 
 # Ortam değişkenleri
 .env
@@ -11,8 +12,23 @@ vendor/
 dist/
 build/
 out/
-.next/
-.nuxt/
+*.tsbuildinfo
+
+# Araç önbellekleri
+.turbo/
+.astro/
+.vite/
+coverage/
+
+# Prisma generate çıktısı — schema.prisma'dan üretilir, commit edilmez (T-001/R-A6)
+# Not: sondaki "/" bilinçli olarak YOK — dizin henüz diskte yoksa (ST-2 öncesi)
+# dizin-özel desen `git check-ignore` ile eşleşmeyebilir; önekli bu hali her durumda eşleşir.
+packages/db/generated
+
+# Test artefaktları
+playwright-report/
+test-results/
+blob-report/
 
 # Loglar
 *.log

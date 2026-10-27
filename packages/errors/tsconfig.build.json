@@ -1,0 +1,12 @@
+{
+  // Derleme projesi: yalnızca src/ TypeScript kaynaklarını dist/'e üretir.
+  // Testler (`src/__tests__/**`) derlenmez — paket yalnızca üretim kodunu dağıtır.
+  "extends": "@arkesoft/config/tsconfig/node.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "tsBuildInfoFile": "dist/.tsbuildinfo"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "src/__tests__"]
+}

@@ -1,0 +1,13 @@
+{
+  // Tip kontrolü projesi: src/ kaynakları + kök düzeyindeki yapılandırma dosyaları
+  // (prisma.config.ts, vitest.config.ts) denetlenir. Derleme için ayrı proje
+  // kullanılır: tsconfig.build.json. Üretilen Prisma istemcisi (generated/,
+  // dist/generated/) bilerek KAPSAM DIŞI — ayrı, gevşetilmiş proje: tsconfig.prisma.json.
+  "extends": "@arkesoft/config/tsconfig/node.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*", "*.config.ts"],
+  "exclude": ["node_modules", "dist", "generated"]
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Arkesoft — temel",
+
+  // ÖNEMLİ: Bu dosyada yol (path) değeri alan seçenek bulunmaz.
+  // TypeScript, extends ile gelen göreli yolları tanımlandığı dosyaya göre çözer;
+  // outDir/rootDir/include gibi alanlar her paketin kendi tsconfig.json'ında durur.
+  "compilerOptions": {
+    // --- Katılık (CLAUDE.md §4) ---
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "useUnknownInCatchVariables": true,
+
+    // --- Modül disiplini ---
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+
+    // --- Çıktı ---
+    // declaration/declarationMap build script'inde bayrak olarak verilir;
+    // böylece `tsc --noEmit` ile tip kontrolü çakışmadan çalışır.
+    "sourceMap": true,
+    "incremental": true,
+    "removeComments": false,
+
+    // Üçüncü taraf .d.ts dosyaları bizim katılık kurallarımızla denetlenmez.
+    "skipLibCheck": true
+  }
+}
