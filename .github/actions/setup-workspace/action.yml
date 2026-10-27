@@ -1,0 +1,77 @@
+name: 'Çalışma alanını hazırla'
+description: >-
+  pnpm'i ve Node.js'i (.nvmrc'den) kurar, kurulan sürümün .nvmrc ile uyuştuğunu
+  doğrular, pnpm store ve .turbo önbelleklerini geri yükler, bağımlılıkları
+  sabitlenmiş kilit dosyasıyla kurar ve istenirse .env dosyasını üretir.
+
+inputs:
+  create-env:
+    description: >-
+      'true' ise .env.example'dan .env üretir (pnpm env:init — dosya zaten
+      varsa dokunmaz). 'guards' job'u bunu BİLEREK 'false' verir: o job'un
+      konusu tam olarak ".env OLMADAN her şey çalışıyor mu" sorusu; kendisi
+      .env üretirse kanıtlamaya çalıştığı şeyi ortadan kaldırır (T-003 R-9).
+    required: false
+    default: 'true'
+  ignore-scripts:
+    description: >-
+      'true' ise `pnpm install` lifecycle (postinstall) script'lerini
+      çalıştırmaz (`--ignore-scripts`). En az ayrıcalık ilkesi: deponun
+      YAZMA yetkili akışları (ör. release.yml'in `version-pr` job'u) Prisma'ya
+      ihtiyaç duymaz ve ele geçirilmiş bir bağımlılığın postinstall'u
+      "GITHUB_TOKEN"ı okuyup yazabileceği ortamda gereksiz script yüzeyi
+      taşımamalı (T-003 düzeltme turu 1, security C4/C8).
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: pnpm'i kur
+      uses: pnpm/action-setup@v4
+
+    - name: Node.js'i kur (.nvmrc'den)
+      uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+        cache: pnpm
+
+    - name: Node sürüm iddiasını doğrula (AC5)
+      shell: bash
+      run: |
+        set -euo pipefail
+        expected="$(tr -d '[:space:]' < .nvmrc)"
+        actual="$(node -v)"
+        if ! printf '%s' "$actual" | grep -q "^v${expected}\."; then
+          echo "::error::Kurulan Node sürümü (${actual}) .nvmrc (${expected}) ile uyuşmuyor."
+          exit 1
+        fi
+        echo "Node sürümü doğrulandı: ${actual} (.nvmrc: ${expected})"
+
+    - name: .turbo önbelleğini geri yükle
+      uses: actions/cache@v4
+      with:
+        path: .turbo
+        # Gevşek "restore-keys" ÖNEĞİ BİLEREK YOK (T-003 düzeltme turu 1,
+        # security C2): "turbo-${{ runner.os }}-" gibi bir önek, kilit
+        # dosyasından BAĞIMSIZ herhangi bir eski önbelleği geri yükler —
+        # turbo "lint"/"typecheck"/"build" önbelleklenebilir olduğu için bu,
+        # elle üretilmiş bir "cache hit" girdisinin (force-push senaryosu)
+        # komutları HİÇ ÇALIŞTIRMADAN "başarılı" saydırmasına yüzey açardı.
+        # Tam anahtar eşleşmezse (kilit dosyası değiştiyse) önbellek basitçe
+        # boş başlar — turbo kendi içerik-adresli hash'lemesiyle yeniden
+        # doldurur, güvenlik kaybı yoktur.
+        key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+    - name: Bağımlılıkları kur (kilitli kilit dosyası — R-11)
+      shell: bash
+      env:
+        IGNORE_SCRIPTS_FLAG: ${{ inputs.ignore-scripts == 'true' && '--ignore-scripts' || '' }}
+      run: |
+        set -euo pipefail
+        pnpm install --frozen-lockfile $IGNORE_SCRIPTS_FLAG
+
+    - name: .env dosyasını üret (istenirse)
+      if: ${{ inputs.create-env == 'true' }}
+      shell: bash
+      run: pnpm env:init

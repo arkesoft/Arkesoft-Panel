@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "generate": "prisma generate && tsc -p tsconfig.prisma.json",
-    "build": "tsc -p tsconfig.build.json --declaration --declarationMap",
+    "build": "mkdir -p dist && find dist -mindepth 1 -maxdepth 1 ! -name generated -exec rm -rf {} + && tsc -p tsconfig.build.json --declaration --declarationMap",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "clean": "rm -rf dist generated .turbo",

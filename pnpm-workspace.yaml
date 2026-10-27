@@ -127,3 +127,9 @@ catalog:
   '@nestjs/testing': 12.2.0
   supertest: 7.3.1
   '@types/supertest': 7.2.1
+
+  # @changesets/cli: CLAUDE.md §2 yığın tablosunda zaten beyan edilmiş
+  # ("CI/CD + sürüm: GitHub Actions + Changesets") ve ROADMAP v0.0.12 kapsamında —
+  # yeni ana bağımlılık onayı gerekmiyor. `npm view @changesets/cli dist-tags` ile
+  # çözülen en güncel kararlı sürüme (dist-tag "latest") sabitlendi.
+  '@changesets/cli': 3.0.3

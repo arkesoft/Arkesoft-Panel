@@ -115,6 +115,8 @@ Kararı sen verme, kurala uy:
   **birebir metnini** `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION` içinde ister. Bu kapıyı
   atlatmak **yasak**; ortam değişkenini kendin üretme, önceki bir onayı yeniden kullanma.
   Onay gerekiyorsa `DURUM: NEEDS_INPUT` ile Orkestratöre dön.
+- **Literal-jeton kuralı (v0.0.12'den itibaren).** Bir jeton yasağını **denetleyen kontrol** (grep, regex vb.), kendi metninde o jetonu **bitişik yazamaz**. Örneğin, `pull_request` yasağını denetleyen bir job'un iş akışı dosyasında metne gömülü `pull_request` varsa grep bunu kendisi bulur → kalıcı False Positive. Jetonu çalışma anında iki parçadan birleştir (`needle_a + needle_b`) ve gerekçesini yorumla belgele. Aynı kural açıklama yorumlarına da geçerlidir.
+  **Özel durum:** `run:` bloğu içindeki `${{ }}` ifadeleri, `#` ile başlayan shell yorumunun **içinde olsa bile** GitHub'ın expression engine'i tarafından değerlendirilir. İfadeleri `env:`/`with:`/`if:`/`outputs:` bloklarına taşı veya shell koşul olarak başka yerde tanımla. (T-003 ST-6, ST-7 kanıtlarından; T-002'de 2 örnek daha — toplam dört çıkış).
 
 ---
 

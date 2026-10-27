@@ -1,0 +1,27 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@4.0.1/schema.json",
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "fixed": [
+    [
+      "@arkesoft/admin",
+      "@arkesoft/api",
+      "@arkesoft/config",
+      "@arkesoft/db",
+      "@arkesoft/errors",
+      "@arkesoft/integrations",
+      "@arkesoft/storefront",
+      "@arkesoft/superadmin",
+      "@arkesoft/ui"
+    ]
+  ],
+  "linked": [],
+  "access": "restricted",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": [],
+  "privatePackages": {
+    "version": true,
+    "tag": false
+  }
+}

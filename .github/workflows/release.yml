@@ -1,0 +1,106 @@
+name: release
+
+# Bu iş akışı sürüm (release) hazırlık akışıdır. Changesets'in birikmiş changeset
+# dosyalarını okuyup bir "sürüm PR'ı" açmasını sağlar. Bu sürümde (v0.0.12) hiçbir
+# paket npm registry'sine gönderilmez (ilgili girdi kasıtlı olarak tanımlanmadı) ve
+# gerçek bir git tag'i atılmaz (`tag` job'u bugün `skipped` kalır) — bkz. T-003 K-B8.
+#
+# TEK tetikleyici: main'e push. Elle (manuel) başlatma düğmesi BİLEREK eklenmedi —
+# her daldan çağrılabildiği için "main dışında tetiklenmiyor" garantisini (AC8)
+# kırardı. Değişiklik isteği (PR) olayları ve zamanlanmış (cron) çalıştırma da aynı
+# nedenle yok.
+on:
+  push:
+    branches: [main]
+
+# En az ayrıcalık: kök seviyede yalnızca okuma. Yazma/PR açma izni SADECE ihtiyacı
+# olan `version-pr` job'unda yükseltilir.
+permissions:
+  contents: read
+
+# `ci.yml`'e eklenen iki koruma (timeout-minutes + concurrency) bu akışa — deponun
+# TEK yazma yetkili iş akışına — TAŞINMAMIŞTI (T-003 security tur 2 B4). İki ayrı
+# risk: (1) bir adım asılırsa (ör. "changesets/action"ın git push'u) job GitHub'ın
+# 360 dakikalık varsayılanına kadar koşar ve yazma yetkili bir token o süre boyunca
+# canlı kalır; (2) `main`'e kısa aralıkla iki push geldiğinde `concurrency` olmadan
+# İKİ `version-pr` job'u EŞZAMANLI koşar — ikisi de kök `package.json` +
+# `CHANGELOG.md`'yi yazıp aynı sürüm dalına push eder → yarış, bozuk/çift sürüm
+# yükseltmesi. "cancel-in-progress" BURADA BİLEREK "false": `ci.yml`'deki "true"nun
+# TERSİNE, burada iptal YARI YAZILMIŞ bir sürüm commit'ini keserdi — bu zararlı
+# olurdu (ikinci koşum ilkini İPTAL ETMEZ, kuyruğa girer).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # version-pr: Changesets'in birikmiş `.changeset/*.md` dosyalarını okur, kanonik
+  # `pnpm release:version` komutuyla hem paket sürümlerini hem kök platform
+  # sürümünü senkronize yükseltir ve sonucu bir "sürüm PR'ı" olarak açar/günceller.
+  # Paketleri registry'ye gönderen Changesets komutu BU AKIŞTA ÇAĞRILMAZ → o yol
+  # yapısal olarak kapalı (Kullanıcı Kararı #1).
+  version-pr:
+    name: Sürüm PR'ı hazırla
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Depoyu checkout et
+        uses: actions/checkout@v4
+        with:
+          # Changesets değişiklik geçmişine ihtiyaç duyar; shallow clone yetmez.
+          fetch-depth: 0
+
+      - name: Çalışma alanını hazırla (.env üretilmez, lifecycle script'leri kapalı)
+        # "setup-workspace" composite'i (ci.yml'in de kullandığı TEK tanım
+        # yeri) kullanılarak pnpm/Node kurulumu + ".nvmrc" sürüm iddiası
+        # (AC5) + bağımlılık kurulumu TEKRAR EDİLMEDEN sağlanır. Önceki
+        # tasarımda bu üç adım elle kopyalanmıştı — gerçek tekrar, ve yan
+        # etkisi AC5'in Node sürüm iddiasının sürüm akışında HİÇ çalışmaması
+        # (T-003 düzeltme turu 1, solid C8). "ignore-scripts: 'true'":
+        # deponun tek YAZMA yetkili job'u Prisma'ya ihtiyaç duymuyor; en az
+        # ayrıcalık (security C4).
+        uses: ./.github/actions/setup-workspace
+        with:
+          create-env: 'false'
+          ignore-scripts: 'true'
+
+      - name: Changesets ile sürüm PR'ı oluştur
+        id: changesets
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+        with:
+          # Kanonik komut: önce platform notlarını topla, sonra changeset version,
+          # sonra kök package.json + CHANGELOG.md'yi senkronize et. Salt
+          # `changeset version` kökü senkronize ETMEZ (bkz. scripts/sync-platform-version.ts).
+          version: pnpm release:version
+          # Registry'ye gönderme girdisi BİLEREK verilmiyor — bu akış hiçbir paketi
+          # dışarı göndermez; monorepo kalıcı olarak kapalı dağıtım modundadır.
+          title: 'chore: sürüm paketi'
+          commit: 'chore: sürüm paketi [changesets]'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # tag: gerçek git tag atma adımı. Bu sürümde kasıtlı olarak DEVRE DIŞI: repo
+  # değişkeni `ARKESOFT_RELEASE_TAGGING` tanımsız olduğu sürece `if:` koşulu
+  # false döner ve job GitHub'da `skipped` görünür (gizli/örtük devre dışı değil —
+  # tek anahtarla, grep'lenebilir şekilde açık). Kapatılma nedeni: gerçek
+  # dağıtım/registry hedefi henüz yok (v0.18.0'a kadar).
+  tag:
+    name: Sürüm etiketi (bugün devre dışı)
+    needs: version-pr
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: vars.ARKESOFT_RELEASE_TAGGING == 'true'
+    # "permissions: contents: write" BİLEREK YOK (T-003 düzeltme turu 1,
+    # security C1): bugün tek adımı bir "echo" — gerçek işi olmayan bir job'a
+    # yazma yetkili token vermek en az ayrıcalık ilkesini ihlal eder. İzin,
+    # gerçek etiketleme adımını ekleyen PR ile AYNI PR'da geri gelecek.
+    steps:
+      - name: Depoyu checkout et
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Bilgilendirme
+        run: echo "Etiketleme bu sürümde kapsam dışı; vars.ARKESOFT_RELEASE_TAGGING ile açılacak."

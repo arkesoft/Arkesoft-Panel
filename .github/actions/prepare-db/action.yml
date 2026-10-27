@@ -1,0 +1,22 @@
+name: 'Veritabanını hazırla'
+description: >-
+  İleri yönlü migration'ı uygular (veri düşürmez) ve demo veriyi tohumlar.
+  Yalnızca "api" hattında kullanılır; Postgres/Redis "services:" ile çağıran
+  job'da zaten ayakta olmalı. ".env" ÜRETMEZ — bu adımın sahibi çağıran
+  "setup-workspace" composite'idir ("create-env: 'true'" varsayılanıyla
+  koşmuş olmalı); önceden burada da "pnpm env:init" koşuyordu, aynı "api"
+  job'unda İKİ kez (idempotent olduğu için zararsızdı, ama ".env"in sahibi
+  sorusunun iki cevabı vardı). Tek sahiplik için buradan kaldırıldı
+  (T-003 düzeltme turu 1, solid C7). "guards" job'u (R-9) hâlâ hiçbir
+  composite'ten ".env" üretmiyor — bu değişiklik R-9'u etkilemez.
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Migration'ı uygula (ileri yönlü — bilinçli olarak sarmalanmamış komut, T-003 K-B4)
+      shell: bash
+      run: pnpm db:deploy
+
+    - name: Demo veriyi tohumla (yıkıcı komut koruması gerçekten egzersiz edilir)
+      shell: bash
+      run: pnpm db:seed

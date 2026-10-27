@@ -5,7 +5,17 @@
 // yerine Node'un yerleşik `loadEnvFile`'ı ile kök `.env` okunur (`dotenv` paketi
 // eklenmez). Ortamda zaten tanımlı değişkenler dosyadakini ezer; bu sayede CI'nin
 // enjekte ettiği değerler bozulmaz.
-process.loadEnvFile(new URL('../../.env', import.meta.url))
+//
+// DÜZELTME (ROADMAP v0.0.12, T2-K6/1): CI runner'ında kök `.env` yok (git
+// izlemiyor, ortam değişkenleri doğrudan runner'dan geliyor) — koşulsuz
+// `loadEnvFile` çağrısı `ENOENT` ile fırlayıp her `prisma` komutunu CI'da
+// başlamadan öldürüyordu. `existsSync` ile dosya varsa yükle, yoksa atla.
+import { existsSync } from 'node:fs'
+
+const rootEnvUrl = new URL('../../.env', import.meta.url)
+if (existsSync(rootEnvUrl)) {
+  process.loadEnvFile(rootEnvUrl)
+}
 
 import { defineConfig, env } from 'prisma/config'
 
@@ -24,7 +34,7 @@ export default defineConfig({
     // (`shell: false`). `&&` bir shell operatörüdür; shell olmadan `pnpm run build`
     // komutuna düz metin argüman olarak yapışıyordu ve `prisma db seed` bu yüzden
     // patlıyordu. Çözüm: burada **tek** komut — `node` + iki düz argüman
-    // (`--env-file=...`, `dist/seed.js`) — zaten boşlukla ayrılmış token'lar olduğu
+    // (`--env-file-if-exists=...`, `dist/seed.js`) — zaten boşlukla ayrılmış token'lar olduğu
     // için shell'siz `spawn` ile de doğru çalışır, `&&` zinciri yok.
     //
     // Derlenmiş kodun bayatlama riski: `build` adımı artık burada değil, çağrı
@@ -35,6 +45,11 @@ export default defineConfig({
     // çalıştırır. `migrate dev`/`migrate reset`'in otomatik seed kancası bu
     // garantiyi KAPSAMAZ (onlar `prisma.config.ts`'teki bu alanı doğrudan, pnpm
     // script'i katmanından geçmeden tetikler) — bkz. docs/development.md notu.
-    seed: 'node --env-file=../../.env dist/seed.js',
+    //
+    // DÜZELTME (ROADMAP v0.0.12, T2-K6/1): `--env-file=` dosya yoksa hata verip
+    // komutu durdurur; CI'da kök `.env` olmadığı için bu hard-fail oluyordu.
+    // `--env-file-if-exists=` Node'da dosya yoksa sessizce atlar, komutun geri
+    // kalanı (tek komut, `&&` yok — Prisma bunu shell'siz `spawn` ediyor) aynı kalır.
+    seed: 'node --env-file-if-exists=../../.env dist/seed.js',
   },
 })

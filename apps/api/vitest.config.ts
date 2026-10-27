@@ -10,9 +10,20 @@
 // sıralama bulgusu olarak işaretledi. `packages/db` bu alt görevin kapsamı
 // dışında olduğu için geriye dönük düzeltilmiyor (dosya sahipliği, T-002/ST-3);
 // bu dosya ise DOĞRU deseni (import → yan etki) baştan uygular.
+//
+// DÜZELTME (ROADMAP v0.0.12, T2-K6/1): CI runner'ında kök `.env` yok (git
+// izlemiyor, ortam değişkenleri doğrudan runner/iş akışı tarafından enjekte
+// ediliyor) — koşulsuz `loadEnvFile` çağrısı `ENOENT` ile fırlatıp Vitest'in
+// başlamadan çökmesine yol açıyordu. `existsSync` ile dosya varsa yükle, yoksa
+// sessizce atla; ortamda zaten tanımlı değişkenler bu durumda tek kaynak olur.
+import { existsSync } from 'node:fs'
+
 import { defineConfig } from 'vitest/config'
 
-process.loadEnvFile(new URL('../../.env', import.meta.url))
+const rootEnvUrl = new URL('../../.env', import.meta.url)
+if (existsSync(rootEnvUrl)) {
+  process.loadEnvFile(rootEnvUrl)
+}
 
 export default defineConfig({
   test: {

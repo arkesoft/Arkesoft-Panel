@@ -1,0 +1,943 @@
+name: ci
+
+# Tetikleyici BİLEREK filtresiz: "paths:"/"paths-ignore:"/"branches:" YOK.
+# Gerekçe (T-003 K-B2): filtre iş akışı seviyesinde olursa eşleşmeyen PR'da
+# bu iş akışı HİÇ başlamaz → GitHub'a check raporlanmaz → zorunlu check
+# sonsuza dek "bekliyor"da kalır ve PR asla birleştirilemez. Hangi hattın
+# koşacağı iş akışı seviyesinde değil, aşağıdaki "plan" job'unun ürettiği
+# job seviyesindeki "if:" koşullarıyla belirlenir.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# En az ayrıcalık: tüm iş akışı salt okuma. Hiçbir job yazma izni
+# YÜKSELTMEZ (sürüm PR'ı açma gibi yazma gerektiren işler release.yml'de).
+permissions:
+  contents: read
+
+# Aynı dal/PR için eski koşum, yenisi başlayınca iptal edilir — asılı kalan bir
+# "services:" sağlık kontrolü veya kasıtlı uzun bir test CI dakikasını sonsuza
+# dek işgal edemez, birleştirme kuyruğu kendi kendini DoS'layamaz (T-003
+# düzeltme turu 1, security C3).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------
+  # plan — hangi hatların koşacağına karar verir. Mekanizma: turbo'nun
+  # bağımlılık grafiğinden türeyen "--affected" kümesi + açık kök-dosya
+  # kuralı + şema/komut hatasında fail-open (tüm hatlar koşar). Elle yazılan
+  # bir yol listesi YOK — öyle bir liste paylaşılan paketleri kopyalayarak
+  # kaçınılmaz şekilde gerçek bağımlılık grafiğinden sapar (T-003 K-B2.2).
+  # ---------------------------------------------------------------------
+  plan:
+    name: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      api: ${{ steps.decide.outputs.api }}
+      admin: ${{ steps.decide.outputs.admin }}
+      superadmin: ${{ steps.decide.outputs.superadmin }}
+      storefront: ${{ steps.decide.outputs.storefront }}
+      shared: ${{ steps.decide.outputs.shared }}
+    steps:
+      - name: Depoyu checkout et (tam geçmiş — affected hesaplaması için)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Çalışma alanını hazırla
+        uses: ./.github/actions/setup-workspace
+        with:
+          create-env: 'false'
+
+      - name: Temel ve baş referanslarını belirle
+        id: refs
+        env:
+          # Hepsi env: üzerinden geçer — run: bloğunun İÇİNDE hiçbir
+          # "${{ }}" kalıbı YOK (mekanik grep ile doğrulanabilir olsun diye
+          # bilinçli, tek tip kural — tek tek "bu değer güvenli mi" kararı
+          # vermek yerine).
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="$PR_BASE_SHA"
+          else
+            base="$PUSH_BEFORE_SHA"
+          fi
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "head=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Etkilenen hatları hesapla (turbo --affected + kök-dosya kuralı + fail-open)
+        id: decide
+        env:
+          TURBO_SCM_BASE: ${{ steps.refs.outputs.base }}
+          TURBO_SCM_HEAD: ${{ steps.refs.outputs.head }}
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          api=false
+          admin=false
+          superadmin=false
+          storefront=false
+          shared=false
+
+          root_rule=false
+          root_rule_unresolved=false
+          dry_ok=false
+          schema_ok=false
+          names=""
+          shared_names=""
+
+          # --- Açık kök-dosya kuralı -------------------------------------
+          # turbo'nun kendi semantiğine bel bağlamadan: bu dosyalardan biri
+          # değiştiyse TÜM hatlar koşar. Base/head çözülemezse ya da "git diff"
+          # başarısız olursa "root_rule_unresolved=true" işaretlenir — bu durum
+          # SESSİZCE "false"a düşmez: aşağıdaki genel fail-open bu bayrağı da
+          # okur VE özete AYRI bir gerekçe satırı yazar (K-B2.5'in üçüncü
+          # koşulu — "base SHA çözülemezse" — artık turbo'nun da çökmesine bel
+          # bağlamıyor; T-003 solid tur 1 M3 / security C3).
+          root_file_pattern='^(pnpm-lock\.yaml|pnpm-workspace\.yaml|turbo\.json|package\.json|\.nvmrc|tsconfig[^/]*\.json)$|^\.changeset/config\.json$|^\.github/'
+
+          if [ -n "$TURBO_SCM_BASE" ] && [ -n "$TURBO_SCM_HEAD" ]; then
+            if changed_files="$(git diff --name-only "$TURBO_SCM_BASE" "$TURBO_SCM_HEAD" 2>/tmp/plan-diff.log)"; then
+              if printf '%s\n' "$changed_files" | grep -Eq "$root_file_pattern"; then
+                root_rule=true
+              fi
+            else
+              root_rule_unresolved=true
+            fi
+          else
+            root_rule_unresolved=true
+          fi
+
+          # --- turbo --affected --dry=json --------------------------------
+          # Çıkış kodu DOLAYLI "$?" İLE DEĞİL, komutun kendisiyle "if" koşulunda
+          # doğrudan okunuyor (shellcheck SC2181 — actionlint "0 bulgu" şartı;
+          # ayrıca bu, aradaki başka bir komutun "$?"ı sessizce EZMESİ riskini
+          # de yapısal olarak kapatır).
+          if raw_json="$(pnpm exec turbo run build --affected --dry=json 2>/tmp/plan-turbo.log)"; then
+            dry_ok=true
+          fi
+
+          # "jq -re '.packages[]'" İKİ AYRI "boş" durumunu AYIRMIYORDU: alan
+          # hiç yok/"null" (gerçek şema hatası) İLE alan VAR ama dizi boş
+          # (HİÇBİR paket etkilenmedi — geçerli sonuç) ikisi de "-e" bayrağının
+          # "üretilen çıktı yok" kuralıyla AYNI çıkış kodunu (4) veriyordu
+          # (kabukta ÖLÇÜLDÜ: `echo '{"packages":[]}' | jq -re '.packages[]'`
+          # → exit 4). Bu, "scripts/", "docs/", "ROADMAP.md" gibi hiçbir
+          # workspace paketini etkilemeyen HER PR'da fail-open'ı YANLIŞ
+          # GEREKÇEYLE tetikliyordu (T-003 düzeltme turu 3 — solid-tur3 low L2,
+          # kabuk ölçümüyle doğrulandı, gerçek bir kusur). Düzeltme: ÖNCE
+          # alanın VARLIĞINI/null-OLMAMASINI ayrı doğrula ("jq -e '.packages'"
+          # — boş dizi "null"/"false" DEĞİLDİR, exit 0 verir), SONRA "-e"
+          # OLMADAN yinele ("jq -r '.packages[]'" — boş dizide exit 0, yalnızca
+          # GERÇEK bir tip hatasında/eksik alanda hata verir). "shared_names"
+          # için aşağıda (M2-2) kurulan "hata ≠ geçerli-ama-boş" ayrımının
+          # AYNISI.
+          if [ "$dry_ok" = true ]; then
+            if printf '%s' "$raw_json" | jq -e '.packages' >/dev/null 2>/tmp/plan-jq.log; then
+              if names="$(printf '%s' "$raw_json" | jq -r '.packages[]' 2>>/tmp/plan-jq.log)"; then
+                schema_ok=true
+              fi
+            fi
+          fi
+
+          # "shared" artık elle yazılmış bir paket regex'ine değil, AYNI
+          # "--dry=json" çıktısından türetilen bir kümeye bağlı: "packages/"
+          # altındaki her görevin "package" alanı — AMA SALT ".tasks[]"ten
+          # değil, ".packages[]" (gerçekten ETKİLENEN küme, "$names") ile
+          # KESİŞTİRİLMİŞ olarak. Elle liste gerçek bağımlılık grafiğinden
+          # kaçınılmaz olarak sapar (K-B2.2 — bağlayıcı gerekçe); bu küme
+          # turbo'nun kendi çıktısından türediği için sapamaz (T-003 solid tur
+          # 1 M2). KESİŞİM ZORUNLU (T-003 solid tur 2 D1): ".tasks[]" GÖREV
+          # GRAFİĞİNİN TAMAMIDIR — "turbo.json"daki "dependsOn: [\"^build\",
+          # \"generate\"]" yüzünden ETKİLENMEYEN bağımlılıkları da içerir (ör.
+          # "apps/api" altında tek satır değişse "@arkesoft/config#build" gibi
+          # görevler grafiğe girer). Kesişim olmadan "shared" PRATİKTE HER
+          # UYGULAMA DEĞİŞİKLİĞİNDE koşardı (yön güvenli — fazla koşmak az
+          # koşmaktan iyidir — ama boşa CI dakikası + aşağıdaki özet metninin
+          # "etkilenen paketler" demesi YANLIŞ olurdu, bunlar etkilenen değil,
+          # grafikteki paketlerdi). Çıkış kodu AÇIKÇA ele alınır (T-003 solid
+          # tur 2 M2-2): "set -uo pipefail" devrede olduğu için pipeline'ın
+          # kendi exit kodu "jq"nun hatasını taşır ("sort -u" boş girdide 0
+          # ile çıkar) — önceki tasarım bu kodu HİÇ okumuyordu. "jq" şema
+          # hatasıyla çökerse (ör. ".directory" null/eksik → "startswith"
+          # tip hatası) *hata*, "$shared_names" BOŞ ama "jq" başarılıysa
+          # (hiçbir görev "packages/" altında değil VEYA etkilenen küme ile
+          # kesişmiyor) bu *geçerli sonuç* — ikisi AYRI ele alınır: hata →
+          # "schema_ok=false" (aşağıdaki genel fail-open'ı tetikler ve özete
+          # gerekçe yazılır), geçerli boş sonuç → "shared_names" boş kalır,
+          # fail-open TETİKLENMEZ, "shared=false" olarak değerlendirilir
+          # (aşağıda, "names" bloğunda).
+          if [ "$schema_ok" = true ]; then
+            if ! shared_names="$(printf '%s' "$raw_json" | jq -r '
+                [.packages[]] as $affected
+                | .tasks[]
+                | select((.package | IN($affected[])) and (.directory | startswith("packages/")))
+                | .package
+              ' 2>/tmp/plan-shared-jq.log | sort -u)"; then
+              schema_ok=false
+            fi
+          fi
+
+          fail_open=false
+          if [ "$dry_ok" = false ] || [ "$schema_ok" = false ] || [ "$root_rule_unresolved" = true ]; then
+            fail_open=true
+          fi
+
+          {
+            echo '## plan — hangi hatlar koşacak'
+            echo
+            if [ "$fail_open" = true ]; then
+              echo '**fail-open devrede** — tüm hatlar koşuyor. Gerekçe(ler):'
+              echo
+              # T-003 düzeltme turu 3 B: önceki metin "ayrıntı: job
+              # loglarındaki /tmp/plan-diff.log" diyordu ama bu dosya (ve
+              # kardeşleri /tmp/plan-turbo.log, /tmp/plan-jq.log,
+              # /tmp/plan-shared-jq.log) hiçbir adımda "cat" EDİLMİYORDU —
+              # "job logları"nda GÖRÜNEN TEK ŞEY bu cümlenin kendisiydi, dosya
+              # değil (CLAUDE.md §4 "hatayı sessizce yutma" anlamında olmasa
+              # da teşhis edilebilirliği öldüren yanlış bir yönlendirmeydi;
+              # solid-tur3 medium). Düzeltme: log dosyalarının İÇERİĞİ artık
+              # GERÇEKTEN bu özete ("$GITHUB_STEP_SUMMARY") basılıyor ve metin
+              # buna göre doğru şeyi söylüyor ("aşağıda" — GitHub ifade kalıbı
+              # BİLEREK YAZILMADI, bu "run:" bloğunun İÇİNDE olduğu için
+              # YAZILIRSA GitHub'ın kendisi onu değerlendirmeye çalışır ve iş
+              # akışı BOZULUR (T3-5 dersiyle AYNI sınıf — bkz. B1 adımındaki
+              # "needle_a"/"needle_b" ayrımı); dosya üzerinden "cat").
+              if [ "$root_rule_unresolved" = true ]; then
+                # İçindeki ters tırnaklar Markdown kod gösterimi; GENİŞLEME
+                # İSTENMİYOR (aşağıdaki "shellcheck disable" bunu bildirir —
+                # actionlint "0 bulgu" şartı).
+                # shellcheck disable=SC2016
+                echo '- base SHA çözülemedi veya `git diff` başarısız oldu — ayrıntı aşağıda ("git diff hata günlüğü" bölümünde, varsa).'
+                if [ -s /tmp/plan-diff.log ]; then
+                  echo
+                  echo '<details><summary>git diff hata günlüğü (/tmp/plan-diff.log)</summary>'
+                  echo
+                  echo '```'
+                  cat /tmp/plan-diff.log
+                  echo '```'
+                  echo
+                  echo '</details>'
+                fi
+              fi
+              if [ "$dry_ok" = false ] || [ "$schema_ok" = false ]; then
+                # Aynı gerekçe (yukarıdaki not).
+                # shellcheck disable=SC2016
+                echo '- `turbo --affected --dry=json` başarısız oldu ya da beklenen şemada değildi (`.packages[]`/`.tasks[]`) — ayrıntı aşağıda (varsa).'
+                for plan_log_file in /tmp/plan-turbo.log /tmp/plan-jq.log /tmp/plan-shared-jq.log; do
+                  if [ -s "$plan_log_file" ]; then
+                    echo
+                    echo "<details><summary>$(basename "$plan_log_file")</summary>"
+                    echo
+                    echo '```'
+                    cat "$plan_log_file"
+                    echo '```'
+                    echo
+                    echo '</details>'
+                  fi
+                done
+              fi
+            elif [ "$root_rule" = true ]; then
+              echo 'kök-dosya kuralı tetiklendi: paylaşılan kök yapılandırma dosyalarından biri değişti. Tüm hatlar koşuyor.'
+            else
+              # Aynı gerekçe (yukarıdaki not).
+              # shellcheck disable=SC2016
+              echo 'turbo `--affected` çıktısı başarıyla ayrıştırıldı:'
+              echo
+              echo '```'
+              printf '%s\n' "$names"
+              echo '```'
+              echo
+              # Aynı gerekçe (yukarıdaki not).
+              # shellcheck disable=SC2016
+              echo '`packages/` altında GERÇEKTEN ETKİLENEN paketler (shared hattının kaynağı; `.packages[]` ile kesiştirilmiş, T-003 solid tur 2 D1 — bağımlılık grafiğindeki etkilenmeyen görevler artık dahil DEĞİL):'
+              echo
+              echo '```'
+              printf '%s\n' "$shared_names"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$fail_open" = true ] || [ "$root_rule" = true ]; then
+            api=true; admin=true; superadmin=true; storefront=true; shared=true
+          else
+            printf '%s\n' "$names" | grep -Fxq '@arkesoft/api' && api=true
+            printf '%s\n' "$names" | grep -Fxq '@arkesoft/admin' && admin=true
+            printf '%s\n' "$names" | grep -Fxq '@arkesoft/superadmin' && superadmin=true
+            printf '%s\n' "$names" | grep -Fxq '@arkesoft/storefront' && storefront=true
+            # shared: packages/ altındaki paketlerden en az biri etkilendiyse
+            # true (kaynak: $shared_names — yukarıda --dry=json'dan türetildi,
+            # elle regex YOK).
+            if [ -n "$shared_names" ]; then
+              shared=true
+            fi
+          fi
+
+          {
+            echo "api=$api"
+            echo "admin=$admin"
+            echo "superadmin=$superadmin"
+            echo "storefront=$storefront"
+            echo "shared=$shared"
+          } >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------
+  # repo — hat'lardan bağımsız, PR başına tam bir kez koşan kontroller.
+  # ---------------------------------------------------------------------
+  repo:
+    name: repo
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Depoyu checkout et
+        uses: actions/checkout@v4
+
+      - name: Çalışma alanını hazırla
+        uses: ./.github/actions/setup-workspace
+
+      - name: Biçim kontrolü
+        shell: bash
+        run: pnpm format:check
+
+      - name: Ortam değişkeni şeması kontrolü
+        shell: bash
+        run: pnpm env:check
+
+  # ---------------------------------------------------------------------
+  # guards — statik denetimler + engellemeyen uyarılar. BİLEREK .env
+  # ÜRETMEZ: bu job'un konusu tam olarak ".env olmadan her şey çalışıyor
+  # mu" sorusu (AC12a); kendisi .env üretirse denetlediği şeyi ortadan
+  # kaldırır (T-003 R-9).
+  # ---------------------------------------------------------------------
+  guards:
+    name: guards
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Depoyu checkout et (tam geçmiş — changeset karşılaştırması için)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Çalışma alanını hazırla (.env ÜRETİLMEZ)
+        uses: ./.github/actions/setup-workspace
+        with:
+          create-env: 'false'
+
+      - name: AC13 — yasak jeton taraması (negatif kriter)
+        shell: bash
+        run: |
+          set -euo pipefail
+          tokens_file=".github/ci-forbidden-tokens.txt"
+          pattern_file="$(mktemp)"
+          grep -v '^#' "$tokens_file" | grep -v '^[[:space:]]*$' > "$pattern_file"
+
+          # Veri kaynağı koruması (fail-closed, T-003 security tur 1 B2) — liste
+          # yanlışlıkla boşaltılırsa AŞAĞIDAKİ asıl tarama "hiçbir jeton yok"
+          # diyerek SESSİZCE yeşile düşerdi. ÖNCEKİ tasarım bunu bir SAYIM
+          # eşiğiyle (min_expected_patterns=10) koruyordu — ama dosyanın kendi
+          # başlığı "geçici kapsam boşluğu işaretleri"nin PLANLI biçimde
+          # silineceğini söylüyor: v0.0.22'den sonra tam SINIRDA (10),
+          # v0.18.0'dan sonra bunun ALTINDA (7) → koruma MEŞRU bir sebeple
+          # kendi kendine kırmızıya dönerdi; ayrıca "15 → 11" gibi HEDEFLİ bir
+          # daraltma (ör. "geçici kapsam boşluğu işaretleri" bölümündeki tek
+          # bir test raporlama aracı satırını silmek) sayı eşiğinin ÇOK
+          # üstünde kalıp hiç yakalanmazdı (T-003 solid tur 2
+          # B + security tur 2 B2, ORTAK kök neden). Düzeltme (bu tur da
+          # genişletildi — T-003 düzeltme turu 3 A): sayım eşiği KALKTI;
+          # ANA listedeki "KALICI" bölümü makine okunur işaretçilerle
+          # ("# >>> PERMANENT" / "# <<< PERMANENT") sınırlı, bu bölüm
+          # ÇIKARILIP BAĞIMSIZ referans dosyayla (ci-forbidden-tokens-
+          # permanent.txt) "diff -u" ile ÇİFT YÖNLÜ karşılaştırılıyor. ÖNCEKİ
+          # tur (qa/security/solid tur3) yalnızca "referans ⊆ ana liste" TEK
+          # YÖNLÜ kontrol ediyordu; bu, kalıcı bir jetonun SADECE referanstan
+          # silinmesini veya ana listeye YENİ bir kalıcı jeton eklenip
+          # referansa eklenmemesini YAKALAMIYORDU (3 sandbox senaryosuyla
+          # ampirik olarak kanıtlandı — bkz. qa-tur3 §1, security-tur3 B5).
+          #
+          # GARANTİ EDİLEN (çift yönlü "diff -u" sayesinde): bir KALICI
+          # jetonun SADECE ana listeden silinmesi, SADECE referanstan
+          # silinmesi, ana listeye YENİ bir KALICI jeton eklenip referansa
+          # eklenmemesi, sıra değişikliği — hepsi "diff" farkı üretir → exit 1.
+          # GARANTİ EDİLMEYEN: AYNI PR'da bir KALICI jetonun İKİ dosyadan
+          # BİRLİKTE silinmesi — bu durumda çıkarılan bölüm ile referans dosya
+          # yine birbiriyle eşleşir (ikisi de aynı satırı kaybeder), "diff"
+          # fark görmez. Bu senaryo yalnızca `.github/**` için zorunlu gözden
+          # geçirici (CODEOWNERS/branch protection) ile kapanır — bu, GitHub
+          # kimliği/organizasyon kararı gerektirdiği için BİLİNÇLİ OLARAK
+          # BORÇTA (Orkestratör/kullanıcı kararı); mekanik kontrol bunu
+          # kendi başına kapatamaz.
+          #
+          # Referans liste BİLEREK ci.yml İÇİNDE bir bash dizisi olarak
+          # YAZILMADI: bu adımın KENDİSİ "ci.yml" içinde ve "ci.yml" AC13'ün
+          # TARAMA HEDEFİNDE — jetonlar burada bitişik yazılsaydı bu adım
+          # KENDİ KENDİNİ eşler ve AC13 kalıcı kırmızı olurdu (R-6 ile AYNI
+          # sınıf hata). Referans dosya da bu yüzden `.txt` — tarama hedefinin
+          # (`*.yml`/`*.yaml`) dışında.
+          permanent_tokens_file=".github/ci-forbidden-tokens-permanent.txt"
+          if ! required_permanent="$(grep -v '^#' "$permanent_tokens_file" | grep -v '^[[:space:]]*$')"; then
+            echo "::error::AC13 veri kaynağı bozuk: $permanent_tokens_file okunamadı."
+            exit 1
+          fi
+          if [ -z "$required_permanent" ]; then
+            echo "::error::AC13 veri kaynağı bozuk: $permanent_tokens_file boş — kalıcı jeton referansı okunamadı."
+            exit 1
+          fi
+
+          # Ana listedeki "KALICI" bölümü işaretçiler arasından ÇIKAR.
+          # İŞARETÇİ BULUNAMAZSA/BOZUKSA DA FAIL-CLOSED (işaretçiyi silmek bir
+          # kaçış yolu OLMASIN).
+          marker_begin='# >>> PERMANENT'
+          marker_end='# <<< PERMANENT'
+          extracted_permanent="$(mktemp)"
+          marker_log="$(mktemp)"
+          awk -v b="$marker_begin" -v e="$marker_end" '
+            $0 == b { seen_begin++; flag = 1; next }
+            $0 == e { seen_end++; flag = 0; next }
+            flag { print }
+            END {
+              if (seen_begin == 0) print "MISSING_BEGIN" > "/dev/stderr"
+              if (seen_end == 0) print "MISSING_END" > "/dev/stderr"
+              if (seen_begin > 1) print "DUPLICATE_BEGIN" > "/dev/stderr"
+              if (seen_end > 1) print "DUPLICATE_END" > "/dev/stderr"
+            }
+          ' "$tokens_file" > "$extracted_permanent" 2> "$marker_log"
+          if [ -s "$marker_log" ]; then
+            echo "::error::AC13 veri kaynağı bozuk: $tokens_file içinde \"$marker_begin\" / \"$marker_end\" işaretçileri bulunamadı veya bozuk."
+            cat "$marker_log"
+            exit 1
+          fi
+
+          if ! permanent_diff="$(diff -u <(printf '%s\n' "$required_permanent") "$extracted_permanent")"; then
+            echo "::error::AC13 veri kaynağı bozuk: $tokens_file (işaretçiler arasındaki KALICI bölüm) ile $permanent_tokens_file ÇİFT YÖNLÜ eşit değil (bir satır eklenmiş/silinmiş/değiştirilmiş olabilir)."
+            printf '%s\n' "$permanent_diff"
+            exit 1
+          fi
+          echo "AC13 veri kaynağı: KALICI bölüm ile $permanent_tokens_file çift yönlü eşit."
+
+          # R-6 kanıtı (1/2) — jeton dosyası TARAMA HEDEFİNE dahil edilirse
+          # kendi kendini eşler (beklenen davranış, ama BU TARAMANIN BİR
+          # PARÇASI DEĞİL — yalnızca ayrı bir kanıt adımında gösterilir).
+          # Fail-closed (B2): eşleşme YOKSA bu öz-testin kendisi bozulmuş demektir
+          # (liste boşaltılmış/bozulmuş olabilir) → artık yalnızca metin basmakla
+          # kalınmaz, exit 1 verilir.
+          echo 'R-6 kanıtı — jeton dosyası dahil edilirse (beklenen: eşleşme VAR):'
+          if ! grep -nFf "$pattern_file" "$tokens_file"; then
+            echo "::error::R-6 öz-testi başarısız: jeton listesi kendi dosyasında hiç eşleşmedi (liste muhtemelen boşaltıldı/bozuldu)."
+            exit 1
+          fi
+
+          # Gerçek AC13 taraması — hedef yalnızca .yml/.yaml iş akışı ve
+          # composite action dosyaları; .txt listesi glob'un DIŞINDA (R-6
+          # kanıtı 2/2, aşağıda "eşleşme yok" bekleniyor). grep'in "eşleşme yok"
+          # (exit 1) ile "hata" (exit >1, ör. okunamayan dosya) çıkışları ayrı
+          # ayrı ele alınır — ikincisi de AC13'ü sessizce yeşile düşürmesin
+          # (security tur 1 B2, "Ek not").
+          targets="$(find .github/workflows .github/actions -type f \( -name '*.yml' -o -name '*.yaml' \))"
+          # Bu hedef küme ("iş akışı + composite action dosyaları") aşağıdaki
+          # "run bloğu içi şablon ifadesi yasağı" adımı TARAFINDAN DA
+          # kullanılıyordu ve iki ayrı "find" çağrısı olarak TEKRARLANIYORDU
+          # (T-003 düzeltme turu 3 C4 — aynı soruyu iki kopya yanıtlıyordu,
+          # biri güncellenip diğeri unutulabilirdi). Artık TEK YERDE (burada)
+          # türetiliyor ve o adım bunu dosyadan OKUYOR — job'un kendi
+          # runner'ında "/tmp" adımlar arasında KALICIDIR.
+          printf '%s\n' "$targets" > /tmp/ac-workflow-action-targets.txt
+          echo 'R-6 kanıtı (2/2) — jeton dosyası hariç gerçek tarama hedefinde:'
+          set +e
+          match_output="$(printf '%s\n' "$targets" | xargs grep -nFf "$pattern_file")"
+          grep_exit=$?
+          set -e
+          if [ "$grep_exit" -eq 0 ]; then
+            printf '%s\n' "$match_output"
+            echo "::error::AC13 ihlali — yasak jeton .yml/.yaml dosyalarında bulundu."
+            exit 1
+          elif [ "$grep_exit" -gt 1 ]; then
+            echo "::error::AC13 taraması hata verdi (grep exit $grep_exit) — pattern dosyası veya hedef dosyalar okunamadı."
+            exit 1
+          fi
+          echo "AC13: yasak jeton bulunmadı."
+
+      - name: Sabit Node sürümü yazımı yasağı (AC5) — pozitif iddia
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Negatif taraf (sabit Node sürüm anahtarı yazımının, iş container'ı
+          # anahtarının ve fork PR güvenlik tetikleyicisinin YOK olması) artık
+          # yukarıdaki genel AC13 taramasına taşındı (bkz.
+          # .github/ci-forbidden-tokens.txt — T-003 düzeltme turu 1 C6).
+          # Bölünmüş string hilesi gereksizleşti: bu adımın kendi metni o üç
+          # jetonun tam yazımını bitişik içermiyor (AC13'ün tarama hedefi tam
+          # olarak bu dosya — T3-5 dersi). Burada yalnızca POZİTİF iddia
+          # kalıyor: .nvmrc dosya referansı GERÇEKTEN kullanılıyor mu.
+          if ! grep -rn 'node-version-file' .github/actions/setup-workspace/action.yml; then
+            echo "::error::.nvmrc dosya referansı hiçbir yerde kullanılmıyor."
+            exit 1
+          fi
+          echo "Node sürümü .nvmrc üzerinden okunuyor; sabit yazım yok (negatif kontrol: AC13)."
+
+      - name: run bloğu içi şablon ifadesi yasağı — iş akışları + composite action'lar (security tur 1 B1)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # GitHub'ın dolar + çift süslü parantezle başlayan ifade kalıbı
+          # "run:" bloğunun İÇİNDE kullanılırsa metinsel olarak (bash
+          # tırnaklarını görmeden) yerine konur. "run-gates" composite'i
+          # (beşli kapının TEK tanım yeri) bugün dört çağrı yerinin hepsinde
+          # literal değer geçiyor olsa da, girdi ileride olay verisinden
+          # (PR etiketi/dal adı) beslenirse bu bir komut enjeksiyonu yüzeyi
+          # olurdu. Bu kontrol o sınıfı MEKANİK olarak kapatır: hedef
+          # dosyalardaki "run:" bloklarının İÇİNDE o kalıbı arar
+          # (env:/with:/if:/outputs: serbest — onlar GitHub'ın kendi
+          # değerlendirdiği YAML anahtarları, enjeksiyon yüzeyi değil).
+          #
+          # NOT: aranan jeton BİLEREK iki parçaya bölünmüş kuruluyor (T3-5
+          # dersi) — bu adımın KENDİ "run:" bloğu da tarama hedefine dahil
+          # (ci.yml); bitişik yazılırsa kendi kendini eşler. Aynı sebepten,
+          # aşağıdaki mesajlarda kalıbın kendisi YAZILMAZ — yalnızca "$needle"
+          # değişkeni (çalışma anında birleştirilmiş) basılır.
+          needle_a='$'
+          needle_b='{{'
+          needle="${needle_a}${needle_b}"
+
+          # Hedef küme burada TEKRAR "find" ile türetilmiyor — AC13 adımı
+          # bunu TEK YERDE türetip "/tmp/ac-workflow-action-targets.txt"e
+          # yazdı (T-003 düzeltme turu 3 C4); bu adım onu okur.
+          targets="$(cat /tmp/ac-workflow-action-targets.txt)"
+          violation=false
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            if ! awk -v needle="$needle" '
+              BEGIN { in_run = 0; run_indent = -1; bad = 0 }
+              {
+                line = $0
+                trimmed = line
+                sub(/^[ \t]*/, "", trimmed)
+                indent = length(line) - length(trimmed)
+                if (in_run) {
+                  if (trimmed == "") next
+                  if (indent <= run_indent) {
+                    in_run = 0
+                  } else {
+                    if (index(line, needle) > 0) {
+                      print NR": "line
+                      bad = 1
+                    }
+                    next
+                  }
+                }
+                if (trimmed ~ /^run:[ \t]*\|/ || trimmed ~ /^run:[ \t]*>/) {
+                  in_run = 1
+                  run_indent = indent
+                  next
+                }
+                if (trimmed ~ /^run:/) {
+                  rest = trimmed
+                  sub(/^run:[ \t]*/, "", rest)
+                  if (index(rest, needle) > 0) {
+                    print NR": "line
+                    bad = 1
+                  }
+                }
+              }
+              END { exit (bad ? 1 : 0) }
+            ' "$file"; then
+              echo "::error::${file} içinde run: bloğu içinde \"$needle\" ile başlayan bir ifade bulundu (yukarıdaki satıra bakın; env: üzerinden geçirilmeli)."
+              violation=true
+            fi
+          done <<< "$targets"
+
+          if [ "$violation" = true ]; then
+            exit 1
+          fi
+          echo "run: bloklarının içinde \"$needle\" ile başlayan bir ifade bulunmadı."
+
+      - name: release.yml tetikleyici doğrulaması (AC8)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -nE 'pull_request|workflow_dispatch|schedule' .github/workflows/release.yml; then
+            echo "::error::release.yml yasaklı bir tetikleyici içeriyor."
+            exit 1
+          fi
+          if ! grep -nE '^\s*branches:\s*\[main\]' .github/workflows/release.yml; then
+            echo "::error::release.yml 'branches: [main]' içermiyor."
+            exit 1
+          fi
+          echo "release.yml tetikleyicisi doğrulandı: yalnızca main'e push."
+
+      - name: Platform sürüm tutarlılığı (--check)
+        shell: bash
+        run: node scripts/sync-platform-version.ts --check
+
+      - name: Platform script'i — erasable syntax kısıtı + tip kontrolü (A4)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # "scripts/" bir workspace paketi DEĞİL → "pnpm typecheck" (turbo)
+          # bu dosyayı hiç görmüyordu; başlık yorumundaki üç sözleşme (any
+          # yasağı, açık dönüş tipleri, SİLİNEBİLİR olmayan sözdizimi yasağı)
+          # bugüne kadar yalnızca insan incelemesiyle korunuyordu
+          # (T-003 solid tur 1 M4). ÖNCEKİ tasarım kaynak dosyayı komut
+          # satırında veriyordu — TypeScript'in belgelenmiş davranışı gereği
+          # bu durumda "scripts/tsconfig.json" TÜMÜYLE YOKSAYILIR (strict,
+          # noUncheckedIndexedAccess, exactOptionalPropertyTypes hiç
+          # uygulanmıyordu; T-003 solid tur 2 M2-3). Düzeltme: proje
+          # dosyasıyla (-p) çalıştır — dosya adı komut satırında YOK,
+          # "erasableSyntaxOnly" ve "typeRoots" artık tek yerde
+          # (scripts/tsconfig.json) tanımlı.
+          pnpm exec tsc -p scripts/tsconfig.json
+          echo "scripts/sync-platform-version.ts: tsconfig.json'ın tam katılığıyla tip kontrolü geçti."
+
+      - name: Platform script'i — ESLint (A4)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Aynı sebepten (yukarıdaki not) kök "package.json"da "eslint" yok;
+          # "scripts/eslint.config.mjs" + "scripts/tsconfig.json" paketler
+          # arası paylaşılan preset'i (packages/config/eslint/node.js)
+          # genişletiyor ve @arkesoft/config'in KENDİ kurulu eslint
+          # ikilisiyle çalıştırılıyor — yeni bağımlılık YOK.
+          ./packages/config/node_modules/.bin/eslint --config scripts/eslint.config.mjs scripts
+          echo "scripts/: ESLint temiz."
+
+      - name: Sahte yeşil dedektörü — test sahibi paket kümesi
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="$(grep -v '^#' .github/ci-expected-test-packages.txt | grep -v '^[[:space:]]*$' | sort)"
+          # "2>/dev/null" stderr'i TÜMÜYLE atıyordu (T-003 düzeltme turu 3 B,
+          # beşinci örnek) — "set -euo pipefail" sayesinde "turbo"/"jq" hata
+          # verirse adım yine kırmızıya düşüyordu (davranış fail-closed ✓) ama
+          # KIRMIZININ SEBEBİ hiç basılmıyordu. Düzeltme: stderr bir log
+          # dosyasına alınır, hata dalında (aşağıda) adım çıktısına basılır.
+          turbo_test_dry_log="$(mktemp)"
+          if ! actual="$(pnpm exec turbo run test --dry=json 2>"$turbo_test_dry_log" \
+            | jq -r '.tasks[] | select(.task == "test" and .command != "<NONEXISTENT>") | .package' \
+            | sort -u)"; then
+            echo "::error::Sahte yeşil dedektörü: \"turbo run test --dry=json\" ya da \"jq\" hata verdi."
+            cat "$turbo_test_dry_log"
+            exit 1
+          fi
+          if [ -s "$turbo_test_dry_log" ]; then
+            echo "turbo stderr (komut 0 ile çıktı ama stderr'e yazdı):"
+            cat "$turbo_test_dry_log"
+          fi
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::Test sahibi paket kümesi ci-expected-test-packages.txt ile eşleşmiyor."
+            echo "Beklenen:"
+            printf '%s\n' "$expected"
+            echo "Gerçek:"
+            printf '%s\n' "$actual"
+            exit 1
+          fi
+          echo "Test sahibi paket kümesi beyan ile eşleşiyor."
+
+      - name: AC12a — .env OLMADAN çalışma probu
+        shell: bash
+        env:
+          # .env.example'ın DATABASE_URL değeriyle birebir aynı (dev-only,
+          # sır DEĞİL). prisma.config.ts bu değişkeni OKUYOR ama "validate"
+          # komutu hiçbir bağlantı AÇMIYOR — host/şifre burada kullanılmıyor,
+          # sadece Prisma'nın yapılandırma yükleyicisinin çökmemesi için VAR.
+          DATABASE_URL: postgresql://arkesoft:arkesoft_dev_only@localhost:5432/arkesoft?schema=public
+        run: |
+          set -euo pipefail
+          pnpm --filter @arkesoft/db exec vitest list
+          pnpm --filter @arkesoft/api exec vitest list
+          (cd packages/db && pnpm exec prisma validate)
+          node --env-file-if-exists=.env -e 'process.exit(0)'
+          echo "AC12a: dört adım da .env dosyası OLMADAN başarıyla tamamlandı."
+
+      - name: Changeset uyarısı (AC7) — engellemez
+        # "always()": erken bir BLOKLAYICI adım kırmızıya dönerse bu danışma
+        # uyarısı hiç koşmazdı ve PR yazarı geri bildirimi kaybederdi
+        # (T-003 solid tur 1 low bulgu, devops C5).
+        if: always() && github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -uo pipefail
+          git fetch origin "$BASE_REF" --depth=1 >/dev/null 2>&1 || true
+          set +e
+          pnpm changeset status --since "origin/$BASE_REF"
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "::warning::Bu PR için changeset bulunamadı (ya da karşılaştırma başarısız oldu). BLOKLAMIYOR — bu kontrol PR tipini sınıflandıramıyor (commit-lint/PR etiketi henüz yok). Muafsan PR şablonundaki Changeset kutusunda muafiyet sebebini işaretle, değilse 'pnpm changeset' ile ekle."
+          else
+            echo "Changeset durumu temiz."
+          fi
+
+      - name: PR gövdesi sürüm etiketi kontrolü (AC10) — engellemez
+        # "always()": aynı gerekçe (yukarıdaki AC7 notu, devops C5).
+        if: always() && github.event_name == 'pull_request'
+        shell: bash
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -uo pipefail
+          if printf '%s' "$PR_BODY" | grep -Eq '\[v[0-9]+\.[0-9]+\.[0-9]+\]'; then
+            echo "PR gövdesinde bir ROADMAP sürüm etiketi bulundu."
+          else
+            echo "::warning::PR gövdesinde [vX.Y.Z] biçiminde bir ROADMAP sürüm etiketi bulunamadı. BLOKLAMIYOR — şablonun 1. alanını ('Hangi ROADMAP versiyonu?') doldurun."
+          fi
+
+      - name: actionlint ikilisini indir ve doğrula (resmî release + SHA256)
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="1.7.12"
+          # Kaynak: https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_checksums.txt
+          # (resmî release sayfasının yayınladığı checksum dosyasından alındı).
+          expected_sha256="8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+          archive="actionlint_${version}_linux_amd64.tar.gz"
+          curl -sSL -o "$archive" "https://github.com/rhysd/actionlint/releases/download/v${version}/${archive}"
+          echo "${expected_sha256}  ${archive}" | sha256sum -c -
+          tar -xzf "$archive" actionlint
+          chmod +x ./actionlint
+
+      - name: actionlint — iş akışı dosyalarını denetle
+        shell: bash
+        run: |
+          set -euo pipefail
+          # actionlint yalnızca iş akışı (workflow) dosyalarını anlıyor;
+          # composite action.yml dosyalarını STANDALONE hedef olarak
+          # yazamıyor (farklı şema → "syntax-check" hatası üretir) ve
+          # "uses: ./..." ile referans edilen yerel composite action'ların
+          # içini (örn. eksik "shell:") doğrulamıyor — bu araçtaki bilinen
+          # bir kapsam sınırı (yerel olarak doğrulandı). Composite
+          # action'ların doğruluğu bu yüzden elle sağlanır: her "run:"
+          # adımında açık bir "shell:" alanı vardır.
+          ./actionlint
+
+  # ---------------------------------------------------------------------
+  # api — Postgres + Redis servisleriyle koşan, veritabanına bağlı hat.
+  # İş container'ı KULLANILMAZ — job doğrudan runner'da koşar, servisler
+  # localhost'a maplenir (T-003 K-B4, A-V21).
+  # ---------------------------------------------------------------------
+  api:
+    name: api
+    needs: plan
+    if: needs.plan.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17.11-alpine
+        env:
+          # .env.example ile birebir aynı (dev-only, sır DEĞİL — T-003 K-B4).
+          POSTGRES_USER: arkesoft
+          POSTGRES_PASSWORD: arkesoft_dev_only
+          POSTGRES_DB: arkesoft
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U arkesoft -d arkesoft"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:8.10-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - name: Depoyu checkout et
+        uses: actions/checkout@v4
+
+      - name: Çalışma alanını hazırla
+        uses: ./.github/actions/setup-workspace
+
+      - name: Veritabanını hazırla (migration + tohumlama)
+        uses: ./.github/actions/prepare-db
+
+      - name: Beşli kapıyı çalıştır
+        uses: ./.github/actions/run-gates
+        with:
+          filter: '@arkesoft/api...'
+
+  # ---------------------------------------------------------------------
+  # admin / superadmin / storefront — kendi yoluna (+ bağımlı olduğu
+  # paylaşılan paketlere) göre tetiklenen, servis gerektirmeyen hatlar.
+  # Bugün üçü de kaynak kod içermeyen iskelet (ROADMAP v0.0.7/v0.0.20/
+  # v0.0.8) — hat burada kurulur, içerik o sürümlerde gelir.
+  # ---------------------------------------------------------------------
+  admin:
+    name: admin
+    needs: plan
+    if: needs.plan.outputs.admin == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Depoyu checkout et
+        uses: actions/checkout@v4
+
+      - name: Çalışma alanını hazırla
+        uses: ./.github/actions/setup-workspace
+
+      - name: Beşli kapıyı çalıştır
+        uses: ./.github/actions/run-gates
+        with:
+          filter: '@arkesoft/admin...'
+
+  superadmin:
+    name: superadmin
+    needs: plan
+    if: needs.plan.outputs.superadmin == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Depoyu checkout et
+        uses: actions/checkout@v4
+
+      - name: Çalışma alanını hazırla
+        uses: ./.github/actions/setup-workspace
+
+      - name: Beşli kapıyı çalıştır
+        uses: ./.github/actions/run-gates
+        with:
+          filter: '@arkesoft/superadmin...'
+
+  storefront:
+    name: storefront
+    needs: plan
+    if: needs.plan.outputs.storefront == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Depoyu checkout et
+        uses: actions/checkout@v4
+
+      - name: Çalışma alanını hazırla
+        uses: ./.github/actions/setup-workspace
+
+      - name: Beşli kapıyı çalıştır
+        uses: ./.github/actions/run-gates
+        with:
+          filter: '@arkesoft/storefront...'
+
+  # ---------------------------------------------------------------------
+  # shared — dört uygulama hattının kapanışına girmeyen paylaşılan
+  # paketler (ui, integrations, theme-sdk, trpc + config/db/errors'ın
+  # kendisi). "test" YOK: kendi test script'i olan üç paket zaten "api"
+  # hattının kapanışında; burada tekrar koşmak sessiz bir boşluk
+  # DOĞURMAZ (T-003 K-B2.7).
+  # ---------------------------------------------------------------------
+  shared:
+    name: shared
+    needs: plan
+    if: needs.plan.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Depoyu checkout et
+        uses: actions/checkout@v4
+
+      - name: Çalışma alanını hazırla
+        uses: ./.github/actions/setup-workspace
+
+      - name: Lint + tip denetimi + derleme (test YOK)
+        uses: ./.github/actions/run-gates
+        with:
+          # "./packages/*" DEĞİL — turbo'nun filtre glob'unda "*" dizin
+          # ayırıcısını (/) GEÇMEZ; "packages/themes/<tema>" gibi İÇ İÇE bir
+          # paket değişince tetikleyici küme ("plan" job'unun "shared_names"
+          # türetimindeki "startswith(\"packages/\")" filtresi, iç içe
+          # paketleri KAPSAR) ile bu tüketici birbirinden sapıyordu:
+          # "shared=true" olurdu ama bu filtre değişen tema paketini HİÇ
+          # görmezdi → iş "success" dönerdi, tema paketi lint/typecheck/build
+          # görmeden geçerdi (T-003 solid tur 2 M2-4). "**" iki seviyeyi de
+          # kapsar — geçici bir "packages/themes/probe" paketiyle ÖLÇÜLDÜ:
+          # "--filter='./packages/*'" onu listelemedi, "--filter='./packages/**'"
+          # listeledi (devops kanıtı, prob paketi silindi).
+          filter: './packages/**'
+          run-test: 'false'
+
+  # ---------------------------------------------------------------------
+  # ci-gate — TEK toplayıcı (aggregate) check (AC9). Varsayılan-reddet:
+  # izinli küme {success, skipped}, dışındaki HER DEĞER (failure,
+  # cancelled, ileride eklenecek yeni bir değer) başarısızlık sayılır.
+  # "contains(needs.*.result, 'failure')" deseni BİLEREK KULLANILMAZ —
+  # o ifade "cancelled"ı ve ileride eklenecek yeni bir sonuç değerini
+  # sessizce yeşil bırakır (T-003 K-B3).
+  # ---------------------------------------------------------------------
+  ci-gate:
+    name: ci-gate
+    if: always()
+    needs: [plan, repo, guards, api, admin, superadmin, storefront, shared]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Sonuçları değerlendir (varsayılan-reddet)
+        shell: bash
+        env:
+          # env: üzerinden — run: bloğunun içinde "${{ }}" YOK (bkz. "plan"
+          # job'undaki "refs" adımının aynı gerekçeli notu).
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$NEEDS_JSON" > /tmp/needs.json
+
+          {
+            echo '## ci-gate — hat sonuçları'
+            echo
+            echo '| İş | Sonuç |'
+            echo '| --- | --- |'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Denetlenecek job listesi ELLE YAZILMAZ — yukarıdaki "needs:" alanının
+          # kendisinden (toJSON(needs)) türetilir. Önceki tasarımda bu liste İKİ
+          # yerde (burada ve "needs:" alanında) ayrı ayrı elle tutuluyordu;
+          # "needs:"e eklenip buraya eklenmeyen bir job'ın "failure" sonucu hiç
+          # okunmazdı (sessiz sahte yeşil, T-003 solid tur 1 M1 / T3-4 / R-7).
+          # Tersi yön zaten güvenliydi ve öyle kalıyor: "needs:"te OLMAYAN bir ad
+          # için jq "null" döner, "*" dalına düşer.
+          # Job adları BİR DEĞİŞKENE atanarak okunuyor — süreç ikamesine
+          # (`< <(…)`) DEĞİL. Süreç ikamesinin çıkış kodu "set -euo pipefail"
+          # tarafından görülmez (bash'in kendi semantiği): "jq" çökerse/boş
+          # JSON üretirse "while" sıfır kez döner, "ok=true" kalır ve bu adım
+          # "PASS" diyerek 0 ile çıkardı — tek toplayıcı check'in varsayılan-
+          # reddet tasarımını fail-open'a çeviren SESSİZ bir sahte yeşil
+          # (T-003 solid tur 2 M2-1). Düzeltme: önce değişkene al (`set -e`
+          # bunu GÖRÜR) ve boşluğa karşı AÇIKÇA iddia et.
+          if ! job_names="$(jq -r 'keys[]' /tmp/needs.json)"; then
+            echo "::error::ci-gate: needs listesi ayrıştırılamadı (jq /tmp/needs.json üzerinde başarısız oldu) — fail-closed."
+            exit 1
+          fi
+          if [ -z "$job_names" ]; then
+            echo "::error::ci-gate: needs listesi boş (jq hiçbir anahtar üretmedi) — fail-closed."
+            exit 1
+          fi
+
+          ok=true
+          while IFS= read -r job_name; do
+            [ -z "$job_name" ] && continue
+            result="$(jq -r --arg j "$job_name" '.[$j].result' /tmp/needs.json)"
+            echo "| $job_name | $result |" >> "$GITHUB_STEP_SUMMARY"
+            case "$result" in
+              success|skipped) ;;
+              *) ok=false ;;
+            esac
+          done <<< "$job_names"
+
+          if [ "$ok" = false ]; then
+            echo "::error::ci-gate: en az bir iş beklenen küme {success, skipped} dışında bir sonuçla bitti."
+            exit 1
+          fi
+          echo "ci-gate: tüm işler {success, skipped} kümesinde — PASS."

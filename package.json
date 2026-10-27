@@ -20,7 +20,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "env:init": "[ -f .env ] || (cp .env.example .env && echo '.env olusturuldu (.env.example kopyalandi)')",
-    "env:check": "pnpm --filter @arkesoft/config run build && node --env-file=.env packages/config/dist/check-env.js",
+    "env:check": "pnpm --filter @arkesoft/config run build && node --env-file-if-exists=.env packages/config/dist/check-env.js",
     "infra:up": "pnpm env:init && docker compose --env-file .env -f infra/docker-compose.yml up -d --wait && docker compose --env-file .env -f infra/docker-compose.yml run --rm seaweedfs-init",
     "infra:down": "docker compose --env-file .env -f infra/docker-compose.yml down",
     "infra:reset": "docker compose --env-file .env -f infra/docker-compose.yml down -v && pnpm infra:up",
@@ -33,12 +33,15 @@
     "db:seed": "pnpm --filter @arkesoft/db run seed",
     "db:studio": "pnpm --filter @arkesoft/db run studio",
     "db:reset": "pnpm --filter @arkesoft/db run reset",
-    "db:verify": "pnpm --filter @arkesoft/db run verify"
+    "db:verify": "pnpm --filter @arkesoft/db run verify",
+    "release:version": "node scripts/sync-platform-version.ts --collect && changeset version && node scripts/sync-platform-version.ts --apply"
   },
   "devDependencies": {
     "@arkesoft/config": "workspace:*",
+    "@changesets/cli": "catalog:",
     "prettier": "catalog:",
     "turbo": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "zod": "catalog:"
   }
 }

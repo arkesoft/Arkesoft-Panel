@@ -8,7 +8,18 @@
 //
 // Prisma CLI'nin aksine Vitest kök `.env`'i otomatik yüklemez; `prisma.config.ts`
 // ile aynı desen kullanılır (Node yerleşik `loadEnvFile`, `dotenv` eklenmez).
-process.loadEnvFile(new URL('../../.env', import.meta.url))
+//
+// DÜZELTME (ROADMAP v0.0.12, T2-K6/1): CI runner'ında kök `.env` yok (git
+// izlemiyor, ortam değişkenleri doğrudan runner/iş akışı tarafından enjekte
+// ediliyor) — koşulsuz `loadEnvFile` çağrısı `ENOENT` ile fırlatıp Vitest'in
+// başlamadan çökmesine yol açıyordu. `existsSync` ile dosya varsa yükle, yoksa
+// sessizce atla; ortamda zaten tanımlı değişkenler bu durumda tek kaynak olur.
+import { existsSync } from 'node:fs'
+
+const rootEnvUrl = new URL('../../.env', import.meta.url)
+if (existsSync(rootEnvUrl)) {
+  process.loadEnvFile(rootEnvUrl)
+}
 
 import { defineConfig } from 'vitest/config'
 

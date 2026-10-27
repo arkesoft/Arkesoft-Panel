@@ -1,0 +1,29 @@
+{
+  // "scripts/" bir pnpm workspace üyesi DEĞİL (bilinçli, bkz. sync-platform-version.ts
+  // başlık yorumu) — bu yüzden kök `package.json`'da "@types/node" YOK (yeni kök
+  // bağımlılığı eklemek bu düzeltme turunun (T-003 tur 1, A4) kapsamı dışı).
+  // "typeRoots" BİLEREK packages/config'in KENDİ "node_modules"'üne işaret ediyor:
+  // o paket zaten "@types/node"u (catalog) devDependency olarak beyan ediyor ve
+  // her "pnpm install --frozen-lockfile" onu kurar — yeni bir bağımlılık EKLENMİYOR,
+  // var olan bir kurulumdan ödünç alınıyor. Yalnızca bu dosyanın ESLint/tsc
+  // çağrısı (`guards` job) tüketir; `pnpm typecheck` (turbo) "scripts/"u görmez
+  // (T3-1 borcu — birim testi altyapısı hâlâ yok).
+  // "erasableSyntaxOnly" BURAYA taşındı (T-003 solid tur 2 M2-3): önceki tasarımda
+  // "guards" job'u bu dosyayı HİÇ OKUMADAN kaynak dosyayı komut satırında veriyordu
+  // (`tsc --erasableSyntaxOnly ... scripts/sync-platform-version.ts`). TypeScript'in
+  // belgelenmiş davranışı gereği girdi dosyası komut satırında belirtilirse
+  // "tsconfig.json" TÜMÜYLE YOKSAYILIR — bu dosyanın tam da kendisi için var olan
+  // katılık (strict, noUncheckedIndexedAccess, exactOptionalPropertyTypes) hiç
+  // UYGULANMIYORDU. Düzeltme: adım artık `tsc -p scripts/tsconfig.json` ile çalışır
+  // (dosya adı komut satırında YOK), bu yüzden bayrak CLI'dan buraya geldi.
+  "extends": "@arkesoft/config/tsconfig/node.json",
+  "compilerOptions": {
+    // "types": ["node"] BİLEREK BURADA YOK — "@arkesoft/config/tsconfig/node.json"
+    // zaten tanımlıyor (bkz. o dosya); burada tekrarlamak ölü/sessizce ezebilen bir
+    // kopya üretirdi (T-003 düzeltme turu 3 C2).
+    "noEmit": true,
+    "typeRoots": ["../packages/config/node_modules/@types"],
+    "erasableSyntaxOnly": true
+  },
+  "include": ["*.ts"]
+}

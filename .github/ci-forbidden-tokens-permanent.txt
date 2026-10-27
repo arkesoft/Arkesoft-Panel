@@ -1,0 +1,35 @@
+# T-003 solid tur 2 B — AC13'ün fail-closed veri kaynağı korumasının BAĞIMSIZ
+# referansı.
+#
+# Bu liste `.github/ci-forbidden-tokens.txt`'nin "KALICI YASAKLAR" bölümünün
+# (o dosyadaki "# >>> PERMANENT" / "# <<< PERMANENT" işaretçileri arasındaki
+# satırlar) İÇERİK olarak AYNI kopyasıdır. `guards` job'undaki AC13 adımı
+# (ci.yml) ana listedeki o bölümü işaretçilerle ÇIKARIP bu dosyayla `diff -u`
+# ile ÇİFT YÖNLÜ karşılaştırır (T-003 düzeltme turu 3 A) — biri (ana liste
+# VEYA bu dosya) tek başına silinir/daraltılır/büyürse "diff" farkı üretir ve
+# `guards` kırmızı verir. GARANTİ EDİLMEYEN tek senaryo: AYNI PR'da aynı
+# satırın İKİ dosyadan BİRLİKTE silinmesi (bilinçli borç, CODEOWNERS
+# gerektirir — bkz. `ci-forbidden-tokens.txt` başlığı).
+#
+# BU DOSYA BİLEREK ci.yml İÇİNE YAZILMADI: AC13'ün gerçek tarama hedefi
+# `.github/workflows/*.yml` + `.github/actions/*/action.yml`'dir; "guards"
+# adımının kendisi bu jetonları bir bash dizisi olarak ci.yml İÇİNDE taşısaydı
+# o dosyanın kendisi AC13'ün tarama hedefinde olduğu için SESSİZCE KENDİ
+# KENDİNİ eşler ve AC13 kalıcı kırmızı olurdu (R-6 ile AYNI sınıf hata — bu
+# yüzden ana jeton listesi de zaten `.txt`, `.yml`/`.yaml` DEĞİL). Bu dosya da
+# aynı sebeple `.txt`: tarama hedefinin (glob) DIŞINDA kalır.
+#
+# KISA ve İSTİKRARLIDIR: yalnızca yeni bir KALICI yasak eklenirse (bilinçli,
+# ayrı bir PR) değişir. "Geçici kapsam boşluğu işaretleri" (pnpm audit,
+# test:isolation, ...) BURADA YOK — onlar ROADMAP sürümü geldiğinde serbestçe
+# silinebilmeli, bu dosyanın konusu değil.
+#
+# Satır başında # olan satırlar ve boş satırlar yorum sayılır, kontrol dışıdır.
+
+container:
+node-version:
+pull_request_target
+PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION
+migrate reset
+db push --force-reset
+--accept-data-loss

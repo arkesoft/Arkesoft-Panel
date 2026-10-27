@@ -18,6 +18,15 @@
 //     bağlı tek tablo `TenantMembership`; RLS politikaları v0.0.13'te elle SQL olarak
 //     eklenecek (bu şema dosyası RLS üretmez — AC6 sapma riskine girmesin).
 
+// `output = "../generated"` iki farklı "generated" konumunun KAYNAĞIDIR:
+//   1. packages/db/generated/     — `prisma generate`'in ham TS çıktısı (KÖK, .gitignore'da)
+//   2. packages/db/dist/generated/ — (1)'in `tsc -p tsconfig.prisma.json` ile derlenmiş hali
+// `pnpm clean` (bkz. package.json → scripts.clean) ikisini de dist/.turbo ile birlikte
+// siler — tam temizlik, clean sonrası `generate` yeniden koşulmalıdır.
+// `pnpm build` (bkz. package.json → scripts.build) ise SADECE dist/'i temizler ve
+// `find dist -mindepth 1 -maxdepth 1 ! -name generated` ile dist/generated'ı KORUR
+// (K-B6b) — build, generate'in çıktısını silmeden üstüne derlenmiş kaynağı yazar.
+// Bu iki davranış birbirine KARIŞTIRILMASIN.
 generator client {
   provider     = "prisma-client"
   output       = "../generated"

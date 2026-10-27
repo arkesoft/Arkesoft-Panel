@@ -1,0 +1,61 @@
+name: 'Beşli kapıyı çalıştır'
+description: >-
+  Dört uygulama/paylaşılan hattın ortak doğrulama sırası — lint → typecheck →
+  test → build. Bu, kapının TEK TANIM YERİDİR (T-003 "sonraki sürümler için
+  additive sözleşme"); v0.0.13'ten itibaren eklenecek adımlar (ör. izolasyon
+  süiti) buraya, tek yere eklenecek.
+
+inputs:
+  filter:
+    description: >-
+      turbo'nun --filter değeri (ör. "@arkesoft/api..." veya "./packages/**").
+      Hattın kapsamını belirler; bağımlılıkları dahil etmek için "..." eki
+      çağıran tarafından eklenir. "./packages/*" DEĞİL — tek seviyeli glob "/"
+      ayırıcısını geçmediği için "packages/themes/<tema>" gibi İÇ İÇE paketleri
+      kaçırır (T-003 solid tur 2 M2-4; düzeltme turu 3 C1 — bu örnek
+      güncellendi, bu composite beşli kapının TEK tanım yeri).
+    required: true
+  run-test:
+    description: >-
+      'false' ise test adımı atlanır. "shared" hattı 'false' verir — kendi
+      test script'i olan paketler (api/db/errors) zaten "api" hattının
+      kapanışında; sessiz bir boşluk bırakmamak için burada tekrar KOŞULMAZ,
+      bilinçli olarak YOK (T-003 K-B2.7).
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    # Dördü de "FILTER" değerini "run:" bloğunun İÇİNDE değil "env:" üzerinden
+    # alır (T-003 düzeltme turu 1, security B1). Bugün beş çağrı yerinin
+    # (ci.yml) hepsi literal değer geçiyor, sömürülebilir değil — ama bu
+    # composite beşli kapının TEK tanım yeri ve additive büyüme noktası;
+    # "filter:" girdisi ileride olay verisinden (PR etiketi/dal adı) beslenirse
+    # "${{ inputs.filter }}" bir "run:" bloğunun içinde METİNSEL olarak yerine
+    # konurdu (bash tırnakları görmeden) → komut enjeksiyonu. "$FILTER"
+    # kullanımı bunu yapısal olarak kapatır.
+    - name: Lint
+      shell: bash
+      env:
+        FILTER: ${{ inputs.filter }}
+      run: pnpm exec turbo run lint --filter="$FILTER"
+
+    - name: Tip denetimi
+      shell: bash
+      env:
+        FILTER: ${{ inputs.filter }}
+      run: pnpm exec turbo run typecheck --filter="$FILTER"
+
+    - name: Birim/entegrasyon testleri
+      if: ${{ inputs.run-test == 'true' }}
+      shell: bash
+      env:
+        FILTER: ${{ inputs.filter }}
+      run: pnpm exec turbo run test --filter="$FILTER"
+
+    - name: Derleme
+      shell: bash
+      env:
+        FILTER: ${{ inputs.filter }}
+      run: pnpm exec turbo run build --filter="$FILTER"

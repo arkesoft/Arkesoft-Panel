@@ -1,0 +1,127 @@
+# T-003 (ROADMAP v0.0.12) — AC13 negatif kriteri.
+#
+# Bu satırlardaki jetonlardan hiçbiri .github/workflows/*.yml ve
+# .github/actions/*/action.yml dosyalarında GEÇMEMELİDİR. Her biri ya bu
+# sürümün kapsamı dışına bırakılmış bir yetenek (sonraki sürümlerde "additive"
+# eklenecek) ya da bilinçli olarak eklenmemiş bir araç.
+#
+# "guards" job'u bu dosyayı okuyup .yml/.yaml dosyalarında arar — ama TARAMA
+# HEDEFİNE bu dosyanın KENDİSİ DAHİL EDİLMEZ (R-6). Dahil edilirse liste kendi
+# kendini eşler ve AC13 kalıcı kırmızı olur. (Uzantı zaten .txt olduğu için
+# *.yml/*.yaml glob'u bu dosyayı doğal olarak dışlar; guards job'u bunu ayrıca
+# iki ayrı komutla kanıtlar.)
+#
+# Sahibi: ST-7 (devops). Sürüm eşlemesi (bkz. T-003 "Sonraki sürümler için
+# additive sözleşme"):
+#   pnpm audit       → v0.0.16 (bilinen multer bulgusu o sürümde kapatılacak)
+#   test:isolation   → v0.0.13
+#   test:e2e         → v0.0.19 (script bugün yok)
+#   test:contract    → v0.0.22
+#   tarayıcı uçtan uca test aracı (satırdaki jetonun kendisi aşağıda) → v0.0.19
+#   docker build     → v0.18.0 (gerçek imaj/registry hedefi henüz yok)
+#   TURBO_TOKEN      → v0.18.0 (remote cache kapsam dışı — K0b)
+#   TURBO_TEAM       → v0.18.0 (remote cache kapsam dışı — K0b)
+#
+# Aşağıdaki üçü T-003 düzeltme turu 1'de (solid/security C6) `ci.yml`'in kendi
+# içindeki üç AYRI kontrolden (bölünmüş string hilesiyle kendi kendini
+# eşlememeleri gerekiyordu) buraya TAŞINDI — hile artık gereksiz, çünkü bu
+# dosya tarama hedefinin (`*.yml`/`*.yaml`) dışında (R-6):
+#   container:           → iş container'ı yasağı (K-B4); job'lar doğrudan
+#                           runner'da koşmalı.
+#   node-version:         → sabit Node sürümü yazımı yasağı (AC5); sürüm
+#                           yalnızca `.nvmrc` dosya referansıyla ("node-version-
+#                           file:") okunur. Pozitif iddia (dosya referansının
+#                           GERÇEKTEN kullanıldığı) `guards` job'unda ayrı bir
+#                           adımda kalıyor — bu liste yalnızca negatif tarafı
+#                           kapsar.
+#   pull_request_target   → fork PR güvenlik tetikleyici yasağı; sırlara/yazma
+#                           iznine fork PR'larından erişim açar.
+#
+# Aşağıdaki dördü T-003 security tur 1 bulgusuyla (B2) eklendi — bunlar
+# PROJENİN ASIL yasakladığı YIKICI Prisma jetonları, önceki listede hiç yoktu:
+#   PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION → AGENT_BASELINE.md §5'teki
+#                           tek kullanımlık onay kapısı; bir AI ajanı bunu
+#                           kendi üretip tekrar kullanamaz.
+#   migrate reset          → veri düşüren Prisma komutu.
+#   db push --force-reset  → veri düşüren Prisma komutu.
+#   --accept-data-loss     → Prisma'nın veri kaybı onay bayrağı.
+#
+# Satır başında # olan satırlar ve boş satırlar yorum sayılır, taranmaz.
+#
+# UYARI (T-003 solid tur 2 D2): bu kısıt TEK YÖNLÜ değil — tarama hedefi
+# (.yml/.yaml dosyalarının TAMAMI) "grep -F" ile aranıyor, bu da YORUM
+# SATIRLARINI DA kapsıyor. Yani aşağıdaki jetonlardan hiçbiri hedef
+# dosyaların YORUMLARINDA bile birebir yazılamaz; bir yorumda bu metinlerden
+# birini kullanmanız gerekiyorsa dolaylı ifade kullanın (örnek: bu dosyanın
+# kendisi `ci.yml`'den bahsederken "container'ı" gibi Türkçe iyelik ekiyle ya
+# da bölünmüş string ile yazıyor — bkz. `ci.yml` içindeki ilgili yorumlar).
+#
+# --- T-003 solid tur 2 B (M2-1/M2-2 ile ORTAK kök neden, ayrı düzeltme) ------
+# Bu dosya İKİ FARKLI SEBEPLE değişen iki kategoriyi TEK SAYIMLA koruyordu:
+# "kalıcı yasaklar" (asla silinmez) ve "geçici kapsam boşluğu işaretleri"
+# (ilgili ROADMAP sürümü geldiğinde BİLEREK silinir). `guards` adımındaki
+# `min_expected_patterns=10` eşiği v0.0.22'den sonra tam SINIRDA (10),
+# v0.18.0'dan sonra bunun ALTINDA (7) — koruma MEŞRU bir sebeple kendi
+# kendine kırmızıya dönerdi. Kalıcı çözüm: eşik KALKTI.
+#
+# --- T-003 düzeltme turu 3 A (qa-tur3 medium / security-tur3 B5 / solid-tur3
+# L1 ile ORTAK kök neden) — ÇİFT YÖNLÜ karşılaştırmaya geçiş ------------------
+# Önceki tur (yukarıdaki not), `guards`'ın her "KALICI" satırın AŞAĞIDA VAR
+# olup olmadığını `.github/ci-forbidden-tokens-permanent.txt`'ten ADIYLA
+# doğruladığını söylüyordu — ama bu kontrol TEK YÖNLÜYDÜ ("referans ⊆ ana
+# liste"). Üç ayrı sandbox senaryosu bunun YETERSİZ olduğunu kanıtladı: bir
+# KALICI jeton SADECE `ci-forbidden-tokens-permanent.txt`'ten silinirse veya
+# ana listeye YENİ bir KALICI jeton eklenip referansa eklenmezse, kontrol
+# hiçbir şey yakalamıyordu ("exit 0").
+#
+# BUGÜN GARANTİ EDİLEN: aşağıdaki "# >>> PERMANENT" / "# <<< PERMANENT"
+# işaretçileri arasındaki bölüm, `guards` adımında ÇIKARILIP
+# `.github/ci-forbidden-tokens-permanent.txt` ile `diff -u` alınır — ÇİFT
+# YÖNLÜ eşitlik. Bir KALICI jetonun SADECE buradan silinmesi, SADECE
+# referanstan silinmesi, buraya YENİ bir KALICI jeton eklenip referansa
+# eklenmemesi, sıra değişikliği — hepsi `diff` farkı üretir ve `guards`'ı
+# kırar. İşaretçilerin kendisi silinirse/bozulursa da kontrol FAIL-CLOSED'tır
+# (işaretçiyi silmek bir kaçış yolu DEĞİLDİR).
+#
+# BUGÜN GARANTİ EDİLMEYEN (bilinçli borç): AYNI PR'da bir KALICI jetonun İKİ
+# dosyadan (burası + referans) BİRLİKTE silinmesi — bu durumda iki taraf yine
+# birbiriyle eşleşir, `diff` fark görmez. Bunu kapatmanın tek yolu `.github/**`
+# için zorunlu gözden geçirici (CODEOWNERS/branch protection) — GitHub
+# kimliği/organizasyon kararı gerektirdiği için bu BİLİNÇLİ OLARAK BORÇTA
+# (Orkestratör/kullanıcı kararı); hiçbir mekanik dosya-içi kontrol bunu kendi
+# başına kapatamaz.
+#
+# İşaretçiler arasındaki bölüme yeni bir KALICI yasak eklerken: AYNI satır
+# `.github/ci-forbidden-tokens-permanent.txt`'e de eklenmek ZORUNDADIR —
+# eklenmezse `guards` bir sonraki PR'da kırmızı verir (bu bilinçli: "unutma"
+# gürültülüdür, sessiz değildir).
+
+# === KALICI YASAKLAR (asla silinmez; `guards` bu bölümü işaretçiler arasında
+# çıkarıp `.github/ci-forbidden-tokens-permanent.txt` ile `diff -u` alır —
+# ÇİFT YÖNLÜ eşitlik, bkz. yukarıdaki not) ===
+# >>> PERMANENT
+container:
+node-version:
+pull_request_target
+PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION
+migrate reset
+db push --force-reset
+--accept-data-loss
+# <<< PERMANENT
+
+# === GEÇİCİ KAPSAM BOŞLUĞU İŞARETLERİ (vadeler yukarıdaki "Sürüm eşlemesi"
+# başlığının altındaki listede; vadesi gelince BİLEREK silinir — bu bölümden satır
+# silmek `guards`'ı KIRMAZ, sayım eşiği KALKTI). NOT: vade bilgisi BU
+# satırların ÜZERİNE YAZILMAZ — tarama satırı AYNI kalırsa (grep -F, tam
+# satır eşleşmesi) tetikleyici dosyalardaki gerçek kullanımı bulur; vadeyi
+# satırın SONUNA eklemek (inline yorum) bu eşleşmeyi KIRARDI (tam satır artık
+# hiçbir yerde geçmeyen bir metin olurdu) — o yüzden vade NOTU yukarıda, AYRI
+# satırlarda tutuluyor. ===
+pnpm audit
+test:isolation
+test:e2e
+test:contract
+playwright
+docker build
+TURBO_TOKEN
+TURBO_TEAM

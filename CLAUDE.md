@@ -249,8 +249,8 @@ makul varsayımı seçip Task dosyasına `VARSAYIM:` olarak yazar ve devam eder:
 2. O versiyonun **kapsamı dışına çıkma.** Çıkman gerekiyorsa önce sor.
 3. Kapsamı uygula. Test yaz.
 4. **Kabul kriterini çalıştır ve çıktıyı göster.** Geçmeden versiyon kapanmaz.
-5. `pnpm changeset` ile changeset ekle — özet Türkçe, kullanıcıya dönük, ait olduğu ROADMAP versiyonunu belirtir.
-6. `CHANGELOG.md`'yi güncelle (veya Changesets'in üretmesini sağla).
+5. `pnpm changeset add` ile changeset ekle — özet Türkçe, kullanıcıya dönük, ait olduğu ROADMAP versiyonunu belirtir. **v0.0.12'den itibaren:** `pnpm release:version` (kanonik komut, `--collect` + `changeset version` + `--apply` sarmalayıcısı) sürüm yükseltir ve CHANGELOG'a ekler. Eski `pnpm changeset version` tek başına kökü senkronlamaz.
+6. `CHANGELOG.md`'yi güncelle (veya Changesets'in üretmesini sağla — v0.0.12'de `scripts/sync-platform-version.ts` senkronizasyonu devreye alındı).
 7. `ROADMAP.md`'deki ilgili `- [ ]` kutularını `- [x]` yap; versiyon başlığına tamamlanma tarihi ekle.
 8. Varsayım yaptıysan ROADMAP'in **Varsayımlar** tablosuna satır ekle.
 

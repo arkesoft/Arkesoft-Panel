@@ -25,6 +25,11 @@ coverage/
 # dizin-özel desen `git check-ignore` ile eşleşmeyebilir; önekli bu hali her durumda eşleşir.
 packages/db/generated
 
+# sync-platform-version.ts'in --collect adımının ürettiği ara dosya (ST-5,
+# T-003/K-B1): changeset dosyaları "changeset version" tarafından silinmeden
+# önce burada toplanır; commit edilmez.
+.changeset/.platform-notes.json
+
 # Test artefaktları
 playwright-report/
 test-results/

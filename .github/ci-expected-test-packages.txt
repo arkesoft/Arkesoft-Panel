@@ -1,0 +1,16 @@
+# T-003 (ROADMAP v0.0.12) — "guards" job'unun sahte yeşil dedektörü.
+#
+# `turbo run test --dry=json` çıktısındaki gerçek "test" komutuna sahip paket
+# kümesi (placeholder/`<NONEXISTENT>` komutlar hariç) burada beyan edilen
+# kümeyle BİREBİR eşleşmek zorunda. Eşleşmezse "guards" FAIL verir — amaç:
+# birinin test script'i eklediği ama hiçbir CI hattının bu paketi
+# kapsamadığı sessiz bir boşluğun fark edilmeden kalmasını önlemek.
+#
+# Bugün üçü: @arkesoft/api, @arkesoft/db, @arkesoft/errors — bu üçü zaten
+# "api" hattının bağımlılık kapanışında (api + db + errors + config).
+#
+# Satır başında # olan satırlar ve boş satırlar yorum sayılır, taranmaz.
+
+@arkesoft/api
+@arkesoft/db
+@arkesoft/errors
