@@ -69,3 +69,6 @@ process.on('SIGTERM', () => {
 })
 
 void bootstrap()
+
+// AC1 probu — yalnizca apps/api/** degisti; admin/superadmin/storefront hatlari
+// "skipped" olmali. Bu dal ve PR dogrulama sonrasi SILINECEK (T-003 ST-9).
