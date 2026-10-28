@@ -150,7 +150,7 @@ Bu karar doğrulanmış sayılır, ancak **iki kısıt altında:**
 
    Bunlar yapılmadan, ADR sonraki oturumda yeniden açılacak ve alternatifler tartışılacaktır.
 
-2. **Linter tamamlanması:** T2-1 borcunun (migration-sql testi) v0.0.13'ten hemen önce kapatılması, şema linter'ının `TENANT_SCOPED_TABLES` / `PLATFORM_LEVEL_TABLES` uyumunu **zorunlu hale getirmesi** gerekir.
+2. **Linter tamamlanması:** T2-1 borcunun (migration-sql testi) **✅ kapandı (T-004, 2026-10-28)** — v0.0.13'ten hemen önce kapatılması, şema linter'ının `TENANT_SCOPED_TABLES` / `PLATFORM_LEVEL_TABLES` uyumunu **zorunlu hale getirmesi** gerekir.
 
 ---
 
