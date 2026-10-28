@@ -279,21 +279,29 @@ Bu fazın tamamı "çalışan ama ürün olmayan" iskelet kurar. Her adım tek o
 
 ---
 
-## v0.0.12 — CI/CD ve Changesets 🔄 (uygulama tamamlandı: 2026-10-27 — **kapanmadı**)
+## v0.0.12 — CI/CD ve Changesets ✅ (tamamlandı: 2026-10-28)
 
-> **BU SÜRÜM HENÜZ KAPANMADI.** Kapsamın tamamı uygulandı, üç gate de PASS verdi ve
-> yerel kabul kriterleri geçti; ancak **dokuz kabul kriteri maddesi gerçek bir GitHub PR
-> koşumu gerektiriyor** ve o koşum henüz yapılmadı:
-> **AC1 · AC2 · AC3(CI ayağı) · AC4(CI ayağı) · AC5(CI ayağı) · AC7 · AC9(gerçek koşum) ·
-> AC10(uyarı ayağı) · AC12d**
+> **On üç kabul kriterinin hepsi gerçek GitHub Actions koşumuyla doğrulandı.**
+> Yerel kanıt yeterli sayılmadı: dokuz madde ancak runner'da sınanabildi ve ilk
+> gerçek koşum **yerelde geçen iki kusuru** ortaya çıkardı (AC13 taramasında
+> `xargs`'ın `grep` 1'ini 123'e çevirmesi; `prepare-db`'nin `db:seed`'i bağımlılıklar
+> derlenmeden koşturması). İkisi de `103aa24` ile düzeltildi.
 >
-> `CLAUDE.md` §5 madde 4 gereği ("kabul kriteri geçmeden versiyon kapanmaz") başlık
-> `✅ (tamamlandı: …)` **yapılmayacaktır** — bu dokuz madde örnek PR koşumuyla
-> doğrulanana kadar. Aşağıdaki `[x]` kutuları **uygulanan kapsamı** gösterir,
-> sürümün kapandığını değil.
+> **PR bağlamı gerektiren dördünün kanıtı** (PR #2, merge edilmeden kapatıldı):
+> **AC1** — yalnızca `apps/api/**` değişti → `api` koştu, `admin`/`superadmin`/
+> `storefront`/`shared` **skipped** · **AC2** — aynı PR'a kök dosya (`.github/**`)
+> eklendi → **tüm hatlar koştu** (temiz A/B) · **AC7** — changeset'siz koşumda uyarı,
+> changeset eklenince temizlendi, **hiçbirinde bloklamadı** · **AC10** — `[vX.Y.Z]`
+> etiketi yokken uyarı, eklenince temizlendi.
 >
-> Ayrıca **platform sürümü 0.0.4'te kalıyor**: AC6 "gerçek sürüm kesilmez" diyor,
-> commit bir changeset taşıyor ve yükseltme ileride `main`'de `release.yml` ile olacak.
+> **AC9 iki ayağı birden:** `16c1035` koşumunda iki job kırmızıyken `ci-gate`
+> **failure**; `103aa24` koşumunda **success**; PR #2'de dört job `skipped` iken
+> yine **success** → izinli küme `{success, skipped}` doğrulandı.
+>
+> **Platform sürümü 0.0.4'te kalıyor** — AC6 "gerçek sürüm kesilmez" diyor.
+> Bir changeset bekliyor; yükseltme (0.0.5) `release.yml`'ın açacağı sürüm PR'ı ile
+> gelecek. Sürüm numarası ile ROADMAP kilometre taşı bu sürümde **ilk kez ayrıştı**
+> (v0.0.12 sırası dışında yapıldı) — bkz. Varsayımlar tablosu.
 
 **Hedef:** Her PR'da lint/typecheck/test/build koşsun; sürüm akışı kurulsun.
 **Kapsam:**
