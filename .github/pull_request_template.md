@@ -51,3 +51,5 @@
 
 - [ ] Yeni job eklemedim
 - [ ] Yeni job ekledim ve `ci-gate.needs` listesine ekledim
+
+<!-- AC2 probu: kök dosya (.github/) değişikliği tüm hatları tetiklemeli. Atılabilir dal. -->
