@@ -15,7 +15,12 @@
 //
 // Bu modül `src/index.ts`'ten dışa AÇILMAZ — paket içi (private) kalır.
 
-import { infraEnvSchema, parseEnv } from '@arkesoft/config/env'
+import {
+  databaseAdminEnvSchema,
+  EnvValidationError,
+  infraEnvSchema,
+  parseEnv,
+} from '@arkesoft/config/env'
 import type { NodeEnv } from '@arkesoft/config/env'
 
 /**
@@ -44,6 +49,72 @@ export function readDatabaseEnv(): DatabaseEnv {
 
   return {
     databaseUrl: env.DATABASE_URL,
+    nodeEnv: env.NODE_ENV,
+  }
+}
+
+/**
+ * `src/bootstrap-roles.ts`'in gerektirdiği, doğrulanmış ortam alt kümesi
+ * (ROADMAP v0.0.13, T-005/S2, K-E8). `guard-policy.ts`'in `TargetDatabase`
+ * daraltmasıyla yapısal olarak uyumlu (`databaseUrl`/`nodeEnv` alanlarını
+ * taşır) — `evaluateTargetDatabase`'e doğrudan geçirilebilir.
+ */
+export type DatabaseBootstrapEnv = {
+  readonly databaseUrl: string
+  readonly nodeEnv: NodeEnv
+}
+
+/**
+ * `DATABASE_BOOTSTRAP_URL` ve `NODE_ENV`'i doğrular. `databaseAdminEnvSchema`
+ * bu alanı BİLİNÇLİ OLARAK opsiyonel bırakır (günlük geliştirme akışında
+ * gerekmez) — burada ise `pnpm db:bootstrap`'in TEK girdisi olduğu için
+ * tanımsızsa anlamlı bir hata ile `EnvValidationError` fırlatılır (A-E7/DoD 1,
+ * "yoksa anlamlı hata").
+ */
+export function readDatabaseBootstrapEnv(): DatabaseBootstrapEnv {
+  const env = parseEnv(
+    infraEnvSchema
+      .pick({ NODE_ENV: true })
+      .extend({ DATABASE_BOOTSTRAP_URL: databaseAdminEnvSchema.shape.DATABASE_BOOTSTRAP_URL }),
+  )
+
+  if (env.DATABASE_BOOTSTRAP_URL === undefined) {
+    throw new EnvValidationError([
+      'DATABASE_BOOTSTRAP_URL: tanımlı olmalı — pnpm db:bootstrap bootstrap süper ' +
+        'kullanıcısının bağlantı dizesini gerektirir (.env.example içindeki örneğe bakın).',
+    ])
+  }
+
+  return {
+    databaseUrl: env.DATABASE_BOOTSTRAP_URL,
+    nodeEnv: env.NODE_ENV,
+  }
+}
+
+/**
+ * `src/run-guarded-prisma.ts`'in DDL/sahiplik gerektiren komutlar (`migrate
+ * dev`, `migrate reset`, `db push`) için gerektirdiği, doğrulanmış ortam alt
+ * kümesi (ORKESTRATÖR → S2 kapsam uzantısı, v0.0.13 sonrası gerileme
+ * düzeltmesi). `DATABASE_MIGRATION_URL` `databaseAdminEnvSchema`'da ZORUNLU
+ * (opsiyonel DEĞİL, `readDatabaseBootstrapEnv`'teki `DATABASE_BOOTSTRAP_URL`'in
+ * aksine) — bu yüzden `undefined` kontrolü/ek hata mesajı GEREKMEZ, `parseEnv`
+ * zaten eksikse `EnvValidationError` fırlatır.
+ */
+export type DatabaseMigrationEnv = {
+  readonly databaseUrl: string
+  readonly nodeEnv: NodeEnv
+}
+
+/** `DATABASE_MIGRATION_URL` ve `NODE_ENV`'i doğrular. */
+export function readDatabaseMigrationEnv(): DatabaseMigrationEnv {
+  const env = parseEnv(
+    infraEnvSchema
+      .pick({ NODE_ENV: true })
+      .extend({ DATABASE_MIGRATION_URL: databaseAdminEnvSchema.shape.DATABASE_MIGRATION_URL }),
+  )
+
+  return {
+    databaseUrl: env.DATABASE_MIGRATION_URL,
     nodeEnv: env.NODE_ENV,
   }
 }

@@ -14,7 +14,11 @@
 # Sahibi: ST-7 (devops). Sürüm eşlemesi (bkz. T-003 "Sonraki sürümler için
 # additive sözleşme"):
 #   pnpm audit       → v0.0.16 (bilinen multer bulgusu o sürümde kapatılacak)
-#   test:isolation   → v0.0.13
+#   (tenant izolasyon süiti yeteneği → v0.0.13'te geldi; bu satır T-005/S5'te
+#    BİLEREK SİLİNDİ — dosyanın kendi başlığı "vadesi gelince BİLEREK
+#    silinir" diyor, aşağıdaki "GEÇİCİ KAPSAM BOŞLUĞU İŞARETLERİ" bölümünden
+#    ilgili satır kaldırıldı; `ci.yml`/`run-gates` artık bu yeteneği
+#    literal olarak taşıyor, AC13'ün taraması bunu artık ARAMIYOR)
 #   test:e2e         → v0.0.19 (script bugün yok)
 #   test:contract    → v0.0.22
 #   tarayıcı uçtan uca test aracı (satırdaki jetonun kendisi aşağıda) → v0.0.19
@@ -118,7 +122,6 @@ db push --force-reset
 # hiçbir yerde geçmeyen bir metin olurdu) — o yüzden vade NOTU yukarıda, AYRI
 # satırlarda tutuluyor. ===
 pnpm audit
-test:isolation
 test:e2e
 test:contract
 playwright

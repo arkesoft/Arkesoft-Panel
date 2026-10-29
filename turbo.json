@@ -27,6 +27,34 @@
       "outputs": ["coverage/**"],
       "cache": false
     },
+    "test:isolation": {
+      // ROADMAP v0.0.13, T-005/S5 (architect riski 7 / PO riski 7) — "test"
+      // ile AYNI bağımlılık biçimi ("^build" + "generate"), "dependsOn: [\"test\"]"
+      // BİLEREK EKLENMEDİ. Gerekçe (ölçüldü, devops raporunda ayrıntı):
+      // `run-gates`'in composite adımları GitHub Actions "steps:" listesinde
+      // SIRALI koşar (her "run:" ayrı bir shell çağrısı, aynı job İÇİNDE bile
+      // paralel DEĞİL) — "Birim/entegrasyon testleri" adımı (`turbo run test`)
+      // TAMAMEN BİTMEDEN "test:isolation" adımı (`turbo run test:isolation`)
+      // başlamaz; ikisi hiçbir zaman AYNI turbo invocation'ında TEK graph'ta
+      // birlikte PLANLANMAZ (her biri kendi `turbo run <task>` çağrısı). Bu
+      // yüzden turbo'nun KENDİ paralel zamanlayıcısı ikisini asla aynı anda
+      // çalıştırmaz; "dependsOn: [\"test\"]" eklemek burada YALNIZCA kozmetik
+      // olurdu (hiçbir gerçek sıralamayı DEĞİŞTİRMEZ) ve ileride biri "test" +
+      // "test:isolation"ı TEK bir `turbo run test test:isolation` çağrısında
+      // birleştirirse YANLIŞLIKLA "güvenli" sanılabilirdi — çünkü iki görev
+      // AYNI paket İÇİNDE değil, AYNI DB'YE karşı farklı paketlerden
+      // (`@arkesoft/api` test'i, `@arkesoft/db` test:isolation'ı) çalışıyor;
+      // turbo bir paketin görevlerini SIRALI yapsa da PAKETLER ARASI görevleri
+      // paralelleştirir — "dependsOn" yalnızca AYNI invocation'daki görev
+      // graph'ını etkiler. Gerçek koruma mekanizması "run-gates"in SIRALI
+      // adım tasarımı; bu yorum o tasarımın NEDEN yeterli olduğunu, "dependsOn"
+      // eklemenin NEDEN yanıltıcı bir yanlış güvenlik hissi yaratacağını kayda
+      // geçirir (empirik ölçüm: `pnpm --filter @arkesoft/api run test` ve
+      // `pnpm --filter @arkesoft/db run test:isolation` paralel tetiklendi,
+      // ikisi de yeşil — ayrıntı devops raporunda).
+      "dependsOn": ["^build", "generate"],
+      "cache": false
+    },
     "clean": {
       "cache": false
     }

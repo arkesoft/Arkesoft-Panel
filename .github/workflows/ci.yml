@@ -669,6 +669,103 @@ jobs:
           fi
           echo "Test sahibi paket kümesi beyan ile eşleşiyor."
 
+      - name: Sahte yeşil dedektörü — tenant izolasyon süiti paket kümesi (ROADMAP v0.0.13, T-005/S5)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Yukarıdaki "test sahibi paket kümesi" dedektörünün BİREBİR ikizi
+          # (architect riski 6) — turbo'nun İLGİLİ görevi sahipsiz bir küme
+          # üzerinde 0 görevle SESSİZCE yeşil olma yüzeyi burada da aynı:
+          # beklenen küme (bugün tek satır, "@arkesoft/db" — V-P1)
+          # "--dry=json" çıktısından türetilen GERÇEK kümeyle BİREBİR
+          # eşleşmek zorunda.
+          #
+          # NOT (S4'ten devralınan uyarı): Vitest 5.0.5'te "vitest list"
+          # "describe()" bir yardımcı FONKSİYON üzerinden çağrıldığında
+          # ("createTenantIsolationSuite()" deseni) "No test suite found"
+          # ile ÇÖKER — bu dedektör o komutu KULLANMIYOR. "turbo --dry=json"
+          # ilgili görevi hiç ÇALIŞTIRMAZ (yalnızca statik görev grafiğini ve
+          # içerik hash'lerini okur, komutu metin olarak RAPORLAR) — devops
+          # tarafında yerel olarak AYRICA doğrulandı: aynı paket üzerinde
+          # "vitest list" çöküyor ama "turbo run <görev> --dry=json" başarıyla
+          # tam görev grafiğini üretiyor (rapora yapıştırıldı).
+          isolation_expected_file=".github/ci-expected-isolation-packages.txt"
+          expected="$(grep -v '^#' "$isolation_expected_file" | grep -v '^[[:space:]]*$' | sort)"
+          turbo_isolation_dry_log="$(mktemp)"
+          isolation_task_name="test:isolation"
+          if ! actual="$(pnpm exec turbo run "$isolation_task_name" --dry=json 2>"$turbo_isolation_dry_log" \
+            | jq -r --arg t "$isolation_task_name" \
+              '.tasks[] | select(.task == $t and .command != "<NONEXISTENT>") | .package' \
+            | sort -u)"; then
+            echo "::error::Sahte yeşil dedektörü (izolasyon): \"turbo run $isolation_task_name --dry=json\" ya da \"jq\" hata verdi."
+            cat "$turbo_isolation_dry_log"
+            exit 1
+          fi
+          if [ -s "$turbo_isolation_dry_log" ]; then
+            echo "turbo stderr (komut 0 ile çıktı ama stderr'e yazdı):"
+            cat "$turbo_isolation_dry_log"
+          fi
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::İzolasyon süiti sahibi paket kümesi $isolation_expected_file ile eşleşmiyor."
+            echo "Beklenen:"
+            printf '%s\n' "$expected"
+            echo "Gerçek:"
+            printf '%s\n' "$actual"
+            exit 1
+          fi
+          echo "İzolasyon süiti sahibi paket kümesi beyan ile eşleşiyor."
+
+      - name: AC4 — GUC jetonları yalnızca tenant-context.ts'te geçer (K-E12 mekanik kontrolü)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # R-P3(b) — KAPSAM BAĞLAYICI: tarama hedefi "**/src/**/*.ts" EKSİ
+          # "__tests__/**" — YALNIZCA "packages/db" DEĞİL, REPO GENELİNDE
+          # ("apps/*/src", "packages/*/src"); K-E12'nin iddiası ("hiçbir yerde,
+          # yalnızca tenant-context.ts'te") "apps/api" gibi tüketicileri de
+          # kapsar — ham SQL'le GUC'u atlayan bir "apps/*" dosyası da bu
+          # kontrolün yakalaması gereken sınıf. SQL ve markdown KAPSAM DIŞI.
+          # Gerekçe: "migration-sql.test.ts" ve S4'ün izolasyon testleri bu
+          # jetonları MEŞRU olarak fixture/test verisi olarak içeriyor
+          # (migration SQL'i bağlı parametre KABUL ETMEZ — S4 ampirik olarak
+          # ölçtü); kapsam "__tests__/**" dışına alınmazsa bu adım KALICI
+          # YANLIŞ POZİTİF verir.
+          #
+          # R-P7 / §5 LİTERAL-JETON KURALI — bu kontrolün KENDİ metni
+          # jetonları BİTİŞİK YAZMAZ (aksi hâlde kendi kendini eşler ve
+          # AC4 kalıcı kırmızı olurdu, T-003'teki dört çıkışla AYNI sınıf
+          # hata). Her jeton çalışma anında iki parçadan birleştirilir.
+          guc_setting_a='app.'
+          guc_setting_b='tenant_id'
+          guc_setting="${guc_setting_a}${guc_setting_b}"
+          guc_function_a='set_'
+          guc_function_b='config'
+          guc_function="${guc_function_a}${guc_function_b}"
+
+          allowed_file='packages/db/src/tenant-context.ts'
+
+          # Hedef küme: "apps/*/src/**/*.ts" + "packages/*/src/**/*.ts" EKSİ
+          # "__tests__/**" — "find" ile türetilir, elle liste YAZILMAZ (yeni
+          # paket/dosya eklendiğinde otomatik kapsanır).
+          scan_targets="$(find apps packages -type f -name '*.ts' -path '*/src/*' -not -path '*/__tests__/*')"
+
+          violation=false
+          for needle in "$guc_setting" "$guc_function"; do
+            matches_outside_allowed="$(printf '%s\n' "$scan_targets" \
+              | grep -Fv "$allowed_file" \
+              | xargs -r grep -ln -- "$needle" 2>/dev/null || true)"
+            if [ -n "$matches_outside_allowed" ]; then
+              echo "::error::AC4 ihlali — \"$needle\" jetonu $allowed_file DIŞINDA bulundu:"
+              printf '%s\n' "$matches_outside_allowed"
+              violation=true
+            fi
+          done
+
+          if [ "$violation" = true ]; then
+            exit 1
+          fi
+          echo "AC4: GUC jetonları yalnızca $allowed_file içinde geçiyor."
+
       - name: AC12a — .env OLMADAN çalışma probu
         shell: bash
         env:
@@ -821,6 +918,12 @@ jobs:
         uses: ./.github/actions/run-gates
         with:
           filter: '@arkesoft/admin...'
+          # ROADMAP v0.0.13 (T-005/S5, architect riski 8) — bu hat DB'siz;
+          # "run-isolation" girdisinin varsayılanı fail-closed ('true') —
+          # AÇIKÇA 'false' geçilmezse izolasyon süiti Postgres OLMADAN
+          # koşmaya çalışır ve GÜRÜLTÜLÜ KIRMIZI verir (sessizce atlamak
+          # yerine, bilinçli yön).
+          run-isolation: 'false'
 
   superadmin:
     name: superadmin
@@ -839,6 +942,9 @@ jobs:
         uses: ./.github/actions/run-gates
         with:
           filter: '@arkesoft/superadmin...'
+          # ROADMAP v0.0.13 (T-005/S5, architect riski 8) — aynı gerekçe
+          # (yukarıdaki "admin" job'undaki not).
+          run-isolation: 'false'
 
   storefront:
     name: storefront
@@ -857,6 +963,9 @@ jobs:
         uses: ./.github/actions/run-gates
         with:
           filter: '@arkesoft/storefront...'
+          # ROADMAP v0.0.13 (T-005/S5, architect riski 8) — aynı gerekçe
+          # (yukarıdaki "admin" job'undaki not).
+          run-isolation: 'false'
 
   # ---------------------------------------------------------------------
   # shared — dört uygulama hattının kapanışına girmeyen paylaşılan
@@ -894,6 +1003,11 @@ jobs:
           # listeledi (devops kanıtı, prob paketi silindi).
           filter: './packages/**'
           run-test: 'false'
+          # ROADMAP v0.0.13 (T-005/S5, architect riski 8) — aynı gerekçe
+          # (yukarıdaki "admin"/"superadmin"/"storefront" job'larındaki not).
+          # "run-test: 'false'" izolasyon süitini DE kapatmaz — ikisi AYRI
+          # girdi, ikisi de AÇIKÇA kapatılmak zorunda.
+          run-isolation: 'false'
 
   # ---------------------------------------------------------------------
   # ci-gate — TEK toplayıcı (aggregate) check (AC9). Varsayılan-reddet:

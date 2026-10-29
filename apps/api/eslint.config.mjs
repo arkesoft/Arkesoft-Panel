@@ -79,6 +79,46 @@ const expressRestriction = {
   ],
 }
 
+/**
+ * Ham Postgres bağlantı havuzunu (`pg`, `pg-pool`, `pg-native`) veya sürücü
+ * adaptörünü (`@prisma/adapter-pg`) doğrudan import etmeyi yasaklar
+ * (base.js — K-E12, YENİDEN BEYAN, R-P1). `apps/*` içinde kurulan ham bir
+ * `pg.Pool`, `@arkesoft/db`'nin tek istemci fabrikasını (`src/client.ts`)
+ * ve onun kurduğu `withTenant()` tenant bağlamını tamamen atlar — RLS/rol
+ * ayrımı o bağlantı için hiç devreye girmez (ROADMAP v0.0.13).
+ */
+const pgRestriction = {
+  paths: [
+    {
+      name: 'pg',
+      message:
+        'Ham bağlantı havuzu kuran bir apps/* dosyası withTenant() çağrısını tamamen atlar; Prisma istemcisi yalnızca @arkesoft/db üzerinden tüketilir (CLAUDE.md §3).',
+    },
+    {
+      name: 'pg-pool',
+      message:
+        'Ham bağlantı havuzu kuran bir apps/* dosyası withTenant() çağrısını tamamen atlar; Prisma istemcisi yalnızca @arkesoft/db üzerinden tüketilir (CLAUDE.md §3).',
+    },
+    {
+      name: 'pg-native',
+      message:
+        'Ham bağlantı havuzu kuran bir apps/* dosyası withTenant() çağrısını tamamen atlar; Prisma istemcisi yalnızca @arkesoft/db üzerinden tüketilir (CLAUDE.md §3).',
+    },
+    {
+      name: '@prisma/adapter-pg',
+      message:
+        'Ham bağlantı havuzu kuran bir apps/* dosyası withTenant() çağrısını tamamen atlar; sürücü adaptörü yalnızca @arkesoft/db/src/client.ts içinde kurulur (CLAUDE.md §3).',
+    },
+  ],
+  patterns: [
+    {
+      group: ['pg/*'],
+      message:
+        'Ham bağlantı havuzu kuran bir apps/* dosyası withTenant() çağrısını tamamen atlar; Prisma istemcisi yalnızca @arkesoft/db üzerinden tüketilir (CLAUDE.md §3).',
+    },
+  ],
+}
+
 /** Birden çok kısıtlama nesnesini TEK `no-restricted-imports` seçenek kümesine birleştirir. */
 function mergeRestrictions(...restrictions) {
   return {
@@ -119,7 +159,12 @@ export default [
     rules: {
       'no-restricted-imports': [
         'error',
-        mergeRestrictions(prismaRestriction, bodyQueryParamRestriction, expressRestriction),
+        mergeRestrictions(
+          prismaRestriction,
+          bodyQueryParamRestriction,
+          expressRestriction,
+          pgRestriction,
+        ),
       ],
     },
   },
@@ -129,7 +174,7 @@ export default [
     rules: {
       'no-restricted-imports': [
         'error',
-        mergeRestrictions(prismaRestriction, bodyQueryParamRestriction),
+        mergeRestrictions(prismaRestriction, bodyQueryParamRestriction, pgRestriction),
       ],
     },
   },
@@ -137,7 +182,10 @@ export default [
   {
     files: ['src/validation/**'],
     rules: {
-      'no-restricted-imports': ['error', mergeRestrictions(prismaRestriction, expressRestriction)],
+      'no-restricted-imports': [
+        'error',
+        mergeRestrictions(prismaRestriction, expressRestriction, pgRestriction),
+      ],
     },
   },
 ]

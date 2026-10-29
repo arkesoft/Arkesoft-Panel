@@ -159,3 +159,19 @@ Bu karar doğrulanmış sayılır, ancak **iki kısıt altında:**
 - **Neden `updated_at` v0.0.3'te tetik değil?** Prisma ile trigger yazımı elle SQL gerektirir; migrate diff'in otomatik algılaması bozulur. v0.0.13'in `@db.GeneratedValue('ALWAYS')` Postgres kendi güncellemesini yapabilir.
 - **Neden `planId` nullable?** Plan v0.17.0'da gelecek; FK + constraint v0.0.3'te önceden yazılmaz (migration başına bir büyük değişiklik).
 - **Neden soft delete User tablosunda?** Better Auth v0.0.5 kullanıcı silme desteği isteyecek; history + tentative recovery denetim alanı için gerekli.
+
+---
+
+### v0.0.13 Güncelleme Notu — Madde 7 İstisnası
+
+**ADR-0007 ("Tek Veritabanı, RLS ve Rol Ayrımı") ile ilişkili.**
+
+Madde 7'nin "Prisma üretir, elle düzenlenmez" kuralı, v0.0.13'te **narrowly waived** (dar istisna):
+
+1. **RLS ve rol/grant DDL'i elle yazılır:** `packages/db/sql/bootstrap-roles.sql` (bootstrap süper kullanıcı koşturur) ve migration'lar içindeki `ALTER TABLE … ENABLE|FORCE ROW LEVEL SECURITY` + `CREATE POLICY` ifadeleri elle yazılır — Prisma bunları şemadan üretmez.
+
+2. **Gerekçe:** Rollü ayrımı küme seviyesi nesnelerdir (migration shadow DB'sinde tekrar koşar → "already exists" hatası). Prisma 7.10.1 içinde `@db.GeneratedValue` özniteliği mevcut değildir; `updatedAt` şu an **istemci tarafında** `@default(now()) @updatedAt` ile yönetilir (bkz. `schema.prisma:54,69,86`). Postgres trigger'ı ile `updated_at` konusu **açık bir soru** — v0.0.13'ün kapsamı **değildi** ve bu notla birlikte artık "v0.0.13 çözecek" beklentisi **kapanıyor**.
+
+3. **Kapsam:** Sadece RLS/rol/GRANT DDL'i — Prisma şema tanımı (`CREATE TABLE`, kolon tanımları, indeksler) deği**şmez** ve `schema.prisma` üzerinden otomatik üretilir.
+
+4. **Geri alma:** `docs/development.md` "Üç kademeli geri alma" bölümü, RLS politikasını ayarlamadan biri devre dışı bırakmak ve kapanmak için adımları açıklar.

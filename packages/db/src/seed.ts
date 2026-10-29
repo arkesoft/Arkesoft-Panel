@@ -9,11 +9,29 @@
 // üzerinden kurulur; rastgele ID üretimi mükerrer kayıt YARATMAZ (AC1 — aynı
 // komut iki kez üst üste çalıştırılabilir).
 //
-// Tamamı TEK `$transaction` içinde (CLAUDE.md §4: çok kayıtlı yazma işlemi
-// transaction'da olur). `tenant.primaryDomain` BİLİNÇLİ OLARAK `null` — alt
-// alan adı `slug` + `APP_BASE_DOMAIN`'den türetilir, saklanmaz (A-V7). Owner
-// kullanıcıda şifre/token YOK (Better Auth tabloları v0.0.5'te gelecek) → bu
-// dosyada ve seed çıktısında hiçbir sır yok.
+// `tenant.primaryDomain` BİLİNÇLİ OLARAK `null` — alt alan adı `slug` +
+// `APP_BASE_DOMAIN`'den türetilir, saklanmaz (A-V7). Owner kullanıcıda
+// şifre/token YOK (Better Auth tabloları v0.0.5'te gelecek) → bu dosyada ve
+// seed çıktısında hiçbir sır yok.
+//
+// İKİ TRANSACTION'A BİLİNÇLİ BÖLÜNME (ROADMAP v0.0.13, T-005/S3, architect
+// K-E2.2, PM riski 1/architect riski 10 — CLAUDE.md §4'ün "çok kayıtlı yazma
+// işlemi TEK transaction'da olur" kuralından GEREKÇELİ sapma):
+//   1. Platform tabloları (`tenant`, `app_user`) — RLS YOK, tenant context
+//      GEREKMEZ. TEK `$transaction` içinde upsert edilir.
+//   2. `tenant_membership` yazımı — RLS + `FORCE ROW LEVEL SECURITY` altında
+//      (bkz. ilgili migration), bu yüzden `withTenant(tenant.id, …)` İÇİNDE
+//      yapılmak ZORUNDA. Bölme KAÇINILMAZ: `withTenant`'ın girdisi olan
+//      `tenant.id`, 1. adımın ÇIKTISIDIR — ikisi aynı transaction'da
+//      OLAMAZ (context kurulacak tenant henüz var olmadan context
+//      kurulamaz). Seed BİLEREK `arkesoft_app` bağlantısıyla koşar (K-E2.2)
+//      → `tenantMembership.upsert` çağrısı `withTenant()`'ın ÇALIŞMA ZAMANI
+//      yolunu egzersiz eder (AC10 + AC2'nin "uygulama bağlantısıyla" şartı).
+// Atomiklik kaybı sınırlıdır ve idempotent `upsert`'lerle TELAFİ EDİLİR:
+// 1. adım yarıda kalırsa (`tenant`/`owner` upsert edilmiş, 2. adıma hiç
+// ulaşılmamış) komutun tekrar çalıştırılması aynı doğal anahtarlar
+// (slug/email/(tenantId,userId)) üzerinden YAKINSAR — mükerrer kayıt
+// üretmez, eksik üyeliği tamamlar.
 //
 // CLI girdi noktası: `console.*` yasağı (packages/config/eslint/base.js)
 // bilerek burada da uygulanıyor; `process.stdout/stderr.write` kullanılır.
@@ -36,6 +54,7 @@ import { createPrismaClient } from './client.js'
 import { readDatabaseEnv } from './env.js'
 import { evaluateTargetDatabase } from './guard-policy.js'
 import { DEMO_SEED } from './seed-data.js'
+import { TENANT_CONTEXT_SETTING, withTenant } from './tenant-context.js'
 import { TenantRole, TenantStatus, UserStatus } from '#prisma'
 
 async function main(): Promise<void> {
@@ -54,11 +73,16 @@ async function main(): Promise<void> {
     process.exit(1)
   }
 
-  const prisma = createPrismaClient({ databaseUrl: env.databaseUrl })
+  const prisma = createPrismaClient({
+    databaseUrl: env.databaseUrl,
+    tenantContextSetting: TENANT_CONTEXT_SETTING,
+  })
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const tenant = await tx.tenant.upsert({
+    // Adım 1/2 — platform tabloları (`tenant`, `app_user`): RLS yok, tenant
+    // context gerekmez. Dosya başı yorumundaki gerekçeyle TEK `$transaction`.
+    const { tenant, owner } = await prisma.$transaction(async (tx) => {
+      const createdTenant = await tx.tenant.upsert({
         where: { slug: DEMO_SEED.tenant.slug },
         create: {
           slug: DEMO_SEED.tenant.slug,
@@ -73,7 +97,7 @@ async function main(): Promise<void> {
         },
       })
 
-      const owner = await tx.user.upsert({
+      const createdOwner = await tx.user.upsert({
         where: { email: DEMO_SEED.owner.email },
         create: {
           email: DEMO_SEED.owner.email,
@@ -86,12 +110,19 @@ async function main(): Promise<void> {
         },
       })
 
-      await tx.tenantMembership.upsert({
+      return { tenant: createdTenant, owner: createdOwner }
+    })
+
+    // Adım 2/2 — `tenant_membership`: RLS + FORCE altında, `withTenant()`
+    // İÇİNDE yazılmak ZORUNDA (dosya başı yorumu). Girdisi (`tenant.id`)
+    // 1. adımın çıktısı olduğu için AYNI transaction'da olamaz.
+    await withTenant(prisma, tenant.id, (tx) =>
+      tx.tenantMembership.upsert({
         where: { tenantId_userId: { tenantId: tenant.id, userId: owner.id } },
         create: { tenantId: tenant.id, userId: owner.id, role: TenantRole.owner },
         update: { role: TenantRole.owner },
-      })
-    })
+      }),
+    )
 
     // Onay #2 (T-002): stdout'a yazılan e-posta maskelenir — bu değer RFC 2606
     // `.test` fixture'ı olsa da amaç pino'ya geçişte aynı deseni (ham e-posta

@@ -1,14 +1,22 @@
 name: 'Veritabanını hazırla'
 description: >-
-  İleri yönlü migration'ı uygular (veri düşürmez) ve demo veriyi tohumlar.
-  Yalnızca "api" hattında kullanılır; Postgres/Redis "services:" ile çağıran
-  job'da zaten ayakta olmalı. ".env" ÜRETMEZ — bu adımın sahibi çağıran
-  "setup-workspace" composite'idir ("create-env: 'true'" varsayılanıyla
-  koşmuş olmalı); önceden burada da "pnpm env:init" koşuyordu, aynı "api"
-  job'unda İKİ kez (idempotent olduğu için zararsızdı, ama ".env"in sahibi
-  sorusunun iki cevabı vardı). Tek sahiplik için buradan kaldırıldı
-  (T-003 düzeltme turu 1, solid C7). "guards" job'u (R-9) hâlâ hiçbir
-  composite'ten ".env" üretmiyor — bu değişiklik R-9'u etkilemez.
+  Rol ayrımını kurar (bootstrap — idempotent), ileri yönlü migration'ı uygular
+  (veri düşürmez) ve demo veriyi tohumlar. Yalnızca "api" hattında kullanılır;
+  Postgres/Redis "services:" ile çağıran job'da zaten ayakta olmalı. ".env"
+  ÜRETMEZ — bu adımın sahibi çağıran "setup-workspace" composite'idir
+  ("create-env: 'true'" varsayılanıyla koşmuş olmalı); önceden burada da
+  "pnpm env:init" koşuyordu, aynı "api" job'unda İKİ kez (idempotent olduğu
+  için zararsızdı, ama ".env"in sahibi sorusunun iki cevabı vardı). Tek
+  sahiplik için buradan kaldırıldı (T-003 düzeltme turu 1, solid C7). "guards"
+  job'u (R-9) hâlâ hiçbir composite'ten ".env" üretmiyor — bu değişiklik
+  R-9'u etkilemez.
+
+  ROADMAP v0.0.13 (T-005/S5) — SIRA BAĞLAYICI: bootstrap → deploy → bootstrap
+  (yakınsama geçişi — defter REVOKE'unun "deploy" sonrası var olan tabloya
+  uygulanması için; ayrıntı aşağıda ":63-78") → seed.
+  "arkesoft_migrator"/"arkesoft_app" rolleri yoksa migration bağlantısı
+  ("DATABASE_MIGRATION_URL") "role does not exist" ile başarısız olur —
+  bootstrap koşmadan migration KOŞAMAZ (PO "Yerel kurulum geçişi" notu).
 
 runs:
   using: 'composite'
@@ -25,8 +33,8 @@ runs:
     # "tsc -p tsconfig.prisma.json") de HENÜZ KOŞMAMIŞ — "run-gates"in build'i
     # bu adımdan SONRA gelir. Yerelde önceki koşumlardan kalan "dist/"/
     # "generated/" olduğu için sessizce geçiyordu; temiz runner'da yok.
-    # Düzeltme: "db:deploy"/"db:seed" çağrılmadan ÖNCE turbo'nun KENDİ
-    # bağımlılık grafiğini ("@arkesoft/db..." — bu paket + bağımlılıkları,
+    # Düzeltme: "db:bootstrap"/"db:deploy"/"db:seed" çağrılmadan ÖNCE turbo'nun
+    # KENDİ bağımlılık grafiğini ("@arkesoft/db..." — bu paket + bağımlılıkları,
     # "turbo.json"daki "build: dependsOn: [\"^build\",\"generate\"]" zincirini
     # izler: "@arkesoft/config#build/generate", "@arkesoft/errors#build",
     # "@arkesoft/db#generate/build") koşturarak önkoşulu AÇIKÇA garanti et —
@@ -36,9 +44,44 @@ runs:
       shell: bash
       run: pnpm exec turbo run build --filter='@arkesoft/db...'
 
-    - name: Migration'ı uygula (ileri yönlü — bilinçli olarak sarmalanmamış komut, T-003 K-B4)
+    # ROADMAP v0.0.13 (K-E2/K9) — rol/sahiplik/GRANT kurulumu. Kullanıcının
+    # Postgres volume'u DOLU olabilir (AC8) — bu yüzden idempotent SQL
+    # ("sql/bootstrap-roles.sql") her koşumda güvenle tekrar çalışır; CI'da
+    # her job TEMİZ bir "services: postgres" konteyneriyle başladığı için de
+    # (ilk koşum) gereklidir — roller yoksa migration/uygulama bağlantıları
+    # "role does not exist" verir. Koşturucu Node tabanlı
+    # (`prisma db execute --file`, A-E7) — runner'da "psql" aramaya gerek yok.
+    - name: 'Rol ayrımını kur (bootstrap — idempotent, A-V21: localhost)'
+      shell: bash
+      run: pnpm db:bootstrap
+
+    # İleri yönlü migration — artık "run-guarded-prisma.js" üzerinden migrator
+    # rolüyle sarmalanıyor; yıkıcı hedef korumasından muafiyet artık bir
+    # yüklem değil, "packages/db/src/guard-policy.ts"teki "COMMANDS"
+    # allowlist'inin "CommandDecision.requiresTargetGuard" alanı (FIX turu 2,
+    # B2 — tek doğruluk kaynağı). Altı komutun matrisinde "migrate deploy"
+    # tek "requiresTargetGuard: false" satırı, diğer beşi "true" (security
+    # Tur 3 ölçtü). Ad kısa tutuldu, gerekçe burada.
+    - name: "Migration'ı uygula (ileri yönlü)"
       shell: bash
       run: pnpm db:deploy
+
+    # FIX turu 2 (T-005/S5, B3) — "sql/bootstrap-roles.sql"in deftere-yazma
+    # REVOKE'u ("_prisma_migrations" üzerinde) VAROLUŞ KOŞULLU ("IF EXISTS"):
+    # bu tablo yalnızca YUKARIDAKİ "db:deploy" adımı onu OLUŞTURDUKTAN sonra
+    # var olur. Taze bir CI konteynerinde ilk "bootstrap" çağrısı (yukarıda)
+    # bu yüzden REVOKE'u no-op bırakır — "arkesoft_app" koşumun TAMAMINDA
+    # deftere INSERT/UPDATE/DELETE yapabilir kalırdı (bkz. "bootstrap-
+    # roles.sql:149-182"deki "db" ajanının notu). Düzeltme: "bootstrap"ı
+    # "deploy"dan SONRA bir KEZ DAHA koştur — dosya İDEMPOTENT (aynı dosya
+    # başı not), bu yakınsama çağrısı güvenli ve artık tablo VAR olduğu için
+    # REVOKE bu kez gerçekten UYGULANIR. "seed"den ÖNCE olmalı: "seed"
+    # "arkesoft_app" ile koşar ve deftere zaten yazmaz, ama en az yetki
+    # kısıtlamasının "seed" dahil TÜM sonraki adımlarda etkin olması için
+    # sıralama burada sabitlendi.
+    - name: 'Rol ayrımını yakınsat (bootstrap — 2. geçiş, defter REVOKE’i uygula)'
+      shell: bash
+      run: pnpm db:bootstrap
 
     - name: Demo veriyi tohumla (yıkıcı komut koruması gerçekten egzersiz edilir)
       shell: bash

@@ -3,6 +3,14 @@
 // Vaka 2 (AC2(b), salt okuma) ve Vaka 4 (AC2(d)) burada. Vaka 4 kendi geçici
 // tenant + kullanıcı çiftini yaratır; tenant'ı silmek `onDelete: Cascade` ile
 // üyeliği de temizler (ADR-0003 madde 3 — üyelik tablosunda soft delete yok).
+//
+// GÜNCELLEME (ROADMAP v0.0.13, T-005/S3): `tenant_membership` artık FORCE RLS
+// altında (bkz. `prisma/migrations/<ts>_rls_tenant_isolation/migration.sql`).
+// `testAppPrisma` (`arkesoft_app`) üzerinden bu tabloya dokunan HER okuma/
+// yazma `withTenant()` İÇİNDE yapılmak zorunda — context kurulmadan RLS
+// varsayılan reddi uygular ve sorgu 0 satır döner (hata DEĞİL, AC2-3).
+// `tenant`/`app_user` platform seviyesi (RLS yok) olduğu için onlara dokunan
+// işlemler context GEREKMEZ.
 
 import { randomUUID } from 'node:crypto'
 
@@ -14,8 +22,9 @@ import {
   TenantRole,
   TenantStatus,
   UserStatus,
+  withTenant,
 } from '../index.js'
-import { testPrisma } from './helpers/test-client.js'
+import { testAppPrisma } from './helpers/test-client.js'
 
 describe('membership', () => {
   const createdTenantIds: string[] = []
@@ -23,18 +32,30 @@ describe('membership', () => {
 
   afterAll(async () => {
     if (createdTenantIds.length > 0) {
-      await testPrisma.tenant.deleteMany({ where: { id: { in: createdTenantIds } } })
+      await testAppPrisma.tenant.deleteMany({ where: { id: { in: createdTenantIds } } })
     }
     if (createdUserIds.length > 0) {
-      await testPrisma.user.deleteMany({ where: { id: { in: createdUserIds } } })
+      await testAppPrisma.user.deleteMany({ where: { id: { in: createdUserIds } } })
     }
   })
 
   it('Owner, TenantMembership üzerinden bağlı, role = owner', async () => {
-    const tenant = await testPrisma.tenant.findUnique({
+    // Demo tenant'ın kimliği platform seviyesi tablodan (RLS yok) okunur —
+    // `withTenant`'ın girdisi olarak gerekir.
+    const demoTenant = await testAppPrisma.tenant.findUnique({
       where: { slug: DEMO_SEED.tenant.slug },
-      include: { memberships: { include: { user: true } } },
     })
+    expect(demoTenant).not.toBeNull()
+    if (demoTenant === null) {
+      return
+    }
+
+    const tenant = await withTenant(testAppPrisma, demoTenant.id, (tx) =>
+      tx.tenant.findUnique({
+        where: { slug: DEMO_SEED.tenant.slug },
+        include: { memberships: { include: { user: true } } },
+      }),
+    )
 
     expect(tenant).not.toBeNull()
 
@@ -49,7 +70,7 @@ describe('membership', () => {
   it('(tenantId,userId) ikinci kez eklenemez', async () => {
     const suffix = randomUUID()
 
-    const tenant = await testPrisma.tenant.create({
+    const tenant = await testAppPrisma.tenant.create({
       data: {
         slug: `t4-membership-tenant-${suffix}`,
         name: 'ST-4 Üyelik Testi',
@@ -58,7 +79,7 @@ describe('membership', () => {
     })
     createdTenantIds.push(tenant.id)
 
-    const user = await testPrisma.user.create({
+    const user = await testAppPrisma.user.create({
       data: {
         email: `t4-membership-user-${suffix}@arkesoft.test`,
         name: 'ST-4 Üyelik Testi Kullanıcı',
@@ -67,15 +88,19 @@ describe('membership', () => {
     })
     createdUserIds.push(user.id)
 
-    await testPrisma.tenantMembership.create({
-      data: { tenantId: tenant.id, userId: user.id, role: TenantRole.staff },
-    })
+    await withTenant(testAppPrisma, tenant.id, (tx) =>
+      tx.tenantMembership.create({
+        data: { tenantId: tenant.id, userId: user.id, role: TenantRole.staff },
+      }),
+    )
 
     let caughtError: unknown
     try {
-      await testPrisma.tenantMembership.create({
-        data: { tenantId: tenant.id, userId: user.id, role: TenantRole.admin },
-      })
+      await withTenant(testAppPrisma, tenant.id, (tx) =>
+        tx.tenantMembership.create({
+          data: { tenantId: tenant.id, userId: user.id, role: TenantRole.admin },
+        }),
+      )
     } catch (error) {
       caughtError = error
     }

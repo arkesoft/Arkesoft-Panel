@@ -1,0 +1,20 @@
+# T-005 (ROADMAP v0.0.13) — "guards" job'unun sahte yeşil dedektörü (test:isolation
+# ikizi, bkz. `ci-expected-test-packages.txt`).
+#
+# `turbo run test:isolation --dry=json` çıktısındaki gerçek "test:isolation"
+# komutuna sahip paket kümesi (placeholder/`<NONEXISTENT>` komutlar hariç)
+# burada beyan edilen kümeyle BİREBİR eşleşmek zorunda. Eşleşmezse "guards"
+# FAIL verir — amaç: `test:isolation` script'i sahipsiz bir görev kümesinde
+# (hiçbir paket "test:isolation" script'i taşımazsa) `turbo run test:isolation`
+# 0 görevle SESSİZCE yeşil olur (architect riski 6) — bu dosya bunu "0 paket
+# bekleniyordu ama X bulundu" / "X paket bekleniyordu ama 0 bulundu" biçiminde
+# MEKANİK olarak yakalar.
+#
+# Bugün tek sahip: @arkesoft/db (PO V-P1 — "packages/db tek izolasyon sahibi").
+# `test:isolation` script'i `vitest run --config vitest.isolation.config.ts`
+# (yalnızca `*.isolation.test.ts`); `vitest.config.ts`'in (`pnpm test`) kapsamı
+# bu dosyaları `exclude` eder — ikisi aynı testi İKİ KEZ koşturmaz (V4).
+#
+# Satır başında # olan satırlar ve boş satırlar yorum sayılır, taranmaz.
+
+@arkesoft/db

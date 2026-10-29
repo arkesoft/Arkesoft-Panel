@@ -111,40 +111,64 @@ describe('evaluateTargetDatabase', () => {
 
 describe('resolvePrismaCommand', () => {
   describe("komut allowlist'i", () => {
-    it('db push → allow, spawnArgs birebir', () => {
+    it("db push → allow, spawnArgs birebir, migrator rolü + guard'lı (FIX turu 2/B2)", () => {
       expect(resolvePrismaCommand(['db', 'push'])).toEqual({
         kind: 'allow',
         spawnArgs: ['db', 'push'],
+        role: 'migrator',
+        requiresTargetGuard: true,
       })
     })
 
-    it('migrate reset → allow, --force SARMALAYICI tarafından sabit eklenir', () => {
+    it("migrate reset → allow, --force SARMALAYICI tarafından sabit eklenir, migrator rolü + guard'lı", () => {
       expect(resolvePrismaCommand(['migrate', 'reset'])).toEqual({
         kind: 'allow',
         spawnArgs: ['migrate', 'reset', '--force'],
+        role: 'migrator',
+        requiresTargetGuard: true,
       })
     })
 
-    it('migrate dev → allow', () => {
+    it("migrate dev → allow, migrator rolü + guard'lı", () => {
       expect(resolvePrismaCommand(['migrate', 'dev'])).toEqual({
         kind: 'allow',
         spawnArgs: ['migrate', 'dev'],
+        role: 'migrator',
+        requiresTargetGuard: true,
       })
     })
 
-    it('db seed → allow', () => {
+    it("db seed → allow, app rolü + guard'lı (K-E2: BİLİNÇLİ)", () => {
       expect(resolvePrismaCommand(['db', 'seed'])).toEqual({
         kind: 'allow',
         spawnArgs: ['db', 'seed'],
+        role: 'app',
+        requiresTargetGuard: true,
       })
     })
 
-    it('studio → allow', () => {
-      expect(resolvePrismaCommand(['studio'])).toEqual({ kind: 'allow', spawnArgs: ['studio'] })
+    it("studio → allow, app rolü + guard'lı", () => {
+      expect(resolvePrismaCommand(['studio'])).toEqual({
+        kind: 'allow',
+        spawnArgs: ['studio'],
+        role: 'app',
+        requiresTargetGuard: true,
+      })
     })
 
-    it('migrate deploy → reject (üretim yolu, sarmalanmaz)', () => {
-      expect(resolvePrismaCommand(['migrate', 'deploy']).kind).toBe('reject')
+    it('migrate deploy → allow (FIX turu 1 — artık sarmalanıyor), migrator rolü + MUAF (requiresTargetGuard: false, FIX turu 2/B2)', () => {
+      expect(resolvePrismaCommand(['migrate', 'deploy'])).toEqual({
+        kind: 'allow',
+        spawnArgs: ['migrate', 'deploy'],
+        role: 'migrator',
+        requiresTargetGuard: false,
+      })
+    })
+
+    it('migrate deploy ek bayrak kabul etmez → reject', () => {
+      expect(resolvePrismaCommand(['migrate', 'deploy', '--schema=/tmp/x.prisma']).kind).toBe(
+        'reject',
+      )
     })
 
     it('db execute → reject (script yüzeyinde yok)', () => {
@@ -156,11 +180,48 @@ describe('resolvePrismaCommand', () => {
     })
   })
 
+  // FIX turu 2 (B1 + B2, qa/solid Tur 2 [medium] BAĞIMSIZ bulgular):
+  // `['migrate','deploy']` jetonu artık TEK yerde (`COMMANDS` allowlist'i)
+  // tanımlı — eskiden `run-guarded-prisma.ts`'teki AYRI
+  // `resolveDatabaseRole`/`requiresDestructiveTargetGuard` fonksiyonlarının
+  // kapsadığı ALTI komutun TAMAMI + bilinmeyen komut dalı burada,
+  // `resolvePrismaCommand`'in döndürdüğü `role`/`requiresTargetGuard`
+  // alanları üzerinden pinlenir (B1'in "main() import anında koşmadan
+  // test edilebilsin" talebi; B2'nin "üç yerde ayrı tanım" bulgusu — ikisi
+  // AYNI tek kaynağa taşınarak birlikte kapanır).
+  describe("AYRICALIK SINIRI — role/requiresTargetGuard (FIX turu 1'in kalbi, artık TEK kaynaktan)", () => {
+    it.each([
+      ['migrate dev', ['migrate', 'dev'], 'migrator', true],
+      ['migrate reset', ['migrate', 'reset'], 'migrator', true],
+      ['db push', ['db', 'push'], 'migrator', true],
+      ['db seed', ['db', 'seed'], 'app', true],
+      ['studio', ['studio'], 'app', true],
+      ['migrate deploy', ['migrate', 'deploy'], 'migrator', false],
+    ] as const)(
+      '%s → role=%s, requiresTargetGuard=%s',
+      (_label, argv, role, requiresTargetGuard) => {
+        const decision = resolvePrismaCommand(argv)
+        expect(decision.kind).toBe('allow')
+        if (decision.kind === 'allow') {
+          expect(decision.role).toBe(role)
+          expect(decision.requiresTargetGuard).toBe(requiresTargetGuard)
+        }
+      },
+    )
+
+    it('bilinmeyen komut → reject (role/requiresTargetGuard yapısal olarak OKUNAMAZ — "reject" dalında bu alanlar YOK)', () => {
+      const decision = resolvePrismaCommand(['migrate', 'resolve'])
+      expect(decision.kind).toBe('reject')
+    })
+  })
+
   describe("bayrak allowlist'i — migrate dev", () => {
     it('--name <değer> (ayrık token) → allow', () => {
       expect(resolvePrismaCommand(['migrate', 'dev', '--name', 'add_product'])).toEqual({
         kind: 'allow',
         spawnArgs: ['migrate', 'dev', '--name', 'add_product'],
+        role: 'migrator',
+        requiresTargetGuard: true,
       })
     })
 
@@ -168,6 +229,8 @@ describe('resolvePrismaCommand', () => {
       expect(resolvePrismaCommand(['migrate', 'dev', '--name=add_product'])).toEqual({
         kind: 'allow',
         spawnArgs: ['migrate', 'dev', '--name=add_product'],
+        role: 'migrator',
+        requiresTargetGuard: true,
       })
     })
 
@@ -175,6 +238,8 @@ describe('resolvePrismaCommand', () => {
       expect(resolvePrismaCommand(['migrate', 'dev', '--create-only'])).toEqual({
         kind: 'allow',
         spawnArgs: ['migrate', 'dev', '--create-only'],
+        role: 'migrator',
+        requiresTargetGuard: true,
       })
     })
 
@@ -240,6 +305,8 @@ describe('resolvePrismaCommand', () => {
       expect(resolvePrismaCommand(['studio', '--port', '5555'])).toEqual({
         kind: 'allow',
         spawnArgs: ['studio', '--port', '5555'],
+        role: 'app',
+        requiresTargetGuard: true,
       })
     })
 
@@ -247,6 +314,8 @@ describe('resolvePrismaCommand', () => {
       expect(resolvePrismaCommand(['studio', '--port=5555'])).toEqual({
         kind: 'allow',
         spawnArgs: ['studio', '--port=5555'],
+        role: 'app',
+        requiresTargetGuard: true,
       })
     })
 

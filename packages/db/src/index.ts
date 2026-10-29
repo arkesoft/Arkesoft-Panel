@@ -11,6 +11,8 @@
 export { createPrismaClient } from './client.js'
 export type { CreatePrismaClientOptions, PrismaDatabase, TransactionClient } from './client.js'
 
+export { TENANT_CONTEXT_SETTING, withTenant } from './tenant-context.js'
+
 export { checkDatabaseConnection } from './health.js'
 
 export { isUniqueConstraintError } from './errors.js'

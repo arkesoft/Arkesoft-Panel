@@ -27,14 +27,16 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "clean": "rm -rf dist generated .turbo",
+    "bootstrap": "pnpm run build && node dist/bootstrap-roles.js",
     "migrate": "pnpm run build && node dist/run-guarded-prisma.js migrate dev",
-    "deploy": "prisma migrate deploy",
+    "deploy": "pnpm run build && node dist/run-guarded-prisma.js migrate deploy",
     "push": "pnpm run build && node dist/run-guarded-prisma.js db push",
     "seed": "pnpm run build && node dist/run-guarded-prisma.js db seed",
     "studio": "pnpm run build && node dist/run-guarded-prisma.js studio",
     "reset": "pnpm run build && node dist/run-guarded-prisma.js migrate reset",
     "verify": "prisma validate && prisma format --check && prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:isolation": "vitest run --config vitest.isolation.config.ts"
   },
   "dependencies": {
     "@arkesoft/config": "workspace:*",

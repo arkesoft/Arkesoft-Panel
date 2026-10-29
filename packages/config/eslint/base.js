@@ -27,6 +27,61 @@ const IGNORES = [
 ]
 
 /**
+ * `no-restricted-imports` kuralının seçenek nesnesi. Ayrı bir sabit olarak
+ * dışa açılır ki `packages/db/eslint.config.mjs`'teki K-E12 dosya kapsamlı
+ * istisnası (`src/client.ts`) bu listeyi **kopyalamadan** filtreleyerek
+ * yeniden kullanabilsin (yalnızca `@prisma/adapter-pg` girdisi çıkarılır,
+ * `@prisma/client`/`.prisma/client` yasağı o dosyada da yürürlükte kalır).
+ * Liste burada değişirse istisna otomatik senkron kalır — iki kopya elle
+ * eşitlenmez.
+ */
+const restrictedImportsOptions = {
+  paths: [
+    {
+      name: 'react',
+      importNames: ['Component', 'PureComponent'],
+      message:
+        'Sınıf tabanlı React bileşeni yasak (CLAUDE.md §2). Fonksiyon bileşeni + hook kullan.',
+    },
+    {
+      name: '@prisma/client',
+      message: 'Prisma istemcisi yalnızca @arkesoft/db üzerinden tüketilir (CLAUDE.md §3).',
+    },
+    {
+      name: 'pg',
+      message:
+        'Ham bağlantı havuzu kuran bir apps/* dosyası withTenant() çağrısını tamamen atlar; Prisma istemcisi yalnızca @arkesoft/db üzerinden tüketilir (CLAUDE.md §3).',
+    },
+    {
+      name: 'pg-pool',
+      message:
+        'Ham bağlantı havuzu kuran bir apps/* dosyası withTenant() çağrısını tamamen atlar; Prisma istemcisi yalnızca @arkesoft/db üzerinden tüketilir (CLAUDE.md §3).',
+    },
+    {
+      name: 'pg-native',
+      message:
+        'Ham bağlantı havuzu kuran bir apps/* dosyası withTenant() çağrısını tamamen atlar; Prisma istemcisi yalnızca @arkesoft/db üzerinden tüketilir (CLAUDE.md §3).',
+    },
+    {
+      name: '@prisma/adapter-pg',
+      message:
+        'Ham bağlantı havuzu kuran bir apps/* dosyası withTenant() çağrısını tamamen atlar; sürücü adaptörü yalnızca @arkesoft/db/src/client.ts içinde kurulur (CLAUDE.md §3).',
+    },
+  ],
+  patterns: [
+    {
+      group: ['@prisma/client/*', '.prisma/client', '.prisma/client/*'],
+      message: 'Prisma istemcisi yalnızca @arkesoft/db üzerinden tüketilir (CLAUDE.md §3).',
+    },
+    {
+      group: ['pg/*'],
+      message:
+        'Ham bağlantı havuzu kuran bir apps/* dosyası withTenant() çağrısını tamamen atlar; Prisma istemcisi yalnızca @arkesoft/db üzerinden tüketilir (CLAUDE.md §3).',
+    },
+  ],
+}
+
+/**
  * Arkesoft'a özgü kurallar. Tüm paketlerde geçerlidir.
  *
  * @satisfies {import('eslint').Linter.RulesRecord}
@@ -45,27 +100,38 @@ const arkesoftRules = {
   // edemez; @arkesoft/db kendi iç #prisma subpath dolaylamasıyla muaf tutulur
   // (bu kural eslint "no-restricted-imports" kapsamında istisna tanımlamaz,
   // @arkesoft/db @prisma/client'ı hiç import etmez — #prisma kullanır).
-  'no-restricted-imports': [
+  //
+  // K-E12 (T-005, v0.0.13): ham Postgres bağlantı havuzu (`pg`, `pg-pool`,
+  // `pg-native`) veya sürücü adaptörü (`@prisma/adapter-pg`) kuran bir
+  // `apps/*` dosyası `withTenant()`'ı TAMAMEN atlar — RLS/rol ayrımı o
+  // bağlantı için hiç devreye girmez. Bu dört paket yalnızca
+  // `packages/db/src/client.ts` içinde MEŞRU (dosya kapsamlı istisna orada
+  // tanımlı, bkz. packages/db/eslint.config.mjs).
+  'no-restricted-imports': ['error', restrictedImportsOptions],
+
+  // K-E12 (T-005, v0.0.13): `$executeRawUnsafe` / `$queryRawUnsafe` dize
+  // birleştirmeye/şablon literaline açık — GUC yazımı ve tenant kapsamlı
+  // sorgular yalnızca etiketli şablon (`$queryRaw`) veya parametreli
+  // `set_config` ile yapılır (A-E4, K-E7).
+  //
+  // FIX turu 1 (T-005 security gate, S1): yalnızca NOKTA erişimini
+  // (`client.$queryRawUnsafe(...)`) yakalayan tek seçici, HESAPLANMIŞ erişimle
+  // (`client['$queryRawUnsafe'](...)`) atlatılabiliyordu — o biçimde
+  // `property.name` YOK (`property.value` var), ilk seçici eşleşmiyor. İkinci
+  // seçici `computed=true` + `property.value` ile aynı yasağı hesaplanmış
+  // erişimde de zorlar; ilk seçici DEĞİŞMEDİ (gerileme yok, mevcut nokta
+  // erişimi yakalaması korunuyor).
+  'no-restricted-syntax': [
     'error',
     {
-      paths: [
-        {
-          name: 'react',
-          importNames: ['Component', 'PureComponent'],
-          message:
-            'Sınıf tabanlı React bileşeni yasak (CLAUDE.md §2). Fonksiyon bileşeni + hook kullan.',
-        },
-        {
-          name: '@prisma/client',
-          message: 'Prisma istemcisi yalnızca @arkesoft/db üzerinden tüketilir (CLAUDE.md §3).',
-        },
-      ],
-      patterns: [
-        {
-          group: ['@prisma/client/*', '.prisma/client', '.prisma/client/*'],
-          message: 'Prisma istemcisi yalnızca @arkesoft/db üzerinden tüketilir (CLAUDE.md §3).',
-        },
-      ],
+      selector: 'MemberExpression[property.name=/^\\$(execute|query)RawUnsafe$/]',
+      message:
+        '$executeRawUnsafe / $queryRawUnsafe yasak (CLAUDE.md §2, K-E12): dize birleştirmeye açık, tenant izolasyonunu atlatabilir. Etiketli şablon ($queryRaw) veya parametreli set_config kullan.',
+    },
+    {
+      selector: 'MemberExpression[computed=true][property.value=/^\\$(execute|query)RawUnsafe$/]',
+      message:
+        '$executeRawUnsafe / $queryRawUnsafe yasak (CLAUDE.md §2, K-E12): hesaplanmış (computed) erişimle de çağrılamaz — dize birleştirmeye açık, tenant izolasyonunu atlatabilir. Etiketli şablon ($queryRaw) veya parametreli set_config kullan.',
     },
   ],
 
@@ -192,4 +258,4 @@ export function createBaseConfig({ tsconfigRootDir, globals: extraGlobals = {}, 
   )
 }
 
-export { IGNORES, TS_FILES, CONFIG_FILES }
+export { IGNORES, TS_FILES, CONFIG_FILES, restrictedImportsOptions }

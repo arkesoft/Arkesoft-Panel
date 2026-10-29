@@ -1,9 +1,9 @@
 name: 'Beşli kapıyı çalıştır'
 description: >-
   Dört uygulama/paylaşılan hattın ortak doğrulama sırası — lint → typecheck →
-  test → build. Bu, kapının TEK TANIM YERİDİR (T-003 "sonraki sürümler için
-  additive sözleşme"); v0.0.13'ten itibaren eklenecek adımlar (ör. izolasyon
-  süiti) buraya, tek yere eklenecek.
+  test → izolasyon süiti → build. Bu, kapının TEK TANIM YERİDİR (T-003
+  "sonraki sürümler için additive sözleşme"); v0.0.13'ten itibaren eklenen
+  izolasyon süiti adımı buraya, tek yere eklendi.
 
 inputs:
   filter:
@@ -21,6 +21,19 @@ inputs:
       test script'i olan paketler (api/db/errors) zaten "api" hattının
       kapanışında; sessiz bir boşluk bırakmamak için burada tekrar KOŞULMAZ,
       bilinçli olarak YOK (T-003 K-B2.7).
+    required: false
+    default: 'true'
+  run-isolation:
+    description: >-
+      'false' ise tenant izolasyon süiti adımı (ROADMAP v0.0.13, T-005)
+      atlanır. VARSAYILAN 'true' — FAIL-CLOSED (architect riski 8): yeni
+      eklenen bir hat bu gate'i OTOMATİK alır, kendisi atlamayı AÇIKÇA
+      seçmek zorundadır. Bugün DB'si OLMAYAN dört hat ("admin", "superadmin",
+      "storefront", "shared") bunu AÇIKÇA 'false' geçer — "api" hattı
+      varsayılanı (yani 'true') kullanır. Biri bunu unutursa o hat izolasyon
+      süitini Postgres OLMADAN koşturmaya çalışır ve SESSİZCE atlamak yerine
+      GÜRÜLTÜLÜ KIRMIZI verir — yön bilinçli (sessiz atlama > gürültülü
+      kırmızı, architect riski 8'in izin verdiği yön).
     required: false
     default: 'true'
 
@@ -53,6 +66,22 @@ runs:
       env:
         FILTER: ${{ inputs.filter }}
       run: pnpm exec turbo run test --filter="$FILTER"
+
+    # ROADMAP v0.0.13 (T-005/S5, K-E9) — "test" İLE "build" ARASINDA, 5.
+    # adım. Ayrı bir CI job'u OLARAK AÇILMADI (K-E9 ile reddedildi — ikinci
+    # "services: postgres" iki kat CI dakikası, sıfır kazanç); bu composite
+    # beşli kapının TEK tanım yeri olduğu için izolasyon süiti de BURAYA,
+    # aynı sıralı adım listesine eklendi. "run-isolation" girdisi yukarıdaki
+    # notta açıklanan fail-closed varsayılanı taşır. turbo "test" görevi İLE
+    # bu görevi AYNI invocation'da PLANLAMAZ (ikisi ayrı "run:" adımı —
+    # GitHub Actions adımları SIRALI koşar) — bkz. turbo.json içindeki ilgili
+    # görev yorumu (eşzamanlılık ölçümü ve kararı).
+    - name: Tenant izolasyon süiti (ROADMAP v0.0.13)
+      if: ${{ inputs.run-isolation == 'true' }}
+      shell: bash
+      env:
+        FILTER: ${{ inputs.filter }}
+      run: pnpm exec turbo run "test:isolation" --filter="$FILTER"
 
     - name: Derleme
       shell: bash

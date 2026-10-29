@@ -21,12 +21,20 @@ if (existsSync(rootEnvUrl)) {
   process.loadEnvFile(rootEnvUrl)
 }
 
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // ROADMAP v0.0.13, T-005/S4, K-E9: `*.isolation.test.ts` BU hattın değil,
+    // `pnpm test:isolation`'ın (`vitest.isolation.config.ts`) sorumluluğunda.
+    // `include` deseni `.test.ts` ile bittiği için bunları da yakalardı —
+    // bu `exclude` olmadan aynı test İKİ KEZ koşar (V4 çakışması).
+    // `configDefaults.exclude` (`node_modules`/`.git`) ÜZERİNE eklenir —
+    // `exclude`'u SIFIRDAN yazmak Vitest'in varsayılan hariç tutmalarını
+    // SİLER ve `node_modules` taranmaya başlar.
+    exclude: [...configDefaults.exclude, '**/*.isolation.test.ts'],
     globals: false,
     fileParallelism: false,
     sequence: {

@@ -97,6 +97,40 @@ export const infraEnvSchema = z.object({
 
 export type InfraEnv = z.infer<typeof infraEnvSchema>
 
+/**
+ * Ayrıcalıklı veritabanı bağlantıları (ROADMAP v0.0.13, K-E8).
+ *
+ * BAĞLAYICI GÜVENLİK KARARI — bu şema `infraEnvSchema`'dan BİLİNÇLİ OLARAK
+ * AYRI tutulur: `DATABASE_MIGRATION_URL` / `DATABASE_BOOTSTRAP_URL` gibi
+ * ayrıcalıklı (migrator/süper kullanıcı) bağlantılar `infraEnvSchema`'ya
+ * girerse, onu tüketen her `apps/*` süreci açılışta bu kimlik bilgisini
+ * zorunlu kılar ve kendi `ApiEnv` tipinde taşır — v0.0.13'ün kapattığı
+ * ayrıcalık deliğini (rol ayrımı) sessizce geri açar.
+ *
+ * Bu şema YALNIZCA `packages/db` tarafından tüketilir (rol provisioning'i ve
+ * canlı katalog linter'ı için). `apps/*` bu şemayı import ETMEZ —
+ * `apps/api/src/config/api-env.ts` `infraEnvSchema`'yı genişletir ve
+ * `DATABASE_URL` üzerinden yalnızca en az yetkili `arkesoft_app` rolünü görür.
+ */
+export const databaseAdminEnvSchema = z.object({
+  /**
+   * `arkesoft_migrator` rolü — `CREATEDB` (shadow DB için), migration'ları
+   * çalıştırır. Tabloların sahibi. Zorunlu: rol ayrımı olmadan hiçbir
+   * migration/katalog işlemi yapılamaz.
+   */
+  DATABASE_MIGRATION_URL: connectionUrl(['postgresql://', 'postgres://']),
+
+  /**
+   * Bootstrap süper kullanıcısı — rol oluşturma, sahiplik devri, `GRANT` /
+   * `ALTER DEFAULT PRIVILEGES` gibi küme seviyesi DDL'i çalıştırır
+   * (`pnpm db:bootstrap`). Opsiyonel: yalnızca bootstrap koşusunda gerekir,
+   * günlük geliştirme akışında (migrate/seed/çalışma zamanı) kullanılmaz.
+   */
+  DATABASE_BOOTSTRAP_URL: connectionUrl(['postgresql://', 'postgres://']).optional(),
+})
+
+export type DatabaseAdminEnv = z.infer<typeof databaseAdminEnvSchema>
+
 /** Ortam değişkeni doğrulaması başarısız olduğunda fırlatılır. */
 export class EnvValidationError extends Error {
   readonly issues: readonly string[]

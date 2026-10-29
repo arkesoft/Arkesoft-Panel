@@ -221,24 +221,174 @@ pnpm lint && pnpm typecheck && pnpm build && pnpm format:check
 
 Komutlar yalnızca yerel geliştirme veritabanına karşı çalışır. Yıkıcı işlemler allowlist'li guard'dan geçer.
 
+### Bootstrap sırası (v0.0.13+)
+
+v0.0.13'ten itibaren rolü ayrımı zorunludur. **Kurulum sırası kesin:**
+
+```bash
+pnpm infra:up       # Postgres ve diğer servisler ayağa kalk
+pnpm db:bootstrap   # Roller oluştur (arkesoft_migrator, arkesoft_app)
+pnpm db:deploy      # Migration'ları uygula (RLS politikaları dahil)
+pnpm db:bootstrap   # Roller ayrımını yakınsat (defter REVOKE'u uygula)
+pnpm db:seed        # Demo veri yükle
+```
+
+**Bu sıraya uymamak niye önemli?**
+
+- `db:bootstrap` (1. kez) olmadan: `DATABASE_URL` hâlâ boş admin rolünü gösterir; `db:deploy`
+  başarısız olur
+- `db:deploy` olmadan: RLS politikaları yok; izolasyon garantisi yok
+- `db:bootstrap` (2. kez) olmadan: `_prisma_migrations` tablosu yok olduğu için deftere yazma
+  ayrıcalığı kısıtlanmaz (`arkesoft_app` INSERT yapabilir kalır)
+- `db:seed` ön sıraya alınamaz: tohum tablodan (`tenant`) okuduğu için migration'lar
+  gerekli
+
+**İkinci bootstrap niye gerekli?**
+
+`bootstrap-roles.sql`'deki `REVOKE` komutu `_prisma_migrations` tablosu üzerinde `IF EXISTS`
+şartlı çalışır. İlk `db:bootstrap` çağrısında bu tablo henüz yok (sonraki `db:deploy` adımında
+oluşturulur), bu yüzden REVOKE no-op'dur. Sonuç: `arkesoft_app` deftere gerekli olmayan yazma
+erişimi **alır**. Düzeltme `db:deploy`'dan sonra `db:bootstrap`'i tekrar çalıştırmak —
+dosya idempotent olduğu için güvenli, bu kez tablo var olduğu için REVOKE gerçekten **uygulanır**.
+Ayrıntı: `.github/actions/prepare-db/action.yml` satırlarında `bootstrap` → `deploy` → `bootstrap` → `seed` sırası CI'da zaten uygulanıyor.
+
+**Mevcut geliştirici için geçiş** (v0.0.12 ve öncesi):
+
+`.env` dosyasına yeni değişken ekleyin:
+
+```bash
+DATABASE_MIGRATION_URL="postgresql://arkesoft_migrator:arkesoft_migrator_dev_only@localhost:5432/arkesoft"
+```
+
+(`arkesoft_migrator` parolası `packages/db/sql/bootstrap-roles.sql` dosyasının "Roller — yoksa oluştur" bölümünde tanımlanır (`CREATE ROLE arkesoft_migrator LOGIN PASSWORD` satırı). Dev-only'dir.)
+
+`pnpm env:check` hata verirse, `.env.example`'i kontrol edin.
+
+#### Rol parolası kısıtlı özellikleri
+
+Bağlantı dizesinde (URL) kullanılan parola **URL-güvenli** olmalıdır. Şu karakterler
+sorun çıkabilir: `@`, `:`, `/`, `?`, `#`, `[`, `]`, `%`. Dev parolaları literal
+(`arkesoft_app_dev_only`, `arkesoft_migrator_dev_only`) URL-güvenlidir; bu değerleri
+değiştirirseniz bağlantı dizesini test edin.
+
 ### Allowlist ve güvenlik
 
-Yıkıcı komutlar (`db:push`, `db:reset`, `db:seed`, `migrate dev`, `migrate reset`, `studio`) beforetesi guard'lı sarmalayıcıdan (`run-guarded-prisma`) geçer:
+Yıkıcı komutlar (`db:push`, `db:reset`, `db:seed`, `migrate dev`, `migrate reset`, `studio`) guard'lı sarmalayıcıdan (`run-guarded-prisma`) geçer:
 
 **Host kontrolü:** Yalnızca `localhost`, `127.0.0.1`, `::1` izin verilir. Uzak hostname'e karşı çalışmak reddedilir.
 
 **`NODE_ENV` kontrolü:** Varsayılan-reddet politikası. Yalnızca `undefined`, `development`, `test` değerleri geçer; `staging`, `production` ve diğer tüm değerler reddedilir.
 
-**Kaçış kapısı:** `ARKESOFT_CONFIRM_DESTRUCTIVE` ortam değişkeni hedef veritabanı adına **birebir eşit** olmalı. Örneğin, `ARKESOFT_CONFIRM_DESTRUCTIVE=arkesoft` yerel `arkesoft` veritabanına `db:reset` çalıştırır. Yanlış değer veya boş dize reddedilir. **Kapı, üretim açısından çoklu katman savunmasının bir parçasıdır; birinci savunma kimlik bilgisi ayrımıdır (geliştirici kabuğunda üretim `DATABASE_URL` bulunmaması).**
+**Kaçış kapısı:** `ARKESOFT_CONFIRM_DESTRUCTIVE` ortam değişkeni hedef veritabanı adına
+**birebir eşit** olmalı. Örneğin, `ARKESOFT_CONFIRM_DESTRUCTIVE=arkesoft` yerel
+`arkesoft` veritabanına `db:reset` çalıştırır. Yanlış değer veya boş dize reddedilir.
+**Kapı, üretim açısından çoklu katman savunmasının bir parçasıdır; birinci savunma
+kimlik bilgisi ayrımıdır (geliştirici kabuğunda üretim `DATABASE_URL` bulunmaması).**
 
-**Guard kapsamı:** Guard **repo script yüzeyini** korur, keyfi çağrıları korumaz. `pnpm exec prisma db push --url=…` ve `npx prisma …` guard'sızdır. Üretim kazasına karşı gerçek savunma v0.0.13'ün rol ayrımı (uygulama rolü `NOSUPERUSER`, `NOBYPASSRLS`) ve v0.0.12 CI sırlarıdır. **Guard bir hız kesicidir, izolasyon sınırı değildir.**
+**Guard kapsamı:** Guard **repo script yüzeyini** korur, keyfi çağrıları korumaz.
+`pnpm exec prisma db push --url=…` ve `npx prisma …` guard'sızdır. Üretim kazasına
+karşı gerçek savunma v0.0.13'ün rol ayrımı (uygulama rolü `NOSUPERUSER`,
+`NOBYPASSRLS`) ve v0.0.12 CI sırlarıdır. **Guard bir hız kesicidir, izolasyon sınırı
+değildir.**
 
-### Açık script'ler (guard'sız)
+### Açık script'ler (guard'lı ve guard'sız)
 
 - `db:generate` — Prisma istemcisi oluştur (DB'ye bağlanmaz, güvenli)
-- `db:migrate` — `prisma migrate dev` (geliştirme, shadow DB oluşturma)
-- `db:deploy` — `prisma migrate deploy` (üretim, migration'ları uygula; bu yolun kendi auth mekanizması var)
+- `db:migrate` — `prisma migrate dev` (geliştirme, shadow DB oluşturma, **sarmalı**)
+- `db:deploy` — `prisma migrate deploy` (üretim, migration'ları uygula, **sarmalı** — v0.0.13'ten itibaren `DATABASE_MIGRATION_URL` ile migrator rolü üzerinden)
 - `db:verify` — doğrulama (`prisma validate`, `format --check`, `migrate diff`)
+- `db:bootstrap` — roller provisioning (`arkesoft_migrator`, `arkesoft_app`, sahiplik, grant)
+
+### Üç kademeli geri alma (v0.0.13+)
+
+RLS ve rol ayrımını tam geri almak istiyorsanız, sırayla uygulayın:
+
+#### 1. Politika korumasını kaldır
+
+```bash
+psql "$DATABASE_MIGRATION_URL" -c 'ALTER TABLE "tenant_membership" NO FORCE ROW LEVEL SECURITY;'
+```
+
+Bu adımdan sonra `ENABLE` hâlâ aktif; boş tenant context'te sorgu **0 satır** döner (hata değil).
+
+#### 2. RLS devre dışı bırak
+
+```bash
+psql "$DATABASE_MIGRATION_URL" -c 'ALTER TABLE "tenant_membership" DISABLE ROW LEVEL SECURITY;'
+```
+
+Politika nesneleri korunur; **0 satır** yerine **tüm satırlar** döner (izolasyon kapanır).
+
+#### 3. Provisioning geri al (opsiyonel — Pulumi/Helm üretim sürümü gerekli)
+
+Üretimde Pulumi script'ine taşındığı için yerel geri alma Pulumi/Helm'de tanımlanır. Yerel
+geliştirmede bootstrap'i terslemek istiyorsan, `packages/db` dizininden:
+
+```bash
+cd packages/db
+DATABASE_URL="$DATABASE_BOOTSTRAP_URL" pnpm exec prisma db execute \
+  --file sql/rollback-roles.sql
+```
+
+**Neden `DATABASE_URL` öneği:** `prisma db execute` bağlantı URL'sini `prisma.config.ts`'den
+(`env('DATABASE_URL')`) okur (`--url` bayrağı **yoktur**). SQL sahiplik devri (`ALTER
+TABLE … OWNER TO`) ve `REVOKE` yapıyor — bootstrap süper kullanıcısı gerekir. Çevresel
+önek, `arkesoft_app` rolü yerine bootstrap URL'sini işleme geçirir.
+
+**`db:rollback-roles` npm script'i yoktur.** Doğrudan `pnpm exec` ile çağırılmalı.
+
+Bu komut bootstrap adımının etkisini geri alır: sahipliği `arkesoft` rolüne devirir, `GRANT`
+ve `ALTER DEFAULT PRIVILEGES`'i iptal eder. **`DROP ROLE` YAPILMAZ** — roller küme
+seviyesinde yaşar, silme bu script'in kapsamının dışındadır (bkz. ADR-0007, K-E2).
+
+**Uyarı:** Her adım `pnpm test:isolation`'ı kırmızıya düşürür — bu bilinçli tasarım. Kapatma bir
+işlem değildir, imkânsızlığın adımlarıdır.
+
+### `withTenant()` kullanımı
+
+Tenant context kütüphanesi (`packages/db/src/tenant-context.ts`) RLS politikalarının okuduğu Postgres GUC'u (`app.tenant_id`) çalışma zamanında ayarlar:
+
+```typescript
+import { withTenant } from '@arkesoft/db'
+import { tenantDatabase } from './db' // createPrismaClient() ile oluşturulan istemci
+
+// Tenant bağlamında veri oku/yaz
+const orders = await withTenant(tenantDatabase, 'tenant-slug', async (tx) => {
+  return tx.order.findMany() // RLS politikası tenant_id = 'tenant-slug' filtresi otomatik uygular
+})
+```
+
+**Kurallar:**
+
+- `withTenant()` ham `prisma.*` istemciyle çalışmaz; `createPrismaClient({ tenantContextSetting: 'app.tenant_id' })` ile oluşturulmuş istemci **gerekli**.
+- Callback içinde `$transaction` çağrısı **yapılamaz** (imkânsız — callback'e verilen `tx` `$transaction` metodu taşımaz).
+- Platform seviyesi tablolar (`tenant`, `app_user`) context'siz okunabilir; tenant filtresi uygulanmaz.
+
+### Katalog linter ve yeni tablo ekleme
+
+v0.0.13'ten itibaren yeni bir tenant'a bağlı tablo eklendiğinde şema linter'ı (`pnpm test:isolation`) otomatik RLS politikasını ve indeksi zorunlu hale getirir.
+
+**Yeni tablo akışı:**
+
+1. Prisma şemasına tablo ekle (`schema.prisma`): `tenant_id` kolonu (`String`, `NOT NULL`) + indeks `@@index([tenant_id])` veya `@@unique([tenant_id, ...])`.
+2. `pnpm db:migrate --name <açıklama>` ile migration oluştur.
+3. `src/tenancy.ts`'teki `TENANT_SCOPED_TABLES` dizisine tablo adı ekle.
+4. `pnpm test:isolation` çalıştır — linter bu tabloyu otomatik kontrol eder ve RLS politikası bulunmazsa **FAIL** verir.
+5. `migration.sql`'ye RLS `ENABLE`, `FORCE`, `CREATE POLICY` yaz (bkz. `packages/db/prisma/migrations/20261028153016_rls_tenant_isolation/migration.sql` şablonu).
+
+Linter 20 kuralla tüm izolasyon şartlarını kontrol eder: tenant_id tipi, indeks, RLS, politika, rol yetkileri vb.
+
+### Mevcut volume üzerinde geçiş (AC8)
+
+Postgres container'ı mevcut verilerle yeniden başlatıldığında (eski `arkesoft` volume'u var) `/docker-entrypoint-initdb.d` script'leri **çalışmaz** (Postgres sadece boş veri dizininde init script'lerini çalıştırır).
+
+`pnpm db:bootstrap` bu durumda gerekli: dolu veritabanı üzerinde idempotent rol kurulumunu çalıştırır. Koşturucu:
+
+1. `.env` dosyasını okur (`DATABASE_BOOTSTRAP_URL`, yoksa `DATABASE_URL` kullanır).
+2. `packages/db/sql/bootstrap-roles.sql`'i çalıştırır (idempotent: varolan roller tutulur, yeni roller oluşturulur).
+3. Mevcut sahipliği `arkesoft_migrator`'a devrir.
+
+Bundan sonra `pnpm db:deploy` ve `pnpm db:seed` normal akışta çalışır.
 
 ---
 

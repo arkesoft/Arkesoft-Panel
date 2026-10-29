@@ -15,14 +15,26 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '#prisma'
 import type { Prisma } from '#prisma'
 
+import { registerTenantContextSetting } from './tenant-context.js'
+
 /**
  * `createPrismaClient` için girdi seçenekleri.
  *
  * v0.0.3'te yalnızca bağlantı dizesi taşınır. Log yapılandırması (pino entegrasyonu)
  * v0.0.4'ün işi; yeni alan eklemek geriye uyumlu (additive) kalacak.
+ *
+ * `tenantContextSetting` (ROADMAP v0.0.13, T-005/S3, architect K-E6): ADDITIVE
+ * alan — `exactOptionalPropertyTypes` uyumlu, mevcut
+ * `createPrismaClient({ databaseUrl })` çağrısı DEĞİŞMEDEN derlenir (AC7,
+ * bkz. `__tests__/type-pins/client-options.pin.ts`). VERİLİRSE, üretilen
+ * istemci `./tenant-context.js`'in `withTenant()` kancasına KAYDEDİLİR —
+ * yalnızca bu seçenekle kurulan istemcilerde `withTenant()` çağrılabilir
+ * (fail-closed, bkz. `tenant-context.ts`). Değer tipik olarak
+ * `TENANT_CONTEXT_SETTING` sabitidir.
  */
 export type CreatePrismaClientOptions = {
   readonly databaseUrl: string
+  readonly tenantContextSetting?: string
 }
 
 /**
@@ -46,5 +58,11 @@ export type TransactionClient = Prisma.TransactionClient
 export function createPrismaClient(options: CreatePrismaClientOptions): PrismaDatabase {
   const adapter = new PrismaPg(options.databaseUrl)
 
-  return new PrismaClient({ adapter })
+  const client = new PrismaClient({ adapter })
+
+  if (options.tenantContextSetting !== undefined) {
+    registerTenantContextSetting(client, options.tenantContextSetting)
+  }
+
+  return client
 }
