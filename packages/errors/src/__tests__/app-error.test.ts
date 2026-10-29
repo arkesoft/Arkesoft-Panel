@@ -39,6 +39,20 @@ class RetryableSampleError extends AppError {
   }
 }
 
+// `httpHeaders` için — ROADMAP v0.0.5, T-006/S3, architect "HATA SINIFLARI"
+// (Retry-After, AC7). `RateLimitExceededError` henüz doğmadı (v0.0.5/S8'in işi);
+// taban sınıfın sözleşmesini burada BAĞIMSIZ bir örnek sınıfla ölçüyoruz.
+class SampleErrorWithHttpHeaders extends AppError {
+  constructor() {
+    super({
+      code: 'SAMPLE_RATE_LIMITED',
+      httpStatus: 429,
+      userMessageKey: 'errors.sample.rateLimited',
+      httpHeaders: { 'Retry-After': '60' },
+    })
+  }
+}
+
 describe('AppError', () => {
   it('beş alanı doğru şekilde taşır', () => {
     const error = new SampleError({ userId: 'usr_123' })
@@ -79,6 +93,18 @@ describe('AppError', () => {
     const error = new SampleErrorWithoutContext()
 
     expect('logLevel' in error).toBe(false)
+  })
+
+  it('httpHeaders verilmediğinde undefined kalır (v0.0.5, T-006/S3)', () => {
+    const error = new SampleErrorWithoutContext()
+
+    expect(error.httpHeaders).toBeUndefined()
+  })
+
+  it('httpHeaders verildiğinde birebir taşınır (v0.0.5, T-006/S3, AC7 Retry-After)', () => {
+    const error = new SampleErrorWithHttpHeaders()
+
+    expect(error.httpHeaders).toEqual({ 'Retry-After': '60' })
   })
 })
 

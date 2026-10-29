@@ -32,7 +32,28 @@ import type { PrismaDatabase } from './client.js'
  * "beklenen durumlar için hata fırlat, null döndürüp çağıranı tahmine
  * zorlama" ilkesi. `apps/api`'nin `/health/ready` ucu bu hatayı kendi
  * zaman aşımı ve hata eşlemesiyle (503) yakalar.
+ *
+ * "SON TEMİZLİK" (ROADMAP v0.0.5, T-006, `security` tur4 S4-1 — ALTINCI
+ * KAPI KAPATILDI): imza artık `AppPrismaDatabase` DEĞİL,
+ * `Pick<PrismaDatabase, '$queryRaw'>` — TEK üyeli bir parametre tipi.
+ * Önceki sürüm (`AppPrismaDatabase`, dört/üç üyeli allowlist) bu fonksiyona
+ * GEREĞİNDEN GENİŞ bir yetki veriyordu: `security` tur4'ün ölçtüğü asıl
+ * hata, "1 çağrı yolu" gerekçesinin GERÇEKLEŞEN çağrıyı ölçüp ERİŞEBİLEN
+ * çağıranı (`.db` getter'ını gören HER `apps/api` servisi) ÖLÇMEMESİYDİ —
+ * `$queryRaw` `AppPrismaDatabase`'de KALDIĞI sürece `db.$queryRaw` ile
+ * `account`/`session`/`verification` (RLS YOK, `relrowsecurity=f`)
+ * tablolarından ham SQL okuyan bir çağrı `tsc 0`/`eslint 0` ile derlenirdi
+ * (ÖLÇÜLDÜ: 2830 parola hash'i). Tek üyeli parametre tipi bu yetkiyi
+ * SADECE bu fonksiyona verir: `apps/api/src/prisma/prisma.service.ts`'in
+ * `connectionProbe` erişimcisi AYNI dar tipi döner ve TEK tüketicisi
+ * `apps/api/src/health/checks/database.health-check.ts`'tir.
+ * `AppPrismaDatabase`'in KENDİSİ artık `$queryRaw` TAŞIMAZ (bkz. `client.ts`
+ * doc'u, negatif pin `pinAppPrismaDatabaseDropsQueryRaw`) — bu fonksiyonun
+ * DAVRANIŞI değişmedi (hâlâ sabit `SELECT 1`), yalnızca İMZASININ verdiği
+ * yetki YÜZEYİ daraldı.
  */
-export async function checkDatabaseConnection(db: PrismaDatabase): Promise<void> {
+export async function checkDatabaseConnection(
+  db: Pick<PrismaDatabase, '$queryRaw'>,
+): Promise<void> {
   await db.$queryRaw`SELECT 1`
 }

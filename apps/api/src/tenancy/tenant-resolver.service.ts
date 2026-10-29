@@ -32,6 +32,7 @@ import type { NodeEnv } from '@arkesoft/config/env'
 
 import type { ApiEnv } from '../config/api-env.js'
 import { API_ENV } from '../config/config.tokens.js'
+import { assertNever } from '../errors/assert-never.js'
 import type { HttpRequestHeaders } from '../http/http-request.types.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import type { TenantContext, TenantResolution } from '../request-context/request-context.types.js'
@@ -155,7 +156,7 @@ export class TenantResolverService {
       case 'custom-domain':
         return this.resolveByPrimaryDomain(hostResult.host)
       default:
-        return assertNeverHostResult(hostResult)
+        return assertNever(hostResult, 'tenant-resolver.service.ts: resolveHost sonucu')
     }
   }
 
@@ -217,9 +218,4 @@ export class TenantResolverService {
 
     return { kind: 'resolved', tenant }
   }
-}
-
-/** `resolveHost`'un dönüş birleşiminin EXHAUSTIVE olduğunu derleme zamanında kanıtlar. */
-function assertNeverHostResult(value: never): never {
-  throw new Error(`tenant-resolver.service.ts: beklenmeyen host sonucu — ${JSON.stringify(value)}`)
 }

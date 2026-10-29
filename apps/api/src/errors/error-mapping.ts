@@ -17,6 +17,7 @@ import { HttpException } from '@nestjs/common'
 import { isAppError, toErrorBody } from '@arkesoft/errors'
 import type { AppError, AppErrorBody } from '@arkesoft/errors'
 
+import { assertNever } from './assert-never.js'
 import { DependencyUnavailableError } from './domain/dependency-unavailable.error.js'
 import { ValidationError } from './domain/validation.error.js'
 
@@ -25,6 +26,16 @@ export type ErrorMappingResult = {
   readonly body: AppErrorBody
   /** Yalnızca LOGLANACAK bağlam — tel sözleşmesine (body) hiçbir zaman girmez. */
   readonly logContext: Record<string, unknown>
+  /**
+   * ADDITIVE (ROADMAP v0.0.5, T-006/S3, architect "HATA SINIFLARI" / AC7).
+   * `AppError.httpHeaders`'ın OLDUĞU GİBİ taşındığı yer — `AppExceptionFilter`
+   * bunu `httpAdapter.setHeader()` ile yazar. Yalnızca `mapAppError` doldurur;
+   * `mapHttpException`/`mapUnknownError` hiçbir zaman bu alanı SET ETMEZ
+   * (`exactOptionalPropertyTypes` — alan YOKSA hiç yazılmaz, `undefined`
+   * ATANMAZ). **`body`'ye ASLA girmez** (PO riski 8, `error-body.ts`'in
+   * `toErrorBody` imzası bu alanı zaten OKUMUYOR).
+   */
+  readonly httpHeaders?: Readonly<Record<string, string>>
 }
 
 type ClassifiedError =
@@ -66,12 +77,16 @@ function resolveAppErrorDetails(error: AppError): Record<string, unknown> | unde
 function mapAppError(error: AppError, requestId: string): ErrorMappingResult {
   const details = resolveAppErrorDetails(error)
   const body = toErrorBody(error, requestId, details)
+  const logContext = { code: error.code, isRetryable: error.isRetryable, context: error.context }
 
-  return {
-    httpStatus: error.httpStatus,
-    body,
-    logContext: { code: error.code, isRetryable: error.isRetryable, context: error.context },
+  // `exactOptionalPropertyTypes`: `httpHeaders` alanı YOKSA hiç YAZILMAZ —
+  // `undefined` değeri açıkça atanmaz (PO riski 8'in diğer yüzü: alan
+  // olmadığında "yok" ile "boş" ayrımı tip seviyesinde de korunur).
+  if (error.httpHeaders === undefined) {
+    return { httpStatus: error.httpStatus, body, logContext }
   }
+
+  return { httpStatus: error.httpStatus, body, logContext, httpHeaders: error.httpHeaders }
 }
 
 /**
@@ -120,10 +135,6 @@ function mapUnknownError(error: unknown, requestId: string): ErrorMappingResult 
   }
 }
 
-function assertNever(value: never): never {
-  throw new Error(`error-mapping.ts: beklenmeyen sınıflandırma — ${JSON.stringify(value)}`)
-}
-
 /** `AppExceptionFilter`'ın yakaladığı HER hatayı tek tel sözleşmesine çevirir. */
 export function mapErrorToResponse(error: unknown, requestId: string): ErrorMappingResult {
   const classified = classifyError(error)
@@ -136,6 +147,6 @@ export function mapErrorToResponse(error: unknown, requestId: string): ErrorMapp
     case 'unknown':
       return mapUnknownError(classified.error, requestId)
     default:
-      return assertNever(classified)
+      return assertNever(classified, 'error-mapping.ts: ClassifiedError.kind')
   }
 }

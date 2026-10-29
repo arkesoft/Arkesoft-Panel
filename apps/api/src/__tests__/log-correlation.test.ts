@@ -20,16 +20,41 @@ import type { Logger } from 'pino'
 import { afterEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 
-import { DEMO_SEED } from '@arkesoft/db'
+import { DEMO_SEED, TenantRole } from '@arkesoft/db'
 import { parseEnv } from '@arkesoft/config/env'
 
 import { apiEnvSchema } from '../config/api-env.js'
 import type { ApiEnv } from '../config/api-env.js'
 import { ROOT_LOGGER } from '../logging/logging.tokens.js'
+import { PrismaService } from '../prisma/prisma.service.js'
+import { createAuthenticatedSession } from './helpers/auth-fixture.js'
 import { createTestApp } from './helpers/create-test-app.js'
 import { ProbeController } from './helpers/test-probe.controller.js'
 
 const BASE_ENV: ApiEnv = parseEnv(apiEnvSchema)
+
+// ROADMAP v0.0.5, T-006/S6 EKLEMESİ (additive, PO riski 1 emsali): `AuthGuard`
+// artık GLOBAL — `/__smoke` artık kimlik de ister. Bu dosyanın odağı (AC9 log
+// korelasyonu) AUTH'TAN BAĞIMSIZ olduğu için istek ÖNCEDEN kimliklendirilir.
+async function authenticatedCookieForDemoTenant(app: INestApplication<Server>): Promise<string> {
+  const prismaService = app.get(PrismaService)
+  const session = await createAuthenticatedSession(app.getHttpServer())
+
+  const demoTenant = await prismaService.db.tenant.findUnique({
+    where: { slug: DEMO_SEED.tenant.slug },
+  })
+  if (demoTenant === null) {
+    throw new Error('DEMO_SEED tenant bulunamadı — pnpm db:seed koşmuş mu?')
+  }
+
+  await prismaService.withTenant(demoTenant.id, (tx) =>
+    tx.tenantMembership.create({
+      data: { tenantId: demoTenant.id, userId: session.userId, role: TenantRole.readonly },
+    }),
+  )
+
+  return session.cookieHeader
+}
 
 function tenantHost(slug: string): string {
   return `${slug}.${BASE_ENV.APP_BASE_DOMAIN}`
@@ -80,17 +105,26 @@ describe('log korelasyonu — AC9', () => {
     const { stream, getLines } = createMemoryLogStream()
     const testApp = await createTestApp({ stream, smokeControllers: [ProbeController] })
     app = testApp.app
+    const cookieHeader = await authenticatedCookieForDemoTenant(app)
 
     const response = await request(app.getHttpServer())
       .get('/__smoke')
       .set('Host', tenantHost(DEMO_SEED.tenant.slug))
+      .set('Cookie', cookieHeader)
 
     const headerRequestId = response.headers['x-request-id']
     expect(typeof headerRequestId).toBe('string')
 
     const records = parseLogLines(getLines())
+    // ROADMAP v0.0.5, T-006/S6 NOTU: `authenticatedCookieForDemoTenant` AYNI
+    // yakalanan stream'e YAZAN üç ÖN istek (kayıt/doğrulama/giriş) daha
+    // koştuğu için `msg` TEK BAŞINA artık BENZERSİZ değil — eşleşme AYRICA
+    // `requestId`'nin header'la BİREBİR aynı olmasını da ister (ilk eşleşen
+    // "istek tamamlandı" kaydını almak YANLIŞ olurdu).
     const completionRecord = records.find(
-      (record) => logRecordSchema.parse(record).msg === 'istek tamamlandı',
+      (record) =>
+        logRecordSchema.parse(record).msg === 'istek tamamlandı' &&
+        record['requestId'] === headerRequestId,
     )
 
     if (completionRecord === undefined) {

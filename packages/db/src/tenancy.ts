@@ -38,11 +38,26 @@
 // içinde literal geçer, K-E12) — S5'in AC4 mekanik grep'i (`guards`) bu
 // dosyayı kalıcı yanlış pozitif kaynağı OLARAK GÖRMESİN diye.
 
+// GÜNCELLEME (ROADMAP v0.0.5, T-006/S2, architect VERİ MODELİ): `session`,
+// `account`, `verification` (Better Auth tabloları) EKLENDİ — üçü de
+// PLATFORM SEVİYESİ, `tenant_id` TAŞIMAZ. Gerekçe: oturum/kimlik bilgisi/
+// doğrulama belirteci KULLANICIYA bağlıdır, kiracıya değil ("bir hesap →
+// birden fazla mağaza" vaadi bunu zorunlu kılar); kiracı üyeliği kontrolü
+// istek anında `tenant_membership` üzerinden yapılır (R2). `TENANT_SCOPED_TABLES`
+// bu güncellemeyle DEĞİŞMEDİ (hâlâ tek eleman) — yeni prob gerekmez, prob
+// tamlığı kapısı (`MISSING_TENANT_SCOPED_TABLE`) kırılmaz.
+
 /**
  * `tenant_id` kolonu TAŞIMAYAN platform seviyesi tablolar. Kiracı kimliğinin
  * kendisi bu tablolardadır; RLS politikası gerektirmez.
  */
-export const PLATFORM_LEVEL_TABLES = ['tenant', 'app_user'] as const
+export const PLATFORM_LEVEL_TABLES = [
+  'tenant',
+  'app_user',
+  'session',
+  'account',
+  'verification',
+] as const
 
 /**
  * `tenant_id` kolonu taşıyan, kiracıya bağlı tablolar. v0.0.13'ten itibaren

@@ -30,14 +30,11 @@
 import { Injectable } from '@nestjs/common'
 import type { CanActivate, ExecutionContext } from '@nestjs/common'
 
+import { assertNever } from '../errors/assert-never.js'
 import { TenantResolutionFailedError } from '../errors/domain/tenant-resolution-failed.error.js'
 import { TenantNotFoundError } from '../errors/domain/tenant-not-found.error.js'
 import { getRequestContext } from '../request-context/request-context.accessors.js'
 import type { TenantResolution } from '../request-context/request-context.types.js'
-
-function assertNeverTenantResolution(value: never): never {
-  throw new Error(`tenant.guard.ts: beklenmeyen TenantResolution.kind — ${JSON.stringify(value)}`)
-}
 
 @Injectable()
 export class TenantGuard implements CanActivate {
@@ -67,7 +64,7 @@ export class TenantGuard implements CanActivate {
           'TenantGuard: TenantResolution "pending" kaldı — TenantContextMiddleware bu rota için koşmadı (middleware zinciri/forRoutes yapılandırması kontrol edilmeli).',
         )
       default:
-        return assertNeverTenantResolution(tenant)
+        return assertNever(tenant, 'tenant.guard.ts: TenantResolution.kind')
     }
   }
 }

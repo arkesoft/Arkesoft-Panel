@@ -18,7 +18,7 @@ import type { Server } from 'node:http'
 
 import type { INestApplication } from '@nestjs/common'
 import { parseEnv } from '@arkesoft/config/env'
-import { DEMO_SEED } from '@arkesoft/db'
+import { DEMO_SEED, TenantRole } from '@arkesoft/db'
 import request from 'supertest'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
@@ -26,6 +26,7 @@ import { z } from 'zod'
 import { apiEnvSchema } from '../config/api-env.js'
 import type { ApiEnv } from '../config/api-env.js'
 import { PrismaService } from '../prisma/prisma.service.js'
+import { createAuthenticatedSession } from './helpers/auth-fixture.js'
 import { createTestApp } from './helpers/create-test-app.js'
 import { ProbeController } from './helpers/test-probe.controller.js'
 
@@ -45,6 +46,7 @@ const errorResponseSchema = z.object({ code: z.string() })
 describe('ALS eşzamanlılık/sızıntı testi (R4 telafisi #6)', () => {
   let app: INestApplication<Server> | undefined
   let prismaService: PrismaService
+  let cookieHeader: string
   const extraSlugs: string[] = []
 
   beforeAll(async () => {
@@ -53,12 +55,36 @@ describe('ALS eşzamanlılık/sızıntı testi (R4 telafisi #6)', () => {
     prismaService = app.get(PrismaService)
 
     // 4 ek tenant — kendi fixture'ı, DEMO_SEED'e DOKUNULMAZ (R-P6).
+    const extraTenantIds: string[] = []
     for (let i = 0; i < 4; i += 1) {
       const slug = `t-conc-${randomUUID().slice(0, 10)}`
-      await prismaService.db.tenant.create({
+      const created = await prismaService.db.tenant.create({
         data: { slug, name: `ST-7 eşzamanlılık #${String(i)}` },
       })
       extraSlugs.push(slug)
+      extraTenantIds.push(created.id)
+    }
+
+    // ROADMAP v0.0.5, T-006/S6 EKLEMESİ (additive, PO riski 1 emsali):
+    // `AuthGuard` artık GLOBAL — "resolved → 200" bekleyen BEŞ tenant'ın
+    // (DEMO_SEED + 4 ek) HEPSİNE üye TEK bir kimlik kurulur; bu testin odağı
+    // (ALS karışması) AUTH'TAN BAĞIMSIZDIR.
+    const demoTenant = await prismaService.db.tenant.findUnique({
+      where: { slug: DEMO_SEED.tenant.slug },
+    })
+    if (demoTenant === null) {
+      throw new Error('DEMO_SEED tenant bulunamadı — pnpm db:seed koşmuş mu?')
+    }
+
+    const session = await createAuthenticatedSession(app.getHttpServer())
+    cookieHeader = session.cookieHeader
+
+    for (const tenantId of [demoTenant.id, ...extraTenantIds]) {
+      await prismaService.withTenant(tenantId, (tx) =>
+        tx.tenantMembership.create({
+          data: { tenantId, userId: session.userId, role: TenantRole.readonly },
+        }),
+      )
     }
   })
 
@@ -105,7 +131,9 @@ describe('ALS eşzamanlılık/sızıntı testi (R4 telafisi #6)', () => {
     expect(entries.length).toBe(20)
 
     const responses = await Promise.all(
-      entries.map((entry) => request(httpServer).get('/__smoke').set('Host', entry.host)),
+      entries.map((entry) =>
+        request(httpServer).get('/__smoke').set('Host', entry.host).set('Cookie', cookieHeader),
+      ),
     )
 
     expect(responses.length).toBe(20)

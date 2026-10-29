@@ -44,6 +44,17 @@ export function maskEmail(value: string): string {
  * İKİNCİ savunma katmanı (birincisi: başlıkların loggera hiç verilmemesi, bkz.
  * architect K-A7 — `RequestLoggingInterceptor` ham başlıkları hiç okumaz).
  */
+// EKLEME (ROADMAP v0.0.5, T-006/S3, architect "LOG DESENİ" bölümü): altı yeni
+// yol — `sessionToken`/`verificationToken`/`resetToken`/`passwordHash` ve
+// bunların `*.` joker ön ekli ikisi (`*.sessionToken`/`*.passwordHash`).
+// Better Auth bu alan adlarıyla çalışıyor (v0.0.5 kapsamı); CLAUDE.md §4/§10.7
+// "şifre, token, oturum kimliği asla loglanmaz" maddesinin pino seviyesindeki
+// karşılığı. `'*.value'` BİLEREK EKLENMEDİ (architect kararı, bağlayıcı) —
+// `verification.value` alanı YAPISAL olarak logger nesnesine HİÇ GİRMİYOR
+// (Better Auth'un ham belirteç alanı bu isimle taşınıyor ama hiçbir
+// `logger.info/warn/error` çağrısına argüman olarak VERİLMİYOR); `'*.value'`
+// eklemek MEŞRU alanları da (herhangi bir nesnenin `value` adlı alanını)
+// silen fazla geniş bir joker olurdu — redaction'a değil YAPIYA güveniyoruz.
 export const PINO_REDACT_PATHS: readonly string[] = [
   'cookie',
   'authorization',
@@ -62,4 +73,10 @@ export const PINO_REDACT_PATHS: readonly string[] = [
   'secret',
   '*.password',
   '*.token',
+  'sessionToken',
+  'verificationToken',
+  'resetToken',
+  'passwordHash',
+  '*.sessionToken',
+  '*.passwordHash',
 ] as const

@@ -7,9 +7,24 @@
 // Dışa açılmayan (bilinçli): üretilen `PrismaClient` yapıcısı, `pg.Pool`/
 // `@prisma/adapter-pg` örnekleri, Prisma hata sınıfları, `Prisma`
 // namespace'inin DEĞER tarafı, `src/generated/**` / `#prisma` iç subpath'i.
+//
+// GÜNCELLEME (ROADMAP v0.0.5, T-006/S2, MADDE 2 — R-1 KARARI): `AUTH_SECRET_BEARING_MODELS`/
+// `AuthModelName`/`AppPrismaDatabase`/`TenantTransactionClient`/`AuthPrismaDatabase`
+// ADDITIVE dışa açıldı. `apps/api/eslint.config.mjs`'in `prismaClientSurfaceRestriction`
+// kuralı `PrismaDatabase`/`AuthPrismaDatabase`/`AUTH_SECRET_BEARING_MODELS`
+// jetonlarının importunu `src/{prisma,auth,__tests__}/**` DIŞINDA yasaklar —
+// bu paket o kuralın hedefi değildir, yalnızca jetonların KAYNAĞIDIR.
 
-export { createPrismaClient } from './client.js'
-export type { CreatePrismaClientOptions, PrismaDatabase, TransactionClient } from './client.js'
+export { createPrismaClient, AUTH_SECRET_BEARING_MODELS } from './client.js'
+export type {
+  CreatePrismaClientOptions,
+  PrismaDatabase,
+  TransactionClient,
+  AuthModelName,
+  AppPrismaDatabase,
+  TenantTransactionClient,
+  AuthPrismaDatabase,
+} from './client.js'
 
 export { TENANT_CONTEXT_SETTING, withTenant } from './tenant-context.js'
 

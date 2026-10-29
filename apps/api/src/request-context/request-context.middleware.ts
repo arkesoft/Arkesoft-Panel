@@ -38,6 +38,10 @@ export class RequestContextMiddleware implements NestMiddleware<HttpRequestLike,
       // bağlamalı bir child ile DEĞİŞTİRİR (tek yazıcı, K-A7).
       logger: this.rootLogger.child({ requestId }),
       tenant: { kind: 'pending' },
+      // ROADMAP v0.0.5, T-006/S6 EKLEMESİ (additive): `tenant` İLE AYNI
+      // desen — `AuthContextMiddleware` (`TenantContextMiddleware`'den
+      // SONRA) bu alanı DEĞİŞTİRİR, TEK yazıcı.
+      auth: { kind: 'pending' },
     }
 
     // AC9: yanıt başlığı handler'dan ÖNCE yazılır — hata yanıtları dahil HER

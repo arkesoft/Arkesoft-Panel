@@ -69,6 +69,25 @@ export function registerTenantContextSetting(client: PrismaDatabase, settingName
  * işlemi olarak GUC'u bağlı parametreyle ayarlar ve ardından `callback`'i
  * AYNI transaction istemcisiyle (`TransactionClient`) çağırır.
  *
+ * LATENT YOL (ROADMAP v0.0.5, T-006, `security` tur4 S4-4/S4-6 — `low`,
+ * kapatılması ZORUNLU DEĞİL): `Parameters<typeof withTenant>[0]` bu imzadan
+ * TAM `PrismaDatabase` tipini türetir (`tsc 0`, `eslint 0`) — isim bazlı
+ * hiçbir pin bunu göremez, çünkü `withTenant()`'ın İMZASI bilerek
+ * `AppPrismaDatabase`'e DARALTILMADI (PO sapması 1, bağlayıcı — bkz.
+ * `client.ts`). Bugün sömürülemez: çalışma zamanında `@Inject(PRISMA_CLIENT)
+ * full: Parameters<typeof withTenant>[0]` DI çözülemiyor ("Nest can't
+ * resolve dependencies … Symbol(PRISMA_CLIENT) …") çünkü
+ * `apps/api/src/prisma/prisma.module.ts` `exports: [PrismaService]` —
+ * ham `PRISMA_CLIENT` token'ı o modülün DI grafiğinde dışa açılmıyor.
+ * Bariyer `apps/api`'nin modül dışa açma yüzeyinde, bu paketin TİP
+ * düzeyinde DEĞİL — `withTenant()`'ın imzası bu yüzden BURADAN
+ * DEĞİŞTİRİLMEDİ (imzayı daraltmak K-E5/PO sapması 1'i ihlal eder). Kayıtlı
+ * kalan borç: `PrismaModule.exports`'un kanonik tam eşitliğini pinleyen bir
+ * test YOK — `exports` dizisine `PRISMA_CLIENT` eklenirse `lint`/
+ * `typecheck`/`test`/`test:isolation` hepsi yeşil kalır ve bu latent yol
+ * çalışma zamanında da açılır. Bu, `apps/api` tarafının (architect, v0.0.14)
+ * işi; bu dosyadan izlenebilir kılınması için not düşülmüştür.
+ *
  * @throws `client` `createPrismaClient({ tenantContextSetting })` İLE
  *   kurulmamışsa (kayıt yoksa, fail-closed).
  * @throws `tenantId` boş veya yalnızca boşluk karakterlerinden oluşuyorsa.

@@ -59,4 +59,23 @@ describe('PINO_REDACT_PATHS', () => {
     expect(PINO_REDACT_PATHS).toContain('req.headers.authorization')
     expect(PINO_REDACT_PATHS).toContain('res.headers.cookie')
   })
+
+  // ROADMAP v0.0.5, T-006/S3, architect "LOG DESENİ" — Better Auth'un sır
+  // taşıyan altı alanı (CLAUDE.md §4/§10.7: şifre, token, oturum kimliği
+  // asla loglanmaz).
+  it('Better Auth sır alanlarını (sessionToken/verificationToken/resetToken/passwordHash) içerir', () => {
+    expect(PINO_REDACT_PATHS).toContain('sessionToken')
+    expect(PINO_REDACT_PATHS).toContain('verificationToken')
+    expect(PINO_REDACT_PATHS).toContain('resetToken')
+    expect(PINO_REDACT_PATHS).toContain('passwordHash')
+  })
+
+  it('Better Auth sır alanlarının joker ön ekli (*.sessionToken/*.passwordHash) karşılıklarını içerir', () => {
+    expect(PINO_REDACT_PATHS).toContain('*.sessionToken')
+    expect(PINO_REDACT_PATHS).toContain('*.passwordHash')
+  })
+
+  it("'*.value' İÇERMEZ (architect kararı — fazla geniş joker, meşru alanları siler)", () => {
+    expect(PINO_REDACT_PATHS).not.toContain('*.value')
+  })
 })

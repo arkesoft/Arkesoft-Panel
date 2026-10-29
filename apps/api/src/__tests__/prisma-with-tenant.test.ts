@@ -21,12 +21,26 @@
 // BİLEREK kapsar, A-P3). `it()` gövdesi içine konan `expect` çağrıları, tip
 // pin'lerinin TAMAMEN ölü kod sayılıp testin "assertion yok" uyarısı
 // vermemesi içindir.
+//
+// GÜNCELLEME (ROADMAP v0.0.5, T-006/S3, PO riski 1 — ÖLÇÜLDÜ, bağlayıcı):
+// Vaka 3'ün eski pozitif pin'i (`prismaService.db satisfies PrismaDatabase`)
+// "MADDE 2 — R-1 KARARI" daraltmasıyla (`.db` artık `AppPrismaDatabase`
+// döner) bu BİÇİMDE DERLENMEZ — `AppPrismaDatabase`, `account`/`session`/
+// `verification` delegelerini EKSİK bıraktığı için `PrismaDatabase`'e
+// (tam yüzey) UYUMLU DEĞİLDİR. Bu bir GEVŞETME DEĞİL — pin GÜÇLENDİRİLDİ:
+// pozitif pin artık `AppPrismaDatabase`'e karşı (daraltılmış tipin kendisi
+// değişmeden kaldığını ölçer) VE yeni bir NEGATİF pin eklendi
+// (`@ts-expect-error` + `.db.account` erişimi) — bu ikincisi R-1'in derleme
+// zamanı iddiasının (`tx.account.findMany()` artık derlenmiyor, PM riski 1)
+// BU SARMALAYICI üzerindeki mekanik kanıtıdır. `PrismaDatabase` import'u
+// artık GEREKSİZ — `AppPrismaDatabase`'e DARALTILDI (sadece gerçekten
+// kullanılan tip import edilir).
 
 import type { Server } from 'node:http'
 
 import type { INestApplication } from '@nestjs/common'
 import { DEMO_SEED } from '@arkesoft/db'
-import type { PrismaDatabase } from '@arkesoft/db'
+import type { AppPrismaDatabase } from '@arkesoft/db'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { PrismaService } from '../prisma/prisma.service.js'
@@ -75,18 +89,27 @@ describe('PrismaService.withTenant() — additive delegasyon (T-005/S6)', () => 
     },
   )
 
-  it('Vaka 3 — `.db` getter imzası DEĞİŞMEDİ (derleme zamanı tip testi)', () => {
-    // POZİTİF PİN — `.db` hâlâ `PrismaDatabase` döner; `satisfies` tip
-    // uyumunu derleme zamanında zorlar (değeri GENİŞLETMEZ).
-    const dbPin = prismaService.db satisfies PrismaDatabase
+  it('Vaka 3 — `.db` getter imzası `AppPrismaDatabase`e DARALTILDI (derleme zamanı tip testi, PO riski 1)', () => {
+    // POZİTİF PİN (GÜÇLENDİRİLDİ) — `.db` artık `AppPrismaDatabase` döner
+    // (sır taşıyan üç model delegesi `Omit<>` ile düşürülmüş); `satisfies`
+    // tip uyumunu derleme zamanında zorlar (değeri GENİŞLETMEZ).
+    const dbPin = prismaService.db satisfies AppPrismaDatabase
     expect(dbPin).toBeDefined()
 
-    // NEGATİF PİN — `.db`'nin döndürdüğü tip, UYUMSUZ bir şekle doğrudan
-    // atanamaz. Bu satır GERÇEK bir tip hatası ÜRETMEZSE (ör. `.db` `any`'ye
-    // genişlerse) `@ts-expect-error` "kullanılmayan direktif" olarak
-    // `pnpm typecheck`'i KIRAR — pin'in asıl işi budur.
-    // @ts-expect-error — PrismaDatabase bu uyumsuz şekle doğrudan atanamaz.
-    const wrongShape: { readonly thisFieldDoesNotExistOnPrismaDatabase: true } = prismaService.db
-    expect(wrongShape).toBeDefined()
+    // NEGATİF PİN (YENİ — PO riski 1'in asıl mekanik kanıtı, "MADDE 2 — R-1
+    // KARARI" katman 1): `.db` üzerinden `account` delegesine erişim artık
+    // DERLENMEZ. Bu satır GERÇEK bir tip hatası ÜRETMEZSE (ör. `Omit<>`
+    // daraltması bir gün yanlışlıkla kaldırılırsa) `@ts-expect-error`
+    // "kullanılmayan direktif" olarak `pnpm typecheck`'i KIRAR — PM riski
+    // 1'in tarif ettiği `tx.account.findMany()` senaryosunun (tüm parola
+    // hash'lerinin dökülmesi) bu sarmalayıcı üzerinden artık DERLENMEDİĞİNİN
+    // kanıtı.
+    // `unknown` ANNOTASYONU BİLEREK: `account` tipi derleme hatası yüzünden
+    // `any`'e DÜŞER — açık `unknown` anotasyonu olmadan eslint
+    // `no-unsafe-assignment` ile KIRILIR (S2'nin `auth-model-narrowing.pin.ts`
+    // deseniyle AYNI çözüm: dönüş tipini `unknown` TUTMAK, `any`'İ YAYMAMAK).
+    // @ts-expect-error — "account" AUTH_SECRET_BEARING_MODELS'te, AppPrismaDatabase'de (.db'nin tipi) YOK.
+    const account: unknown = prismaService.db.account
+    expect(account).toBeDefined()
   })
 })

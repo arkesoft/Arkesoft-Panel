@@ -11,6 +11,7 @@ import { pino } from 'pino'
 import { describe, expect, it } from 'vitest'
 import { HttpException } from '@nestjs/common'
 import { TenantStatus } from '@arkesoft/db'
+import { AppError } from '@arkesoft/errors'
 
 import { DependencyUnavailableError } from '../errors/domain/dependency-unavailable.error.js'
 import { RequestContextUnavailableError } from '../errors/domain/request-context-unavailable.error.js'
@@ -25,6 +26,20 @@ import type { RequestContext } from '../request-context/request-context.types.js
 const REQUEST_ID = 'req_test0000000000000000000000'
 
 const EXPECTED_BODY_KEYS = ['code', 'details', 'message', 'requestId']
+
+// PO riski 8 (ROADMAP v0.0.5, T-006/S3, AC7) — `RateLimitExceededError`
+// henüz doğmadı (v0.0.5/S8'in işi); `mapErrorToResponse`'un `httpHeaders`
+// taşıma sözleşmesi burada BAĞIMSIZ bir örnek sınıfla ölçülür.
+class SampleRateLimitedError extends AppError {
+  constructor() {
+    super({
+      code: 'SAMPLE_RATE_LIMITED',
+      httpStatus: 429,
+      userMessageKey: 'errors.sample.rateLimited',
+      httpHeaders: { 'Retry-After': '42' },
+    })
+  }
+}
 
 describe('mapErrorToResponse — AppError alt sınıfları', () => {
   it('TenantNotFoundError → 404, details her zaman {}, context yok', () => {
@@ -89,6 +104,28 @@ describe('mapErrorToResponse — AppError alt sınıfları', () => {
     expect(mapped.body.details).toEqual({})
     expect('context' in mapped.body).toBe(false)
   })
+
+  it(
+    "PO riski 8 (AC7) — httpHeaders (Retry-After) mapped.httpHeaders'a TAŞINIR, " +
+      "mapped.body'ye ASLA GİRMEZ",
+    () => {
+      const error = new SampleRateLimitedError()
+      const mapped = mapErrorToResponse(error, REQUEST_ID)
+
+      expect(mapped.httpHeaders).toEqual({ 'Retry-After': '42' })
+      expect('httpHeaders' in mapped.body).toBe(false)
+      expect(Object.keys(mapped.body).sort()).toEqual(EXPECTED_BODY_KEYS)
+      expect(JSON.stringify(mapped.body)).not.toContain('Retry-After')
+    },
+  )
+
+  it('httpHeaders verilmeyen AppError için mapped.httpHeaders TANIMSIZ kalır', () => {
+    const error = new TenantNotFoundError({ reason: 'no_row' })
+    const mapped = mapErrorToResponse(error, REQUEST_ID)
+
+    expect(mapped.httpHeaders).toBeUndefined()
+    expect('httpHeaders' in mapped).toBe(false)
+  })
 })
 
 describe('mapErrorToResponse — HttpException ve bilinmeyen hata', () => {
@@ -131,6 +168,11 @@ describe('getTenantContext — fail-closed (R4 telafisi)', () => {
       receivedAt: Date.now(),
       logger: pino({ level: 'silent' }),
       tenant,
+      // ROADMAP v0.0.5, T-006/S6 EKLEMESİ (additive): `RequestContext.auth`
+      // artık ZORUNLU bir alan — bu dosyanın konusu olan `tenant` dalları bu
+      // alandan BAĞIMSIZ, sabit `'pending'` yeterli (S6'nın own test'leri
+      // `auth` dalını kendi dosyalarında kapsar).
+      auth: { kind: 'pending' },
     }
     requestContextStorage.run(store, callback)
   }

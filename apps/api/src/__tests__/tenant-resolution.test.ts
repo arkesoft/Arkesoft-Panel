@@ -12,7 +12,7 @@ import type { Server } from 'node:http'
 
 import type { INestApplication } from '@nestjs/common'
 import { parseEnv } from '@arkesoft/config/env'
-import { DEMO_SEED } from '@arkesoft/db'
+import { DEMO_SEED, TenantRole } from '@arkesoft/db'
 import request from 'supertest'
 import { afterEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
@@ -20,11 +20,32 @@ import { z } from 'zod'
 import { apiEnvSchema } from '../config/api-env.js'
 import type { ApiEnv } from '../config/api-env.js'
 import { PrismaService } from '../prisma/prisma.service.js'
+import { createAuthenticatedSession } from './helpers/auth-fixture.js'
 import { createTestApp } from './helpers/create-test-app.js'
 import { ProbeController } from './helpers/test-probe.controller.js'
 
 const BASE_ENV: ApiEnv = parseEnv(apiEnvSchema)
 const APP_BASE_DOMAIN = BASE_ENV.APP_BASE_DOMAIN
+
+// ROADMAP v0.0.5, T-006/S6 EKLEMESİ (additive, PO riski 1 emsali): `AuthGuard`
+// artık GLOBAL — "resolved → 200" bekleyen senaryolar kimlik DE ister. Bu
+// dosyanın odağı (tenant çözümü) AUTH'TAN BAĞIMSIZ olduğu için istek üyelik
+// VERİLEN `tenantId` için ÖNCEDEN kimliklendirilir.
+async function authenticatedCookieForTenant(
+  app: INestApplication<Server>,
+  tenantId: string,
+): Promise<string> {
+  const prismaService = app.get(PrismaService)
+  const session = await createAuthenticatedSession(app.getHttpServer())
+
+  await prismaService.withTenant(tenantId, (tx) =>
+    tx.tenantMembership.create({
+      data: { tenantId, userId: session.userId, role: TenantRole.readonly },
+    }),
+  )
+
+  return session.cookieHeader
+}
 
 function developmentEnv(): ApiEnv {
   return { ...BASE_ENV, NODE_ENV: 'development' }
@@ -82,10 +103,19 @@ describe('tenant çözümü — HTTP seviyesi (AC4/AC5/AC6/AC7/AC8)', () => {
   it('AC5: demo-magaza.<base> → tenant çözülür, slug DEMO_SEED ile eşit, source=subdomain', async () => {
     const testApp = await createTestApp({ smokeControllers: [ProbeController] })
     app = testApp.app
+    const prismaService = app.get(PrismaService)
+    const demoTenant = await prismaService.db.tenant.findUnique({
+      where: { slug: DEMO_SEED.tenant.slug },
+    })
+    if (demoTenant === null) {
+      throw new Error('DEMO_SEED tenant bulunamadı — pnpm db:seed koşmuş mu?')
+    }
+    const cookieHeader = await authenticatedCookieForTenant(app, demoTenant.id)
 
     const response = await request(app.getHttpServer())
       .get('/__smoke')
       .set('Host', tenantHost(DEMO_SEED.tenant.slug))
+      .set('Cookie', cookieHeader)
 
     const body = tenantResponseSchema.parse(response.body)
 
@@ -154,11 +184,20 @@ describe('tenant çözümü — HTTP seviyesi (AC4/AC5/AC6/AC7/AC8)', () => {
         smokeControllers: [ProbeController],
       })
       app = testApp.app
+      const prismaService = app.get(PrismaService)
+      const demoTenant = await prismaService.db.tenant.findUnique({
+        where: { slug: DEMO_SEED.tenant.slug },
+      })
+      if (demoTenant === null) {
+        throw new Error('DEMO_SEED tenant bulunamadı — pnpm db:seed koşmuş mu?')
+      }
+      const cookieHeader = await authenticatedCookieForTenant(app, demoTenant.id)
 
       const response = await request(app.getHttpServer())
         .get('/__smoke')
         .set('Host', tenantHost(`bilinmeyen-${randomUUID().slice(0, 8)}`))
         .set('x-arkesoft-tenant', DEMO_SEED.tenant.slug)
+        .set('Cookie', cookieHeader)
 
       const body = tenantResponseSchema.parse(response.body)
 
@@ -222,12 +261,16 @@ describe('tenant çözümü — HTTP seviyesi (AC4/AC5/AC6/AC7/AC8)', () => {
     const slug = `t-${randomUUID().slice(0, 12)}`
     const primaryDomain = `${slug}.ozel-musteri-alani-st7.test`
 
-    await prismaService.db.tenant.create({
+    const createdTenant = await prismaService.db.tenant.create({
       data: { slug, name: 'ST-7 primaryDomain fixture', primaryDomain },
     })
 
     try {
-      const response = await request(app.getHttpServer()).get('/__smoke').set('Host', primaryDomain)
+      const cookieHeader = await authenticatedCookieForTenant(app, createdTenant.id)
+      const response = await request(app.getHttpServer())
+        .get('/__smoke')
+        .set('Host', primaryDomain)
+        .set('Cookie', cookieHeader)
 
       const body = tenantResponseSchema.parse(response.body)
 

@@ -15,12 +15,57 @@
 // sonucuna GÜVENİR (bkz. `tenant.guard.ts` dosya başı yorumu — tek kaynaktan
 // okunan tek karar, iki yerde tekrarlanan path-eşleştirme mantığı YOK).
 //
-// Birim testi (`tenant-exempt-paths.test.ts`) kümenin TAM OLARAK bu iki
+// Birim testi (`tenant-exempt-paths.test.ts`) kümenin TAM OLARAK bu on iki
 // elemandan oluştuğunu assert eder — listeyi büyütmek bu testi DEĞİŞTİRMEYİ,
 // yani kod inceleme görünürlüğünü ZORUNLU kılar (R4 telafisi #2).
+//
+// GÜNCELLEME (ROADMAP v0.0.5, T-006/S5, architect "TENANT İZOLASYONU" bölümü,
+// PM riski 6 — BEKLENEN): 2 → 12. Gerekçe: panel giriş yüzeyi platform host'u
+// `panel.arkesoft.{APP_BASE_DOMAIN}`'dir; `panel` `reserved-subdomains.ts:22`'de
+// REZERVE → `resolveHost` onu `reserved_subdomain` ile ÇÖZÜMSÜZ bırakır.
+// Muafiyet OLMADAN hiçbir auth ucuna erişilemez (panel host'unda kiracı asla
+// çözülemez — bu BEKLENEN, panel kiracı değildir).
+//
+// Eklenen 10 eleman, üç grup:
+//   (1) 7 Better Auth delege yolu (`AUTH_DELEGATED_PATHS`, `auth-delegated-
+//       paths.ts`'in TAM AYNI yedi literal'i — BİLEREK import EDİLMEDİ, PM
+//       R3/architect bağlayıcı: "üretim kodunda tenancy → auth bağımlılığı
+//       YOKTUR, listeler literal yazılır" — inceleme görünürlüğü AC9'un asıl
+//       özelliği). A-G6 ölçümü yedinci yolu `/auth/forget-password`'den
+//       GERÇEK sürümdeki `/auth/request-password-reset`'e DÜZELTTİ (bkz.
+//       `auth-delegated-paths.ts` dosya başı yorumu).
+//   (2) 3 kendi oturum ucumuz (`/auth/sessions`, `/auth/sessions/revoke`,
+//       `/auth/sessions/revoke-all` — S6 YAZACAK, tenant'tan muaf ama
+//       KİMLİKTEN muaf DEĞİL; `AUTH_EXEMPT_PATHS`'e (S6) GİRMEZLER).
+//
+// İKİ KÜME AYRI KALIR (PM R3, bağlayıcı): bu küme ("kiracı gerekmez") ile
+// S6'nın `AUTH_EXEMPT_PATHS`'i ("kimlik gerekmez") İKİ AYRI güvenlik kararı —
+// birleştirilmez. `/auth/sessions*` üçlüsü KİRACIDAN muaf (bu kümede) ama
+// KİMLİKTEN muaf DEĞİL (`AUTH_EXEMPT_PATHS`'te YOK).
+//
+// FIX turu 1, madde 11 (solid M-1, bağlayıcı) — yol normalizasyonu ARTIK
+// ortak `http/normalize-request-path.ts`'ten İTHAL EDİLİR (BEŞ kopyadan
+// biriydi, bu dosya ORİJİNAL — dördü BUNDAN kopyalanmıştı). Ortak modül NE
+// `tenancy`'ye NE `auth`'a bağımlı — PM R3'ün "tenancy → auth bağımlılığı
+// YOKTUR" ilkesi KORUNUR (`http/` iki modülden de bağımsız bir KATMAN).
 
-/** Tenant çözümü gerektirmeyen, tam eşleşmeli iki uç. */
-export const TENANT_EXEMPT_PATHS: ReadonlySet<string> = new Set(['/health', '/health/ready'])
+import { normalizeRequestPath } from '../http/normalize-request-path.js'
+
+/** Tenant çözümü gerektirmeyen, tam eşleşmeli on iki uç. */
+export const TENANT_EXEMPT_PATHS: ReadonlySet<string> = new Set([
+  '/health',
+  '/health/ready',
+  '/auth/sign-up/email',
+  '/auth/sign-in/email',
+  '/auth/sign-out',
+  '/auth/verify-email',
+  '/auth/send-verification-email',
+  '/auth/request-password-reset',
+  '/auth/reset-password',
+  '/auth/sessions',
+  '/auth/sessions/revoke',
+  '/auth/sessions/revoke-all',
+])
 
 /**
  * Bir istek URL'sinin (`req.url`) {@link TENANT_EXEMPT_PATHS}'teki bir yolla
@@ -34,9 +79,5 @@ export const TENANT_EXEMPT_PATHS: ReadonlySet<string> = new Set(['/health', '/he
  *   fail-closed (K5'in "varsayılan tenant zorunlu" kararının doğal sonucu).
  */
 export function isTenantExemptPath(rawUrl: string): boolean {
-  const { pathname } = new URL(rawUrl, 'http://exempt-path-check.invalid')
-  const normalizedPathname =
-    pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname
-
-  return TENANT_EXEMPT_PATHS.has(normalizedPathname)
+  return TENANT_EXEMPT_PATHS.has(normalizeRequestPath(rawUrl))
 }

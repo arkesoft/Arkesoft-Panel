@@ -10,11 +10,26 @@
 # bekleniyordu ama X bulundu" / "X paket bekleniyordu ama 0 bulundu" biçiminde
 # MEKANİK olarak yakalar.
 #
-# Bugün tek sahip: @arkesoft/db (PO V-P1 — "packages/db tek izolasyon sahibi").
-# `test:isolation` script'i `vitest run --config vitest.isolation.config.ts`
-# (yalnızca `*.isolation.test.ts`); `vitest.config.ts`'in (`pnpm test`) kapsamı
-# bu dosyaları `exclude` eder — ikisi aynı testi İKİ KEZ koşturmaz (V4).
+# GÜNCELLEME (ROADMAP v0.0.5, T-006/S7, PO V-P4): T-005'in "packages/db TEK
+# izolasyon sahibi" varsayımı (V-P1, aşağıdaki eski not) bu sürümde BİLİNÇLİ
+# OLARAK geçersizleşiyor — @arkesoft/api kendi `test:isolation` script'ini
+# (`vitest run --config vitest.isolation.config.ts`, yalnızca
+# `*.isolation.test.ts`) ekliyor (AC10 — çapraz kiracı oturumu, S6'nın yazdığı
+# `auth-cross-tenant.isolation.test.ts`; `session` platform tablosu olduğu
+# için `createTenantIsolationSuite()`'a giremiyor, eşdeğeri gerçek Postgres +
+# gerçek HTTP ile bu hatta veriliyor — architect/Orkestratör AC10 yorumu).
+# Küme bu yüzden ARTIK İKİ satır. Bir sonraki geliştirici "neden iki satır?"
+# diye tek satıra geri döndürmeye kalkarsa dedektör "beklenen 2, gerçek 1"
+# diyerek kırmızı verir — bu KASITLI, geri alınmaz.
+#
+# ESKİ NOT (T-005/S5, artık kısmen geçersiz — yalnızca @arkesoft/db'yi
+# anlatıyordu): `test:isolation` script'i `vitest run --config
+# vitest.isolation.config.ts` (yalnızca `*.isolation.test.ts`); `vitest.
+# config.ts`'in (`pnpm test`) kapsamı bu dosyaları `exclude` eder — ikisi aynı
+# testi İKİ KEZ koşturmaz (V4). `apps/api/vitest.config.ts`'te de AYNI desen
+# (T-006/S7) uygulanıyor.
 #
 # Satır başında # olan satırlar ve boş satırlar yorum sayılır, taranmaz.
 
+@arkesoft/api
 @arkesoft/db

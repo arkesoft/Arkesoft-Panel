@@ -13,6 +13,13 @@
 // VARSAYIM(A-V25, architect K4): `details` serileşen TEK alandır. `AppError.context`
 // iç bilgi taşır (PII olabilir, yalnızca log'a gider) ve ASLA bu gövdeye yazılmaz —
 // bu yüzden `toErrorBody` imzasında `error.context` okunmaz, kullanılmaz.
+//
+// PO RİSKİ 8 (ROADMAP v0.0.5, T-006/S3): `AppError.httpHeaders` (Retry-After
+// taşıyıcısı, AC7) AYNI gerekçeyle bu gövdeye YAZILMAZ — `toErrorBody`
+// imzasında `error.httpHeaders` da OKUNMAZ. Mekanik garanti: dört alanlık
+// dönüş nesnesi (`code`/`message`/`details`/`requestId`) ELLE yazılır,
+// `error`'dan spread edilmez — `httpHeaders` eklenecek bir gün BURADA
+// unutulup sızsa bile bu fonksiyon onu OKUMADIĞI için sızamaz.
 
 import { z } from 'zod'
 

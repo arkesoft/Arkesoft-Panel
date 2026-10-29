@@ -1445,3 +1445,68 @@ describe('migration-set — prob süiti (rootSymlinks hedefi doğrulanır)', () 
     }).toThrow(/rootSymlinks hedefi/)
   })
 })
+
+// --- ROADMAP v0.0.5, T-006/S2, PO riski 6 — NOKTA ATIŞI PİN (bilinçli sapma,
+// yalnızca EKLEME) ---
+//
+// T-005'te bu dosya "SAHİPSİZ" ilan edilmişti; bu pin BİLİNÇLİ bir sapmadır.
+// Mevcut HİÇBİR assertion zayıflatılmadı — `git diff` bu bloğun yalnızca
+// EKLENDİĞİNİ gösterir. `migration-set.ts`'in genel tarayıcısına DÖRDÜNCÜ bir
+// sezgisel yama EKLENMEDİ (R-D1 yasağı, T-004'te üç eşik üst üste atlatıldı,
+// dosya başı "DÜZELTME TURU" notları) — bu, yalnızca `20261029092424_better_auth_tables`
+// migration dizinine ÖZGÜ, gerçek repo migration kümesini okuyan bir
+// assertion'dır; genel bir "her NOT NULL eklemesi DEFAULT taşımalı" tarayıcı
+// KURALI DEĞİLDİR (böyle bir kural başka, zararsız NOT NULL eklemelerinde
+// yanlış pozitif üretirdi — architect'in gerekçesi §10.10'un arıza modeli
+// yalnızca `DEFAULT` OLMAYAN eklemede gerçekleşir).
+//
+// Gerekçe (architect "MIGRATION — YIKICI DEĞİL", madde "`ADD COLUMN … NOT
+// NULL DEFAULT false` — nullable DEĞİL"): `app_user.email_verified`
+// `NOT NULL` olarak eklendi; bunun mevcut satırlarda PATLAMAMASININ TEK
+// garantisi aynı `ALTER TABLE` ifadesinde bir `DEFAULT` taşımasıdır (PG11+
+// `DEFAULT`'lu `ADD COLUMN` tabloyu yeniden YAZMAZ). Bu pin bu garantinin
+// KENDİSİNİ (ifadenin iki parçası BİRLİKTE var mı) doğrular.
+//
+// ÇİFT YÖNLÜ DOĞRULAMA (PO riski 6, bağlayıcı): bu pin DB agent tarafından
+// `migration.sql`'deki "DEFAULT false" dizesi geçici olarak kaldırılıp test
+// koşturularak (KIRMIZI), ardından geri eklenip yeniden koşturularak (YEŞİL)
+// elle doğrulandı — bkz. Task raporu "DoD 9" (geçici değişiklik koda
+// GİRMEDİ, yalnızca yerel doğrulama adımıydı).
+describe('migration-sql — nokta atışı pin (PO riski 6): "email_verified" NOT NULL eklemesi DEFAULT taşımak ZORUNDA', () => {
+  const BETTER_AUTH_TABLES_MIGRATION_DIRECTORY = '20261029092424_better_auth_tables'
+
+  it(`"${BETTER_AUTH_TABLES_MIGRATION_DIRECTORY}" migration kümesinde gerçekten var`, () => {
+    const migrations = readMigrationSet(MIGRATIONS_DIR)
+    expect(
+      migrations.some(
+        (migration) => migration.directoryName === BETTER_AUTH_TABLES_MIGRATION_DIRECTORY,
+      ),
+    ).toBe(true)
+  })
+
+  it('"app_user"a eklenen "email_verified" kolonu NOT NULL VE DEFAULT ifadesini BİRLİKTE taşıyor (ayrı ayrı değil, aynı kolon tanımında)', () => {
+    const migrations = readMigrationSet(MIGRATIONS_DIR)
+    const migration = migrations.find(
+      (candidate) => candidate.directoryName === BETTER_AUTH_TABLES_MIGRATION_DIRECTORY,
+    )
+    expect(migration).toBeDefined()
+
+    // Kolon tanımını "email_verified" jetonundan bir sonraki virgüle veya
+    // satır sonuna kadar yakalar — "ADD COLUMN ... email_verified BOOLEAN
+    // NOT NULL DEFAULT false" biçiminin TEK satırlık gövdesi.
+    const columnDefinitionPattern = /"email_verified"\s+[^,\n]+/
+    const match = migration?.sql.match(columnDefinitionPattern)
+    expect(match, '"email_verified" kolon tanımı migration.sql içinde bulunamadı').not.toBeNull()
+
+    const columnDefinition = match?.[0] ?? ''
+    expect(
+      columnDefinition.includes('NOT NULL'),
+      `kolon tanımı "NOT NULL" taşımıyor: "${columnDefinition}"`,
+    ).toBe(true)
+    expect(
+      columnDefinition.includes('DEFAULT'),
+      `kolon tanımı "NOT NULL" taşıyor ama "DEFAULT" TAŞIMIYOR — §10.10 arıza modeli ` +
+        `(mevcut satırlarda patlama) riski doğar: "${columnDefinition}"`,
+    ).toBe(true)
+  })
+})

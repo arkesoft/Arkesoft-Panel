@@ -133,3 +133,32 @@ catalog:
   # yeni ana bağımlılık onayı gerekmiyor. `npm view @changesets/cli dist-tags` ile
   # çözülen en güncel kararlı sürüme (dist-tag "latest") sabitlendi.
   '@changesets/cli': 3.0.3
+
+  # --- Kimlik doğrulama (ROADMAP v0.0.5, T-006) ---
+  # better-auth: CLAUDE.md §2 yığın tablosunda zaten adıyla yazılı; yeni ana
+  # bağımlılık sorusu doğurmuyor (T-006 devralınan not 15). `npm view
+  # better-auth dist-tags` ile çözülen en güncel kararlı sürüme (dist-tag
+  # "latest") sabitlendi — exact (`^`/`~` değil), auth sırrı taşıyan bir
+  # bağımlılıkta sessiz minor/patch kayması istenmiyor.
+  'better-auth': 1.7.14
+  # nodemailer: Kullanıcı Onayı (2026-10-29, T-006 architect kararı) ile kabul
+  # edildi — gerekçesi ROADMAP'e `docs`/S9 tarafından yazılacak. `MailTransport`
+  # arayüzünün arkasında TEK import noktası (`apps/api/src/auth/mail/
+  # smtp-mail-transport.ts`); çekirdek sağlayıcı adını bilmez.
+  #
+  # BİLEREK `latest` (10.3.0) DEĞİL: `npm view nodemailer time` 10.3.0'ın
+  # 2026-10-29'da (BUGÜN) yayınlandığını gösteriyor — pnpm'in tedarik zinciri
+  # koruması ("minimum sürüm yaşı" eşiği) bunu "çok yeni" sayıp kurulum için
+  # paket adı + sürümünü açık bir izin listesine eklemeyi İSTER (bkz. pnpm
+  # dokümantasyonu: "minimum release age" ayarı). Bu paket SMTP kimlik
+  # bilgilerini okuyor ve `BETTER_AUTH_SECRET`/oturum belirteçleriyle AYNI
+  # süreçte çalışacak — bekleme süresi korumasını bir izin kaydıyla atlamak
+  # (bakım hesabı ele geçirme senaryosuna karşı asıl savunma) bu paket için
+  # kabul edilemez bir takas. Bunun yerine KORUMAYI TETİKLEMEYEN en güncel
+  # sürüm seçildi: 10.2.1 (yayın: 2026-10-22, 7+ gün). CHANGELOG.md farkı
+  # doğrulandı (10.2.1→10.3.0): yalnızca "otp" header özelliği (kullanılmıyor)
+  # + Content-ID mesaj kimliği düzeltmesi (kapsamımızı etkilemiyor) —
+  # `createTransport`/`sendMail`/STARTTLS yüzeyinde fark YOK. Kendi TS
+  # tiplerini taşıyor (`./dist/cjs/nodemailer.d.ts`) — `@types/nodemailer`
+  # GEREKMİYOR.
+  nodemailer: 10.2.1

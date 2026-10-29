@@ -20,6 +20,22 @@
 // geçmez). v0.0.17'de OpenTelemetry/Sentry eşlemesiyle birlikte additive
 // eklenecek — bugün eklemek hangi seviyeye eşleneceğini henüz tasarlanmamışken
 // dayatır.
+//
+// `httpHeaders` (ROADMAP v0.0.5, T-006/S3, architect "HATA SINIFLARI" bölümü):
+// ADDITIVE altıncı alan. Gerekçe: `RateLimitExceededError`'ın `Retry-After`
+// başlığını tele taşıması gerekiyor (AC7) ama bu `instanceof` ZİNCİRİ ile
+// (ör. `if (error instanceof RateLimitExceededError) { ... }`
+// `mapErrorToResponse`'ta) YAPILMAYACAK — architect bunu açıkça yasakladı,
+// v0.0.6'nın borcunu büyütmemek için (alt sınıfa özgü dallanma, CLAUDE.md
+// §10.12'nin "çekirdek koda sağlayıcıya özgü dallanma yazılmaz" ruhunun
+// hata sınıfları için genişletilmiş hâli). Jenerik, adaptör-nötr:
+// `mapErrorToResponse` bunu OLDUĞU GİBİ taşır, `AppExceptionFilter`
+// `httpAdapter.setHeader()` ile yazar (`x-request-id` deseniyle aynı).
+// `context` gibi BU ALAN DA `toErrorBody` çıktısına GİRMEZ — `error-body.ts`
+// yalnızca dört sabit alanı (`code`/`message`/`details`/`requestId`) üretir,
+// `httpHeaders`'ı hiç OKUMAZ (PO riski 8'in mekanik garantisi: yeni bir alan
+// hiçbir zaman tele sızamaz çünkü `toErrorBody`'nin imzası `error.httpHeaders`
+// erişimi İÇERMİYOR).
 
 import { z } from 'zod'
 
@@ -43,6 +59,14 @@ export interface AppErrorOptions {
   readonly isRetryable?: boolean
   /** Yakalanan orijinal hata — zincirleme için `Error.cause`'a yazılır. */
   readonly cause?: unknown
+  /**
+   * HTTP yanıtına yazılacak ek başlıklar (ör. `Retry-After`). ADDITIVE,
+   * jenerik — `AppExceptionFilter` bunu adaptör-nötr `setHeader()` ile yazar.
+   * **`toErrorBody` çıktısına GİRMEZ** (`context` gibi yalnızca taşıyıcı
+   * katmanın işi); sır İÇERMEMELİDİR, çünkü HTTP yanıt başlığı olarak
+   * doğrudan istemciye gider (CLAUDE.md §4/§10 — PO riski 8).
+   */
+  readonly httpHeaders?: Readonly<Record<string, string>>
 }
 
 /**
@@ -59,6 +83,16 @@ export abstract class AppError extends Error {
   readonly userMessageKey: string
   readonly context: Record<string, unknown>
   readonly isRetryable: boolean
+  /**
+   * `?` DEĞİL — açıkça `| undefined` birleşimi. `exactOptionalPropertyTypes`
+   * altında `options.httpHeaders`'ın okuma tipi zaten `T | undefined`'dır
+   * (opsiyonel alan erişimi); alan `?` ile tanımlansaydı bu değeri doğrudan
+   * atamak "undefined'ı opsiyonel-ama-undefined-olmayan bir alana atama"
+   * hatası verirdi (bkz. `context`/`isRetryable`'ın `??` ile varsayılan
+   * ATADIĞI desen — burada varsayılan YOK, `httpHeaders` gerçekten
+   * tanımsız KALABİLİR, bu yüzden aynı deseni TEKRARLAMADIK).
+   */
+  readonly httpHeaders: Readonly<Record<string, string>> | undefined
 
   protected constructor(options: AppErrorOptions) {
     super(
@@ -71,6 +105,7 @@ export abstract class AppError extends Error {
     this.userMessageKey = options.userMessageKey
     this.context = options.context ?? {}
     this.isRetryable = options.isRetryable ?? false
+    this.httpHeaders = options.httpHeaders
 
     // Node/V8'de yığın izini bu sınıftan (ve üstündeki çağrı çerçevesinden)
     // başlatır. Tarayıcı hedefi yok (apps/api yalnızca Node'da çalışır) ama

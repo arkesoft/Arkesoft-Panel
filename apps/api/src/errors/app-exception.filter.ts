@@ -52,6 +52,17 @@ export class AppExceptionFilter implements ExceptionFilter {
     // tek yazım burada gerçekleşir.
     httpAdapter.setHeader(response, 'x-request-id', requestId)
 
+    // ADDITIVE (ROADMAP v0.0.5, T-006/S3, architect "HATA SINIFLARI" / AC7):
+    // `AppError.httpHeaders`'ın (ör. `Retry-After`) `instanceof` ZİNCİRİ
+    // OLMADAN yazıldığı yer — jenerik, adaptör-nötr, aynı `setHeader()` deseni
+    // (`x-request-id` ile aynı yazım yolu). `mapped.httpHeaders` yalnızca
+    // `AppError` alt sınıfı bu alanı DOLDURDUYSA mevcuttur.
+    if (mapped.httpHeaders !== undefined) {
+      for (const [name, value] of Object.entries(mapped.httpHeaders)) {
+        httpAdapter.setHeader(response, name, value)
+      }
+    }
+
     // `context`/`logContext` yalnızca LOGLANIR — `mapped.body`'ye ASLA girmez.
     logger.error({ code: mapped.body.code, ...mapped.logContext }, 'istek hata ile sonuçlandı')
 

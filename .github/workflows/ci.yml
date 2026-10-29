@@ -880,6 +880,27 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
+      # Mailpit (A-G9, T-006/S1): `infra/docker-compose.yml`'daki yerel
+      # tanımla AYNI imaj/sürüm (axllent/mailpit:v1.32). AC4'ün "Mailpit
+      # HTTP API'sinden gerçekten teslim edilmiş mesaj okunur" gereksinimi
+      # için SMTP (1025) VE HTTP API (8025) portlarının ikisi de gerekli.
+      # Healthcheck `/readyz` — docker-compose'daki ile aynı komut
+      # (`wget`, konteyner 127.0.0.1'de dinliyor; `localhost` DEĞİL — ::1
+      # önce denenip "connection refused" verebiliyor).
+      mailpit:
+        image: axllent/mailpit:v1.32
+        env:
+          MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+          MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
+          MP_MAX_MESSAGES: '2000'
+        ports:
+          - 1025:1025
+          - 8025:8025
+        options: >-
+          --health-cmd "wget -q -O /dev/null http://127.0.0.1:8025/readyz || exit 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - name: Depoyu checkout et
         uses: actions/checkout@v4

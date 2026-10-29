@@ -18,7 +18,7 @@
 // sessizce atla; ortamda zaten tanımlı değişkenler bu durumda tek kaynak olur.
 import { existsSync } from 'node:fs'
 
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 const rootEnvUrl = new URL('../../.env', import.meta.url)
 if (existsSync(rootEnvUrl)) {
@@ -29,6 +29,15 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // ROADMAP v0.0.5, T-006/S7 (packages/db'deki K-E9 deseninin BİREBİR
+    // ikizi): `*.isolation.test.ts` BU hattın değil, `pnpm test:isolation`'ın
+    // (`vitest.isolation.config.ts`) sorumluluğunda. `include` deseni
+    // `.test.ts` ile bittiği için bunları da yakalardı — bu `exclude` olmadan
+    // aynı test İKİ KEZ koşar (V4 çakışması, PO V-P1). `configDefaults.
+    // exclude` (`node_modules`/`.git`) ÜZERİNE eklenir — `exclude`'u SIFIRDAN
+    // yazmak Vitest'in varsayılan hariç tutmalarını SİLER ve `node_modules`
+    // taranmaya başlar.
+    exclude: [...configDefaults.exclude, '**/*.isolation.test.ts'],
     globals: false,
     // ST-6/ST-7'nin ekleyeceği entegrasyon testleri TEK paylaşılan yerel
     // Postgres/Redis'e bağlanacak (packages/db V6/A-V14 ile aynı gerekçe);

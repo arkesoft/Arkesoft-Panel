@@ -18,6 +18,7 @@
 import { Inject, Injectable } from '@nestjs/common'
 import type { NestMiddleware } from '@nestjs/common'
 
+import { describeErrorCause } from '../errors/describe-error-cause.js'
 import type { HttpRequestLike, HttpResponseLike } from '../http/http-request.types.js'
 import { getRequestContext } from '../request-context/request-context.accessors.js'
 import { isTenantExemptPath } from './tenant-exempt-paths.js'
@@ -63,8 +64,13 @@ export class TenantContextMiddleware implements NestMiddleware<HttpRequestLike, 
       // Bu seviye `error` (CLAUDE.md §4 "müdahale gerekir") — `unresolved`
       // dalının `warn`'ından (beklenen ama anormal) BİLİNÇLİ OLARAK ayrı.
       context.tenant = { kind: 'failed', cause }
+      // FIX turu 2 (T-006, solid tur2 M-2, bağlam dışı ama additive kapanış) —
+      // ortak `describeErrorCause()` (`AggregateError`-farkında); naif
+      // `cause.message` okuması DB bağlantı arızalarında (happy-eyeballs
+      // `AggregateError`) `errorMessage: ""` üretirdi (ÖLÇÜLDÜ, security
+      // tur2 S-8).
       context.logger.error(
-        { errorMessage: cause instanceof Error ? cause.message : String(cause) },
+        describeErrorCause(cause),
         'tenant çözümü beklenmedik şekilde başarısız oldu',
       )
     }

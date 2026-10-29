@@ -478,6 +478,7 @@ hata değil, izolasyonun indirilmesidir.
 ## İlişkili Kararlar
 
 - **ADR-0003** madde 7: Prisma migration üretimi + elle RLS DDL'i (dar istisna)
+- **ADR-0008** (v0.0.5): Sır taşıyan Better Auth tablolarının tipi ve linti ile korunması. ADR-0007'nin RLS doktrini bu tablolara uygulanamadığı için ADR-0008 DB seviyesi yerine üç katmanlı (derleme/lint/test) koruma tanımlar. İlişki: ADR-0007 izolasyon ilkesini kurar, ADR-0008 o doktrinin sınırını çizer.
 - **T-004 security**: Metin bekçi (`migration-set.ts`) + canlı linter
   (`catalog-lint.ts`) ayrımı
 - **CLAUDE.md §7**: Tenant izolasyon kontrol listesi (v0.0.13 ile `withTenant()` ve

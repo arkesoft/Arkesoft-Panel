@@ -17,6 +17,17 @@
 //   - `Tenant` ve `User` PLATFORM SEVİYESİDİR, `tenant_id` TAŞIMAZLAR (V4). Tenant'a
 //     bağlı tek tablo `TenantMembership`; RLS politikaları v0.0.13'te elle SQL olarak
 //     eklenecek (bu şema dosyası RLS üretmez — AC6 sapma riskine girmesin).
+//
+// GÜNCELLEME (ROADMAP v0.0.5, T-006/S2 — Better Auth): `Session`/`Account`/
+// `Verification` EKLENDİ, üçü de PLATFORM SEVİYESİ (`tenant_id` TAŞIMAZ) —
+// gerekçe her modelin kendi doc yorumunda. `User`'a `emailVerified`/`image`
+// additive alanları eklendi (A4/A-G1/A-G2, Task raporunda ÖLÇÜLDÜ). Bu üç yeni
+// tablo için `(tenant_id, …)` bileşik indeks GEREKMEZ ve YAZILMAZ (platform
+// tablosu). MADDE 2 — R-1 KARARI (ADR-0008 taslağı): bu üç tablonun sır taşıyan
+// kolonları (`account.password`, `session.token`, `verification.value`) RLS
+// İLE korunamaz (giriş/oturum arama asıldan ÖNCE gelir, `current_setting`'e
+// dayalı yüklem tanımlanamaz) — koruma `src/client.ts` → `AUTH_SECRET_BEARING_MODELS`
+// derleme zamanı daraltmasındadır, bu şema dosyası seviyesinde YOKTUR.
 
 // `output = "../generated"` iki farklı "generated" konumunun KAYNAĞIDIR:
 //   1. packages/db/generated/     — `prisma generate`'in ham TS çıktısı (KÖK, .gitignore'da)
@@ -60,18 +71,123 @@ model Tenant {
 }
 
 /// Platform seviyesi kullanıcı kaydı. Tablo adı `app_user` (R3) — model adı `User`.
+///
+/// GÜNCELLEME (ROADMAP v0.0.5, T-006/S2, architect A4/A-G1 — birebir ÖLÇÜLDÜ):
+/// `emailVerified`/`image` Better Auth'un `User` modelinin BEKLEDİĞİ alanlardır
+/// — `@better-auth/cli generate` çıktısıyla (ölçüm: betterAuth@1.7.14 +
+/// prismaAdapter, bağlayıcı araç olarak kullanılan `@better-auth/cli@1.4.21`,
+/// bkz. Task raporu "A-G1 ÖLÇÜMÜ") BİREBİR karşılaştırıldı, sapma YOK. Yalnızca
+/// EKLEME (additive) — Better Auth'un Prisma adaptörü modele PRISMA MODEL
+/// ADIYLA erişir (`prisma.user`), `@@map("app_user")`/`@map` ADAPTÖRE GÖRÜNMEZ
+/// (A-G2) → `tenant_membership.user_id` FK'si DOKUNULMADAN `app_user.id`'ye
+/// bakmaya devam eder (AC3). `sessions`/`accounts` yalnızca Prisma ilişki
+/// alanlarıdır — DDL ÜRETMEZLER (Session/Account tarafındaki `@relation` FK
+/// kolonunu zaten taşır).
 model User {
-  id        String     @id @default(cuid(2))
-  email     String     @unique
-  name      String
-  status    UserStatus @default(active)
-  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
-  deletedAt DateTime?  @map("deleted_at") @db.Timestamptz(3)
+  id            String     @id @default(cuid(2))
+  email         String     @unique
+  name          String
+  status        UserStatus @default(active)
+  emailVerified Boolean    @default(false) @map("email_verified")
+  image         String?
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt     DateTime?  @map("deleted_at") @db.Timestamptz(3)
 
   memberships TenantMembership[]
+  sessions    Session[]
+  accounts    Account[]
 
   @@map("app_user")
+}
+
+/// Better Auth oturum kaydı. PLATFORM SEVİYESİ (`tenant_id` TAŞIMAZ) — oturum
+/// KULLANICIYA bağlı, kiracıya değil ("bir hesap → birden fazla mağaza" vaadi
+/// bunu zorunlu kılıyor); kiracı üyeliği kontrolü istek ANINDA
+/// `tenant_membership` üzerinden yapılır (R2, v0.0.5 architect kararı).
+///
+/// `session`/`account`/`verification` PostgreSQL'de AYRILMIŞ KELİME DEĞİL →
+/// `app_` öneki (R3) GEREKMEZ.
+///
+/// `ipAddress`/`userAgent` TANIMLANIR ama DOLDURULMAZ
+/// (`advanced.ipAddress.disableIpTracking: true`, backend/S5 kapsamı) — K6
+/// "zenginleştirilmiş meta veri yok" + KVKK (IP kişisel veri, saklama
+/// politikası olmadan tutulmaz). Kolonun BUGÜN şemada olması v0.0.15'in
+/// yıkıcı migration'a ihtiyaç duymamasını sağlayan bilinçli expand adımıdır.
+///
+/// MADDE 2 — R-1 KARARI (ADR-0008 taslağı): `token` oturumun TAŞIYICI kimlik
+/// bilgisidir — RLS'le korunamaz (asıldan ÖNCE okunur). Koruma derleme
+/// zamanında: bkz. `client.ts` → `AUTH_SECRET_BEARING_MODELS`.
+model Session {
+  id        String   @id @default(cuid(2))
+  token     String   @unique
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("session")
+}
+
+/// Better Auth kimlik bilgisi kaydı (e-posta/şifre + ileride sosyal sağlayıcı
+/// bağlantıları). PLATFORM SEVİYESİ — kimlik bilgisi (parola hash'i) HESABA
+/// aittir, kiracıya değil.
+///
+/// `(provider_id, account_id)` BİLEŞİK BENZERSİZLİK kısıtı: aynı sağlayıcı +
+/// sağlayıcı hesap kimliği ikinci bir satıra bağlanamaz (architect VERİ
+/// MODELİ, indeks listesi).
+///
+/// MADDE 2 — R-1 KARARI: `password` parola HASH'idir — RLS'le korunamaz
+/// (giriş anında, asıldan ÖNCE okunur zorundadır). Koruma derleme zamanında:
+/// bkz. `client.ts` → `AUTH_SECRET_BEARING_MODELS`.
+model Account {
+  id                    String    @id @default(cuid(2))
+  accountId             String    @map("account_id")
+  providerId            String    @map("provider_id")
+  userId                String    @map("user_id")
+  accessToken           String?   @map("access_token")
+  refreshToken          String?   @map("refresh_token")
+  idToken               String?   @map("id_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at") @db.Timestamptz(3)
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at") @db.Timestamptz(3)
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("account")
+}
+
+/// Better Auth doğrulama/sıfırlama belirteç kaydı (e-posta doğrulama, şifre
+/// sıfırlama). PLATFORM SEVİYESİ — belirteç e-posta KİMLİĞİNE bağlıdır, giriş
+/// anında kiracı bilgisi henüz yok (R1).
+///
+/// MADDE 2 — R-1 KARARI: `value` HAM belirteçtir — RLS'le korunamaz. Koruma
+/// derleme zamanında: bkz. `client.ts` → `AUTH_SECRET_BEARING_MODELS`.
+///
+/// `User` ile İLİŞKİSİ YOK (Better Auth `identifier`'ı serbest metin olarak
+/// tutar, FK kurmaz) — bu tablo model olarak `User`'dan bağımsızdır.
+model Verification {
+  id         String   @id @default(cuid(2))
+  identifier String
+  value      String
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([identifier])
+  @@index([expiresAt])
+  @@map("verification")
 }
 
 /// Tenant'a bağlı TEK tablo. RLS hazırlığı: `tenant_id` kolonu tam olarak bu adla,

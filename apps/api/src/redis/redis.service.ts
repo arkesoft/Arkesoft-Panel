@@ -14,6 +14,7 @@ import type { OnModuleDestroy } from '@nestjs/common'
 import type { Redis } from 'ioredis'
 import type { Logger } from 'pino'
 
+import { describeErrorCause } from '../errors/describe-error-cause.js'
 import { withTimeout } from '../health/with-timeout.js'
 import { ROOT_LOGGER } from '../logging/logging.tokens.js'
 import { REDIS_CLIENT } from './redis.tokens.js'
@@ -36,8 +37,13 @@ export class RedisService implements OnModuleDestroy {
     const quitSucceeded = await withTimeout(this.redis.quit(), QUIT_TIMEOUT_MS)
       .then(() => true)
       .catch((error: unknown) => {
+        // FIX turu 2 (T-006, solid tur2 M-2, bağlam dışı ama additive
+        // kapanış) — ortak `describeErrorCause()`; naif `error.message`
+        // okuması Redis bağlantı arızalarında (happy-eyeballs
+        // `AggregateError`) `errorMessage: ""` üretirdi (ÖLÇÜLDÜ, security
+        // tur2 S-8 — `.env`'deki canlı `REDIS_URL` tam bu modda).
         this.logger.warn(
-          { errorMessage: error instanceof Error ? error.message : String(error) },
+          describeErrorCause(error),
           'redis quit zaman aşımına uğradı veya başarısız oldu, sert kapanış uygulanıyor',
         )
         return false

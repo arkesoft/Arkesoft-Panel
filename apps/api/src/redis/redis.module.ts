@@ -19,6 +19,7 @@ import type { Logger } from 'pino'
 
 import { API_ENV } from '../config/config.tokens.js'
 import type { ApiEnv } from '../config/api-env.js'
+import { describeErrorCause } from '../errors/describe-error-cause.js'
 import { ROOT_LOGGER } from '../logging/logging.tokens.js'
 import { REDIS_CLIENT } from './redis.tokens.js'
 import { RedisService } from './redis.service.js'
@@ -57,7 +58,13 @@ const redisClientProvider: Provider = {
         return
       }
       lastLoggedAt = now
-      logger.warn({ errorMessage: error.message }, 'redis bağlantı hatası')
+      // FIX turu 2 (T-006, solid tur2 M-2 + security tur2 S-8 — ÖLÇÜLDÜ, bu
+      // modülün CANLI `.env` yapılandırmasını (`redis://localhost:6379`,
+      // çift yığın IPv4+IPv6) tam etkileyen kusur): naif `error.message`
+      // happy-eyeballs `AggregateError`'da HER ZAMAN boş dize döner —
+      // operatör `errorMessage: ""` görürdü. Ortak `describeErrorCause()`
+      // `.errors[0]`'a iner.
+      logger.warn(describeErrorCause(error), 'redis bağlantı hatası')
     })
 
     return client

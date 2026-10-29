@@ -14,6 +14,15 @@
 import { Module, RequestMethod } from '@nestjs/common'
 import type { MiddlewareConsumer, NestModule } from '@nestjs/common'
 
+// T-006/S5 EKLEMESİ: `AuthModule` — `TenancyModule`'den SONRA, `HealthModule`'den
+// ÖNCE (PO dosya sahipliği, "app.module.ts SIRALI PAYLAŞIMLI DOSYA" R-P3, S5
+// `imports`'a YALNIZCA EKLER). `configure()`'a DOKUNULMADI — o S6'nın işi.
+// T-006/S6 EKLEMESİ: `AuthContextMiddleware` — `configure()`'da
+// `TenantContextMiddleware`'den SONRA zincire eklenir (PO dosya sahipliği,
+// "app.module.ts SIRALI PAYLAŞIMLI DOSYA" R-P3; bu alt görev yalnızca
+// `configure()`'u değiştirir, `imports` S5'in).
+import { AuthContextMiddleware } from './auth/auth-context.middleware.js'
+import { AuthModule } from './auth/auth.module.js'
 import { ConfigModule } from './config/config.module.js'
 import { HealthModule } from './health/health.module.js'
 import { LoggingModule } from './logging/logging.module.js'
@@ -33,7 +42,15 @@ import { TenancyModule } from './tenancy/tenancy.module.js'
 import { TenantContextMiddleware } from './tenancy/tenant-context.middleware.js'
 
 @Module({
-  imports: [ConfigModule, LoggingModule, PrismaModule, RedisModule, TenancyModule, HealthModule],
+  imports: [
+    ConfigModule,
+    LoggingModule,
+    PrismaModule,
+    RedisModule,
+    TenancyModule,
+    AuthModule,
+    HealthModule,
+  ],
 })
 export class AppModule implements NestModule {
   // ST-4 (`RequestContextMiddleware`) ve ST-5 (`TenantContextMiddleware`) bu
@@ -55,8 +72,15 @@ export class AppModule implements NestModule {
     // T-002/ST-5 EKLEMESİ: `TenantContextMiddleware` AYNI zincire,
     // `RequestContextMiddleware`'DEN SONRA eklenir (K-A5, bağlayıcı sıra) —
     // ST-4'ün bulduğu R-P4 çözümüyle (`'*path'`) AYNI desen kullanılır.
+    //
+    // T-006/S6 EKLEMESİ: `AuthContextMiddleware` ZİNCİRİN SONUNA,
+    // `TenantContextMiddleware`'DEN SONRA eklenir — `AuthGuard`'ın R2 üyelik
+    // kontrolü, bu middleware'in yazdığı `auth` alanının YANINDA
+    // `TenantContextMiddleware`'in ÇÖZDÜĞÜ `tenant` alanına da ihtiyaç duyar;
+    // üçü de AYNI zincirde, tek `consumer.apply()` çağrısında kalır (SATIR
+    // SİLİNMEDİ/yeniden DÜZENLENMEDİ, yalnızca EKLENDİ).
     consumer
-      .apply(RequestContextMiddleware, TenantContextMiddleware)
+      .apply(RequestContextMiddleware, TenantContextMiddleware, AuthContextMiddleware)
       .forRoutes({ path: '*path', method: RequestMethod.ALL })
   }
 }

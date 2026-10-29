@@ -497,6 +497,110 @@ pnpm release:version  # changeset → sürüm yükselt → CHANGELOG güncelle +
 
 **DİKKAT:** ~~`pnpm changeset version`~~ tek başına kullanma — kök sürümünü senkronlamaz.
 
+---
+
+## Kimlik Doğrulama (v0.0.5+)
+
+### Zorunlu Ortam Değişkenleri
+
+v0.0.5 ile Better Auth entegrasyonu iki **yeni zorunlu** ortam değişkeni getiriyor:
+
+- **`BETTER_AUTH_SECRET`** — en az 32 karakter, rastgele bir dize (oturum şifrelemesi için)
+- **`AUTH_BASE_URL`** — tam URL biçimi, ör. `http://panel.arkesoft.localhost:3000`
+
+Olmadığında `apps/api` açılışta **fail-fast** hatası verir — sessizce başlamaz. `.env.example` dosyasından değerleri kopyalayarak `.env`'yi güncelleyin.
+
+### E-posta Doğrulama Akışı (Mailpit)
+
+Kayıt sırasında `POST /auth/sign-up/email` uç doğrulama e-postası gönderir. Mailpit yakalıyor:
+
+1. **E-postayı HTTP API üzerinden oku:**
+
+   Doğrulama e-postasının tam gövdesini alıp içindeki URL'yi çıkart:
+
+   ```bash
+   curl http://localhost:8025/api/v1/message/$(curl http://localhost:8025/api/v1/messages | jq -r '.messages[0].ID') | jq -r '.Text' | grep -oE 'https?://[^[:space:]<>"]+'
+   ```
+
+   Adım adım: son mesajı listele (`/api/v1/messages`), ID'sini al, tam gövde ile oku (`/api/v1/message/{id}`), `Text` alanından ilk URL'yi çıkart.
+
+2. **Token parametresini al** ve doğrulama ucuna gönder:
+
+   ```bash
+   curl -X GET 'http://localhost:3000/auth/verify-email?token=<token-parametresi>'
+   ```
+
+3. Yanıt 200 ise doğrulama tamamlandı; ardından giriş yapabilir.
+
+Mailpit arayüzü (`http://localhost:8025`) de HTML'den her e-postayı görebilir.
+
+### E-posta Gönderilemedi — Kurtarma Yolu
+
+Kayıt sırasında SMTP hatası meydana gelirse (Mailpit down vb.) `POST /auth/sign-up/email` **2xx** döner — istek başarılı olur ve kullanıcı satırı **veritabanında oluşur**, ama e-posta **gönderilmez**. Belirti yalnızca logda görülür: `causeCode: "MAIL_DELIVERY_FAILED"` + `providerResponseCode` ve `providerErrorCode` alanları. Yeniden kayıt denemesi de **2xx** döner ve ikinci bir satır **oluşturmaz** (varlık sızdırmazlığı, A3 kararı).
+
+**Kurtarma:** `/auth/send-verification-email` ucuna POST yaparak doğrulama e-postasını yeniden gönderin. Bu uç **kimlik doğrulaması gerekmez** (allowlist'te) ve oturum olmadan çağrılabilir. Payload:
+
+```json
+{
+  "email": "kullanici@example.com"
+}
+```
+
+### Oran Sınırı Sıfırlanması
+
+Kimlik doğrulama uçlarında oran sınırlaması vardır:
+
+- **Giriş:** `5 başarısız/15dk` hesap başına, `20/15dk` IP başına
+- **Şifre sıfırlama, kayıt ve doğrulama e-postası:** `3/saat` e-posta başına, `10/saat` IP başına
+
+Meşru bir kullanıcı kilitlenmişse Redis sayaçlarını sıfırlamak için:
+
+```bash
+redis-cli --scan --pattern 'platform:auth:*' | xargs redis-cli DEL
+```
+
+Tüm auth sayaçlarını temizler. **Eşik değerleri** modül sabitleridir ve ortam değişkeni ile değiştirilemez — tasarım gereği (CLAUDE.md §4.4, K3 kısıtlaması).
+
+### Log Olayları
+
+Kimlik doğrulama uçlarından üretilen log olayları ve beklenen alanlar:
+
+| Olay                          | level | requestId | userId | tenantId | Açıklama                                                                                                                        |
+| ----------------------------- | ----- | --------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `e-posta gönderildi`          | info  | ✓         | —      | —        | Doğrulama e-postası göndermesi başladı. `userId` ve `tenantId` bu aşamada henüz yok (hesap henüz kimliksiz, platform seviyesi). |
+| `kullanıcı kaydı oluşturuldu` | info  | ✓         | ✓      | —        | Hesap oluşturuldu ve doğrulandı; `userId` var. `tenantId` henüz yok (kiracı bağlantısı daha sonra).                             |
+| `giriş başarılı`              | info  | ✓         | ✓      | —        | Oturum başladı; `tenantId` kimlik doğrulama uçlarında olmaz (kiracı bağlamı `/auth/*` dışında kurulur).                         |
+| `giriş başarısız`             | warn  | ✓         | —      | —        | Geçersiz kimlik bilgileri. `emailMasked` alanı maskelenen e-postadır (ör. `z***@arkesoft.test`).                                |
+
+**Not:** `tenantId` kimlik doğrulama uçlarında (`/auth/*`) hiçbir zaman var olmaz — oturum açıncaya kadar kiracı bilinmez. `requestId` tüm işaretler tarafından yapılır; `traceId` OpenTelemetry v0.0.17'de eklenecek.
+
+### `AUTH_TRUSTED_PROXY_COUNT` Uyarısı
+
+Oran sınırlaması IP başına da sayılır. Kubernetes ingress arkasında API çalışıyorsa **`X-Forwarded-For` başlığı okunmalı**:
+
+- **`AUTH_TRUSTED_PROXY_COUNT=0`** (varsayılan) — XFF yok sayılır; soket adresi kullanılır → **global kilit** (tüm istekler aynı IP'den görünür, milyonların denenmesi bloke edilir)
+- **`AUTH_TRUSTED_PROXY_COUNT=1`** — XFF'in (virgüllerle ayrılmış) liste içinde, `length - 1` indeksli öğe okunur (Express'in `trust proxy: 1` semantiğiyle eş değer).
+- **Yanlış ayar en sık: üretimde 0 bırakılması.** v0.18.0 ingress tanımı bunu doğru ayarlamak **zorundu** tutacak
+
+### İçerik Anahtarları Kaydı
+
+E-posta mesajları `apps/api/src/auth/mail/messages.ts`'te tanımlanmış anahtar-metin eşlemesiyle yönetilir. İçerik anahtarları:
+
+- `auth.emailVerification` — doğrulama e-postası
+- `auth.passwordReset` — şifre sıfırlama e-postası
+
+**PM riski 5:** `packages/i18n` modülü v0.0.18'de geliyor. Bu anahtarlar v0.0.18 öncesinde **bu dosyada kalır**; migrasyon sırasında birebir `packages/i18n` kataloguna taşınmalıdır. Aksi takdirde ilk sürümde e-postalar **boş içerik gönderir**.
+
+### ⚠️ Tohumlanmış Kullanıcı Giriş Yapamaz
+
+`pnpm db:seed` komutu demo bir kiracı ve üye oluşturur, ancak Better Auth `account` satırı **üretmiyor**. Sonuç: demo kullanıcı (`demo-yonetici@arkesoft.test`) giriş **başarısız** olur (kimlik bilgileri oluşturulmamışsa giriş uç noktası başarısız olur).
+
+**Giriş için:** panel'de "Kaydol" ucu üzerinden kayıt yapmanız veya administratif olarak `account` satırı `prisma.account.create()` ile oluşturmanız gerekir. Seed enhancement v0.0.6 veya v0.0.7'de planlanmıştır.
+
+### IP ve User-Agent Takibi (v0.0.5+)
+
+Better Auth kütüphanesi yapılandırmasında `ipAddress.disableIpTracking: true` ayarı etkinse, `session` tablosu `ipAddress` ve `userAgent` kolonlarına **boş dize** (`''`) yazılır. Sütunlar `NULL` değil **boş string** taşır (417+ kayıtlı oturumda `length=0` değeri). KVKK açısından sorun yok (kişisel veri saklanmıyor) ama **"kolonu takip et / bırak"** sorusu **`IS NULL` ile cevaplanamaz** — v0.0.15'te normalizasyon planlanmıştır. İçinde migration **gerekmez** (`ALTER` sadece `DEFAULT` ekler).
+
 ### Literal-Token Tuzağı Uyarısı
 
 Sürüm PR'ı, branch koruması ve tag atma scriptleri grep arama tarafından doğrulanır. Grep

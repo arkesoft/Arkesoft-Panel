@@ -17,6 +17,20 @@ class SampleError extends AppError {
   }
 }
 
+// PO riski 8 (ROADMAP v0.0.5, T-006/S3) — `httpHeaders` (Retry-After, AC7)
+// `toErrorBody` çıktısına GİRMEMELİ. `RateLimitExceededError` henüz doğmadı
+// (v0.0.5/S8'in işi); taban sözleşmesi burada bağımsız ölçülür.
+class SampleErrorWithHttpHeaders extends AppError {
+  constructor() {
+    super({
+      code: 'SAMPLE_RATE_LIMITED',
+      httpStatus: 429,
+      userMessageKey: 'errors.sample.rateLimited',
+      httpHeaders: { 'Retry-After': '60' },
+    })
+  }
+}
+
 describe('toErrorBody', () => {
   it('çıktı anahtar kümesi tam olarak code/details/message/requestId olur', () => {
     const error = new SampleError({ userId: 'usr_123' })
@@ -76,5 +90,15 @@ describe('toErrorBody', () => {
     const body = toErrorBody(error, 'req_abc123')
 
     expect(() => appErrorBodySchema.parse(body)).not.toThrow()
+  })
+
+  it('httpHeaders (Retry-After) çıktıya ASLA girmez (PO riski 8, AC7 — v0.0.5/T-006/S3)', () => {
+    const error = new SampleErrorWithHttpHeaders()
+
+    const body = toErrorBody(error, 'req_abc123')
+
+    expect('httpHeaders' in body).toBe(false)
+    expect(Object.keys(body).sort()).toEqual(['code', 'details', 'message', 'requestId'])
+    expect(JSON.stringify(body)).not.toContain('Retry-After')
   })
 })
