@@ -164,6 +164,44 @@ Tüm hata yanıtları aşağıdaki yapıyı taşır:
 - **`requestId`:** İstekte benzersiz kimlik (log korelasyonu için)
 - **`context` alanı asla yanıta yazılmaz** — yalnızca server log'unda görülür
 
+### tRPC uçları (v0.0.6+)
+
+İlk tRPC prosedürleri `/trpc/*` yolunda çalışıyor:
+
+```bash
+# session.me — geçerli kullanıcı kimliği (üye kiracılar listesi değil)
+curl http://demo-magaza.arkesoft.localhost:3000/trpc/session.me \
+  -H "Cookie: __Secure-better-auth.session_token=..." \
+  -H "Origin: http://localhost:5173"
+
+# tenant.current — geçerli kiracı özeti
+curl http://demo-magaza.arkesoft.localhost:3000/trpc/tenant.current \
+  -H "Cookie: __Secure-better-auth.session_token=..." \
+  -H "Origin: http://localhost:5173"
+```
+
+**İstemci tarafında** tipleri `@arkesoft/trpc` paketinden alıyorsunuz:
+
+```typescript
+import { createTrpcClient, type RouterOutputs } from '@arkesoft/trpc'
+
+const client = createTrpcClient({
+  url: 'http://localhost:3000/trpc',
+})
+
+const tenant = await client.tenant.current.query()
+// tenant tipi RouterOutputs['tenant']['current'] ile otomatik kontrol edilir
+```
+
+**Batching kapalıdır** — `httpLink` kullanılır, `httpBatchLink` değil. Gerekçe: public
+prosedürlerin kimlik muafiyeti **tam yol eşleşmesiyle** verilir (`AUTH_EXEMPT_PATHS`);
+batch istekte tek HTTP yolu birden fazla prosedürü taşıyabilir ve muafiyeti sessiz
+kılabilir. (Bkz. ADR-0009 madde 8.)
+
+**Test:** `pnpm --filter @arkesoft/trpc test` hem çalışma zamanı hem tip testlerini koşar
+(`vitest --typecheck` açık). Paket izole olarak hermetic koşur — Redis/Postgres bağımlılığı
+yok.
+
 Tüm istekler pino yapılandırılmış log'a yazılır:
 
 ```json

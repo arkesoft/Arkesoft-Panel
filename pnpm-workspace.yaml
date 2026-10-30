@@ -162,3 +162,27 @@ catalog:
   # tiplerini taşıyor (`./dist/cjs/nodemailer.d.ts`) — `@types/nodemailer`
   # GEREKMİYOR.
   nodemailer: 10.2.1
+
+  # --- tRPC sözleşme katmanı (ROADMAP v0.0.6, T-007/ST-0 spike'ı) ---
+  # CLAUDE.md §2 yığın tablosunda zaten adıyla yazılı (yeni ana bağımlılık onayı
+  # gerekmiyor — PM kararı #2). `@trpc/server` + `@trpc/client` BİLİNÇLİ OLARAK
+  # dist-tag "latest" (11.22.1) DEĞİL: `npm view @trpc/server time --json` /
+  # `npm view @trpc/client time --json` 11.22.1'in 2026-10-28'de (BUGÜNDEN 1 gün
+  # önce) yayınlandığını gösteriyor — pnpm'in tedarik zinciri koruması ("minimum
+  # release age") bunu tetikler (nodemailer 10.3.0 emsali, T-006). Bekleme
+  # koruması bir izin kaydıyla atlanmadı; onun yerine KORUMAYI TETİKLEMEYEN en
+  # güncel KARARLI sürüm seçildi: 11.19.0 (yayın: 2026-09-16, 43+ gün).
+  # `peerDependencies`: her ikisi de "typescript": ">=5.7.2" (üst sınır YOK) →
+  # katalog `typescript: 6.0.3` pini kapsanıyor, gevşetme gerekmedi.
+  # `@trpc/client@11.19.0`'ın peer'ı `"@trpc/server": "11.19.0"` İSTİYOR —
+  # ikisinin EXACT ve AYNI sürüme sabitlenmesi (`^`/`~` değil) architect'in R2
+  # kararıydı; bu peer kaydı o kararı paketin kendisi de zorunlu kılıyor
+  # (tel protokolünü paylaşıyorlar; ayrı kayan aralıklar sessiz uyumsuzluk
+  # üretir). Spike (scratchpad, repoya girmedi): TS 6.0.3 + zod 4.6.7 +
+  # `exactOptionalPropertyTypes`/`noUncheckedIndexedAccess`/`verbatimModuleSyntax`
+  # ile `tsc --noEmit` exit 0; `vitest run --typecheck` kasıtlı yanlış
+  # `expectTypeOf` ile exit ≠0 (gerçekten denetlendiği kanıtlandı). Zod 4
+  # `.output()`'a doğrudan validator olarak veriliyor → Yol A (zodParser
+  # sarmalayıcısı gerekmiyor).
+  '@trpc/server': 11.19.0
+  '@trpc/client': 11.19.0

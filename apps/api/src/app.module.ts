@@ -40,6 +40,12 @@ import { RequestContextMiddleware } from './request-context/request-context.midd
 // sürümün SON yazıcısı, satır SİLİNMEDİ/yeniden DÜZENLENMEDİ).
 import { TenancyModule } from './tenancy/tenancy.module.js'
 import { TenantContextMiddleware } from './tenancy/tenant-context.middleware.js'
+// T-007/S5 EKLEMESİ: `TrpcModule` — `@All('trpc/*path')` controller'ı
+// (`imports` dizisinin SONUNA eklendi, PO dosya sahipliği R-P3; `configure()`
+// kancasına DOKUNULMADI — zincir zaten `'*path'` ile TÜM yolları kapsıyor,
+// bu modül hiçbir global enhancer kaydetmediği için mevcut guard sırası
+// DEĞİŞMEDİ, architect "Modül yerleşimi" bölümü).
+import { TrpcModule } from './trpc/trpc.module.js'
 
 @Module({
   imports: [
@@ -50,6 +56,7 @@ import { TenantContextMiddleware } from './tenancy/tenant-context.middleware.js'
     TenancyModule,
     AuthModule,
     HealthModule,
+    TrpcModule,
   ],
 })
 export class AppModule implements NestModule {

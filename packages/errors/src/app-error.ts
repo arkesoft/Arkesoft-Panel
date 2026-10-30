@@ -94,6 +94,30 @@ export abstract class AppError extends Error {
    */
   readonly httpHeaders: Readonly<Record<string, string>> | undefined
 
+  /**
+   * Tele yazılacak (public) ek detay — ROADMAP v0.0.6, T-007/ST-1, architect K3
+   * (ADR-0010 §1). VARSAYILAN BOŞ NESNE: bir alt sınıf tele bir şey taşımak
+   * istiyorsa bunu AÇIKÇA `override` ETMEK ZORUNDADIR — `noImplicitOverride:
+   * true` olduğu için `override` anahtar sözcüğü eksikse DERLEME HATASI verir
+   * (yazım hatasına karşı mekanik koruma, ADR-0008'in "fail-closed" dersinin
+   * hata alanındaki karşılığı).
+   *
+   * **Yön ayrımı — İKİSİ DE BAĞLAYICI, security gate kontrol listesine girer
+   * (architect riski 9):**
+   * - `context` (yukarıda) → YALNIZCA LOGLANIR. PII içerebilir. Tel
+   *   sözleşmesine (`error-body.ts` → `toErrorBody`) ASLA serileşmez.
+   * - `publicDetails` (burada) → YALNIZCA TELE YAZILIR (`toErrorBody` →
+   *   `details`). PII/sır İÇEREMEZ — istemcinin doğrudan göreceği veridir.
+   *
+   * Bir alt sınıf hangi bilgiyi hangi alana koyacağını AÇIKÇA seçmek
+   * zorundadır; PII'yi `publicDetails`'e koymak bilinçli bir yanlış kullanım
+   * olur ve mekanizma bunu tek başına engelleyemez (ADR-0010 "olumsuz ve
+   * kabul edilen maliyetler").
+   */
+  get publicDetails(): Readonly<Record<string, unknown>> {
+    return {}
+  }
+
   protected constructor(options: AppErrorOptions) {
     super(
       options.userMessageKey,

@@ -7,7 +7,12 @@
 export { AppError, isAppError } from './app-error.js'
 export type { AppErrorOptions } from './app-error.js'
 
-export { appErrorBodySchema, toErrorBody } from './error-body.js'
+export {
+  appErrorBodySchema,
+  genericTransportErrorBody,
+  toErrorBody,
+  unknownErrorBody,
+} from './error-body.js'
 export type { AppErrorBody } from './error-body.js'
 
 export { maskEmail, PINO_REDACT_PATHS } from './redaction.js'

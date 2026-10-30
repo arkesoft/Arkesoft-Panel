@@ -66,7 +66,7 @@ Kullanıcı isteği
 | Gate    | `solid`     | opus   | SOLID/DRY/KISS, katman, tip disiplini     |
 | Gate    | `wcag`      | sonnet | WCAG 2.2 AA                               |
 | Gate    | `perf`      | sonnet | Core Web Vitals, N+1, bundle              |
-| Kapanış | `docs`      | haiku  | README, ADR, changeset, CHANGELOG         |
+| Kapanış | `docs`      | sonnet | README, ADR, changeset, CHANGELOG         |
 | Kapanış | `release`   | sonnet | Versiyon bump, ROADMAP, commit mesajı     |
 
 Her gate ajanı raporunu **hem** handoff olarak Orkestratöre döndürür **hem de**

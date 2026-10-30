@@ -64,4 +64,11 @@ describe('TENANT_EXEMPT_PATHS', () => {
   it('tamamen ilgisiz bir yol muaf değildir', () => {
     expect(isTenantExemptPath('/products')).toBe(false)
   })
+
+  // ROADMAP v0.0.6, T-007/S6, architect riski 8 — muafiyet kümesi regresyonu:
+  // `/trpc/*` BİLİNÇLİ OLARAK bu kümede DEĞİL (v0.0.6'da erişilebilir
+  // publicProcedure yok); kardinalite assert'i (12) bu satırla DEĞİŞMEDİ.
+  it("/trpc/tenant.current MUAF DEĞİLDİR — v0.0.6'da tRPC yüzeyi kiracı bağlamından muaf değil", () => {
+    expect(isTenantExemptPath('/trpc/tenant.current')).toBe(false)
+  })
 })

@@ -12,14 +12,27 @@
 // SIZDIRMAZLIK (CLAUDE.md §17 + A-V25): ham `HttpException`/bilinmeyen hata
 // mesajı `body.message`'A ASLA YAZILMAZ — yalnızca `logContext` üzerinden
 // loglanır (`AppExceptionFilter` bunu `getLogger()`/`context.logger` ile yazar).
+//
+// ROADMAP v0.0.6, T-007/ST-1, architect K3 (ADR-0010 §1/§2): "bu hatanın
+// `details`'i nedir" bilgisi artık burada bir `instanceof` zinciriyle
+// DURMUYOR — `toErrorBody` `error.publicDetails`'i doğrudan okur
+// (`ValidationError`/`DependencyUnavailableError` kendi `override get
+// publicDetails()`'ini taşır). Yeni bir `details` taşıyan hata sınıfı bu
+// dosyayı DÜZENLEMEZ (AC9(b)'nin "tek doğruluk kaynağı" şartı). Çerçeve
+// kaynaklı/bilinmeyen hata gövdeleri de `@arkesoft/errors`'un fabrikalarından
+// gelir — literal kopyası burada YOK (AC10, "iki yüzey birebir aynı gövde"
+// YAPI ile sağlanır, `packages/trpc` AYNI fonksiyonları çağıracak).
 
 import { HttpException } from '@nestjs/common'
-import { isAppError, toErrorBody } from '@arkesoft/errors'
+import {
+  genericTransportErrorBody,
+  isAppError,
+  toErrorBody,
+  unknownErrorBody,
+} from '@arkesoft/errors'
 import type { AppError, AppErrorBody } from '@arkesoft/errors'
 
 import { assertNever } from './assert-never.js'
-import { DependencyUnavailableError } from './domain/dependency-unavailable.error.js'
-import { ValidationError } from './domain/validation.error.js'
 
 export type ErrorMappingResult = {
   readonly httpStatus: number
@@ -55,28 +68,8 @@ function classifyError(error: unknown): ClassifiedError {
   return { kind: 'unknown', error }
 }
 
-/**
- * Bazı `AppError` alt sınıfları tel sözleşmesine ÖZEL bir `details` şekli
- * taşır (`ValidationError.fields`, `DependencyUnavailableError.checks`).
- * Diğerleri (ör. `TenantNotFoundError`) `toErrorBody`'nin varsayılanını
- * (`{}`) kullanır — AC8 sızdırmazlığı budur: hangi sebepten çözülemediği
- * tel üstüne ASLA yazılmaz.
- */
-function resolveAppErrorDetails(error: AppError): Record<string, unknown> | undefined {
-  if (error instanceof ValidationError) {
-    return { fields: error.fields }
-  }
-
-  if (error instanceof DependencyUnavailableError) {
-    return { checks: error.checks }
-  }
-
-  return undefined
-}
-
 function mapAppError(error: AppError, requestId: string): ErrorMappingResult {
-  const details = resolveAppErrorDetails(error)
-  const body = toErrorBody(error, requestId, details)
+  const body = toErrorBody(error, requestId)
   const logContext = { code: error.code, isRetryable: error.isRetryable, context: error.context }
 
   // `exactOptionalPropertyTypes`: `httpHeaders` alanı YOKSA hiç YAZILMAZ —
@@ -97,13 +90,7 @@ function mapAppError(error: AppError, requestId: string): ErrorMappingResult {
  */
 function mapHttpException(error: HttpException, requestId: string): ErrorMappingResult {
   const httpStatus = error.getStatus()
-
-  const body: AppErrorBody = {
-    code: 'HTTP_EXCEPTION',
-    message: 'errors.http.generic',
-    details: {},
-    requestId,
-  }
+  const body: AppErrorBody = genericTransportErrorBody(requestId)
 
   return {
     httpStatus,
@@ -119,12 +106,7 @@ function mapHttpException(error: HttpException, requestId: string): ErrorMapping
  * her şey. 500 + genel kod; ham mesaj YALNIZCA loglanır (CLAUDE.md §17).
  */
 function mapUnknownError(error: unknown, requestId: string): ErrorMappingResult {
-  const body: AppErrorBody = {
-    code: 'INTERNAL_ERROR',
-    message: 'errors.internal.unknown',
-    details: {},
-    requestId,
-  }
+  const body: AppErrorBody = unknownErrorBody(requestId)
 
   return {
     httpStatus: 500,

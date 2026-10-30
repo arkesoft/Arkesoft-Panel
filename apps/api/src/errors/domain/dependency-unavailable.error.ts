@@ -1,9 +1,13 @@
 // @arkesoft/api — DEPENDENCY_UNAVAILABLE (ROADMAP v0.0.4, T-002/ST-4, architect K-A8)
 //
 // `GET /health/ready`'nin (ST-6) döneceği hata. `checks` ayrı TİPLİ bir alan
-// (`ValidationError.fields` ile aynı desen) — `error-mapping.ts` bunu okuyup
-// `details.checks` üretir. `isRetryable: true`: bağımlılık geçici olarak
-// erişilemez olabilir, çağıran yeniden deneyebilir.
+// (`ValidationError.fields` ile aynı desen); bağımlılık adı/durumu PII/sır
+// İÇERMEZ, tele yazılmaya UYGUNDUR. `isRetryable: true`: bağımlılık geçici
+// olarak erişilemez olabilir, çağıran yeniden deneyebilir.
+//
+// ROADMAP v0.0.6, T-007/ST-1, architect K3 (ADR-0010 §1): `details.checks`
+// artık `error-mapping.ts`'teki merkezi bir `instanceof` zincirinden değil,
+// bu sınıfın `override get publicDetails()`'inden gelir.
 
 import { AppError } from '@arkesoft/errors'
 
@@ -22,5 +26,9 @@ export class DependencyUnavailableError extends AppError {
       isRetryable: true,
     })
     this.checks = checks
+  }
+
+  override get publicDetails(): Readonly<Record<string, unknown>> {
+    return { checks: this.checks }
   }
 }

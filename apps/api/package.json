@@ -29,6 +29,7 @@
     "@arkesoft/config": "workspace:*",
     "@arkesoft/db": "workspace:*",
     "@arkesoft/errors": "workspace:*",
+    "@arkesoft/trpc": "workspace:*",
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",
     "@nestjs/platform-express": "catalog:",

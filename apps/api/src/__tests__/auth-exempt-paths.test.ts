@@ -61,4 +61,11 @@ describe('AUTH_EXEMPT_PATHS', () => {
   it('tamamen ilgisiz bir yol muaf değildir', () => {
     expect(isAuthExemptPath('/products')).toBe(false)
   })
+
+  // ROADMAP v0.0.6, T-007/S6, architect riski 8 — muafiyet kümesi regresyonu:
+  // `/trpc/*` BİLİNÇLİ OLARAK bu kümede DEĞİL (v0.0.6'da erişilebilir
+  // publicProcedure yok); kardinalite assert'i (9) bu satırla DEĞİŞMEDİ.
+  it("/trpc/session.me MUAF DEĞİLDİR — v0.0.6'da tRPC yüzeyi kimlikten muaf değil", () => {
+    expect(isAuthExemptPath('/trpc/session.me')).toBe(false)
+  })
 })

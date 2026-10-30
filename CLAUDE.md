@@ -326,7 +326,7 @@ Yeni bir endpoint, prosedür, kuyruk işi veya tablo eklerken **her maddeyi** do
 - [ ] Önbellek anahtarı `tenant:{tenantId}:...` formatında; global anahtarda tenant verisi yok.
 - [ ] Yüklenen/indirilen dosya yolu tenant önekiyle doğrulanıyor.
 - [ ] `createTenantIsolationSuite()` ile çapraz okuma **ve** yazma testi yazıldı.
-- [ ] Hata mesajı başka tenant'ın varlığını sızdırmıyor (var olmayan vs. yetkisiz ayrımı yapılmıyor → her ikisi de 404).
+- [ ] Hata mesajı başka tenant'ın varlığını sızdırmıyor (var olmayan vs. yetkisiz ayrımı yapılmıyor → her ikisi de 404); istisna: host çözümünden gelen kiracının kendisi için — bkz. ADR-0010 §5.
 - [ ] Log kayıtlarında `tenantId` var.
 - [ ] Süper admin erişimi varsa impersonation kaydı ve denetim kaydı üretiliyor.
 

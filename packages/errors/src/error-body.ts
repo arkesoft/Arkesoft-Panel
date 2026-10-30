@@ -20,6 +20,15 @@
 // dönüş nesnesi (`code`/`message`/`details`/`requestId`) ELLE yazılır,
 // `error`'dan spread edilmez — `httpHeaders` eklenecek bir gün BURADA
 // unutulup sızsa bile bu fonksiyon onu OKUMADIĞI için sızamaz.
+//
+// ROADMAP v0.0.6, T-007/ST-1, architect K3 (ADR-0010 §1/§2): `details`'in TEK
+// kaynağı artık `error.publicDetails`'tir — harici üçüncü parametre
+// KALDIRILDI. "Bu hatanın tel üstündeki detayı nedir" bilgisi `apps/api`'deki
+// merkezi bir `instanceof` zincirinde değil, hatanın KENDİSİNDE durur; yeni
+// bir hata sınıfı artık bu dosyayı DÜZENLEMEZ. Fail-closed: `isAppError`'ın
+// yapısal yedek yolundan `true` dönen bir nesnede `publicDetails` getter'ı
+// OLMAYABİLİR (paket çoğalması) — okunan değer şema ile doğrulanır,
+// doğrulama başarısız olursa `{}` kullanılır (körü körüne yazılmaz).
 
 import { z } from 'zod'
 
@@ -40,21 +49,62 @@ export const appErrorBodySchema = z.object({
 export type AppErrorBody = z.infer<typeof appErrorBodySchema>
 
 /**
+ * `appErrorShapeSchema`'nın tel-gövdesi karşılığı — `error.publicDetails`
+ * okunurken fail-closed doğrulama için kullanılır. `appErrorShapeSchema`
+ * (app-error.ts) BÜYÜTÜLMEZ; bu, ondan BAĞIMSIZ, yalnızca `details` alanının
+ * şeklini doğrulayan ayrı bir şemadır.
+ */
+const publicDetailsShapeSchema = z.record(z.string(), z.unknown())
+
+/**
  * `AppError`'ı tel sözleşmesine çevirir.
  *
  * - `message` → `error.userMessageKey` (A-V24 — i18n anahtarı, ham metin değil).
- * - `details` → verilmezse `{}` (AC8 sızdırmazlığı: her zaman aynı şekil).
+ * - `details` → YALNIZCA `error.publicDetails`'ten gelir (ADR-0010 §1, K3).
+ *   İkinci bir doğruluk kaynağı (harici parametre) YOK.
+ * - **Fail-closed (paket çoğalması):** `isAppError`'ın yapısal yedek yolundan
+ *   `true` dönen bir nesnede `publicDetails` getter'ı OLMAYABİLİR. Okunan
+ *   değer `publicDetailsShapeSchema` ile doğrulanır; doğrulama BAŞARISIZ
+ *   olursa `{}` kullanılır — körü körüne yazmak YASAK.
  * - `error.context` → ASLA bu çıktıya girmez (A-V25); yalnızca logger okur.
  */
-export function toErrorBody(
-  error: AppError,
-  requestId: string,
-  details?: Record<string, unknown>,
-): AppErrorBody {
+export function toErrorBody(error: AppError, requestId: string): AppErrorBody {
+  const parsedDetails = publicDetailsShapeSchema.safeParse(error.publicDetails)
+
   return {
     code: error.code,
     message: error.userMessageKey,
-    details: details ?? {},
+    details: parsedDetails.success ? parsedDetails.data : {},
+    requestId,
+  }
+}
+
+/**
+ * Çerçeve kaynaklı (platformun `AppError` hiyerarşisinden GELMEYEN) hatalar
+ * için jenerik tel gövdesi fabrikası (ADR-0010 §2, ROADMAP v0.0.6 T-007/ST-1).
+ * `apps/api`'nin HTTP yolu VE v0.0.6'nın `packages/trpc`'si AYNI fonksiyonu
+ * çağırır — literal kopyası yok; "iki yüzey birebir aynı gövde" şartı test
+ * değil YAPI ile sağlanır (AC10).
+ */
+export function genericTransportErrorBody(requestId: string): AppErrorBody {
+  return {
+    code: 'HTTP_EXCEPTION',
+    message: 'errors.http.generic',
+    details: {},
+    requestId,
+  }
+}
+
+/**
+ * Sınıflandırılamayan (bilinmeyen) her hata için jenerik tel gövdesi
+ * fabrikası (ADR-0010 §2, ROADMAP v0.0.6 T-007/ST-1). Ham mesaj/yığın izi bu
+ * gövdeye ASLA girmez — yalnızca çağıranın `logContext`'ine gider.
+ */
+export function unknownErrorBody(requestId: string): AppErrorBody {
+  return {
+    code: 'INTERNAL_ERROR',
+    message: 'errors.internal.unknown',
+    details: {},
     requestId,
   }
 }

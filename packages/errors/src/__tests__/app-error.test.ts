@@ -1,4 +1,5 @@
-// @arkesoft/errors — AppError birim testleri (ROADMAP v0.0.4, T-002/ST-3b)
+// @arkesoft/errors — AppError birim testleri (ROADMAP v0.0.4, T-002/ST-3b;
+// ROADMAP v0.0.6, T-007/ST-1, architect K3 — ADR-0010 §1, publicDetails)
 
 import { describe, expect, it } from 'vitest'
 
@@ -50,6 +51,25 @@ class SampleErrorWithHttpHeaders extends AppError {
       userMessageKey: 'errors.sample.rateLimited',
       httpHeaders: { 'Retry-After': '60' },
     })
+  }
+}
+
+// K3 (ADR-0010 §1) — bir alt sınıfın `override get publicDetails()` ile
+// tele yazacağı veriyi AÇIKÇA seçtiği durum. `override` anahtar sözcüğü
+// eksik olsaydı `noImplicitOverride: true` derleme hatası verirdi (yazım
+// hatasına karşı mekanik koruma — bu test derlenmesinin kendisi o korumanın
+// kanıtıdır).
+class SampleErrorWithPublicDetails extends AppError {
+  constructor() {
+    super({
+      code: 'SAMPLE_WITH_DETAILS',
+      httpStatus: 422,
+      userMessageKey: 'errors.sample.withDetails',
+    })
+  }
+
+  override get publicDetails(): Readonly<Record<string, unknown>> {
+    return { probe: 'x' }
   }
 }
 
@@ -105,6 +125,18 @@ describe('AppError', () => {
     const error = new SampleErrorWithHttpHeaders()
 
     expect(error.httpHeaders).toEqual({ 'Retry-After': '60' })
+  })
+
+  it('publicDetails varsayılan olarak boş nesnedir (ADR-0010 §1, fail-closed)', () => {
+    const error = new SampleErrorWithoutContext()
+
+    expect(error.publicDetails).toEqual({})
+  })
+
+  it('publicDetails override edildiğinde taşınır (ADR-0010 §1)', () => {
+    const error = new SampleErrorWithPublicDetails()
+
+    expect(error.publicDetails).toEqual({ probe: 'x' })
   })
 })
 
