@@ -1,6 +1,6 @@
 {
   "name": "@arkesoft/trpc",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "tRPC router tipleri, Zod şemaları ve istemci factory’si",
