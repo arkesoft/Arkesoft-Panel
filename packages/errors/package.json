@@ -1,6 +1,6 @@
 {
   "name": "@arkesoft/errors",
-  "version": "0.0.4",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "AppError taban hiyerarşisi, hata gövdesi tel sözleşmesi ve redaction ilkelleri",
