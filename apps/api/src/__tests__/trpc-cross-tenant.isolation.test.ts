@@ -12,8 +12,8 @@
 //
 // DÜZELTME NOTU (raporun KARARLAR bölümüne de taşınır): AC6'nın metni "test
 // `/auth/sessions` ile `/trpc/tenant.current` çıktısını karşılaştırır" diyor.
-// Ölçüldü: `/auth/sessions` `TENANT_EXEMPT_PATHS`'TE (12 elemanlı küme,
-// `tenant-exempt-paths.ts`) — `TenantContextMiddleware` bu yol için
+// Ölçüldü: `/auth/sessions` `TENANT_EXEMPT_PATHS`'TE (ROADMAP v0.0.7'den
+// itibaren 13 elemanlı küme, `tenant-exempt-paths.ts`) — `TenantContextMiddleware` bu yol için
 // `tenant.kind`'i HER ZAMAN `'exempt'` yazar (host/başlık İÇERİĞİNDEN
 // BAĞIMSIZ), `AuthGuard.enforceTenantMembership`'in `'exempt'` dalı HER ZAMAN
 // `true` döner (`auth.guard.ts:90-93`) — bu yüzden `/auth/sessions` YAPISAL

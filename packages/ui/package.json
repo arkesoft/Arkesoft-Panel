@@ -8,22 +8,36 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./theme.css": "./src/theme.css"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "src/theme.css"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json --declaration --declarationMap",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests --fsModuleCachePath node_modules/.vitest-cache",
     "lint": "eslint .",
     "clean": "rm -rf dist .turbo"
   },
+  "dependencies": {
+    "clsx": "catalog:",
+    "tailwind-merge": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "catalog:"
+  },
   "devDependencies": {
     "@arkesoft/config": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
     "eslint": "catalog:",
-    "typescript": "catalog:"
+    "react": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

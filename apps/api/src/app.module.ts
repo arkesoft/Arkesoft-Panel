@@ -25,6 +25,16 @@ import { AuthContextMiddleware } from './auth/auth-context.middleware.js'
 import { AuthModule } from './auth/auth.module.js'
 import { ConfigModule } from './config/config.module.js'
 import { HealthModule } from './health/health.module.js'
+// T-008/S3 EKLEMESİ (ROADMAP v0.0.7, architect K6 madde 7, A-A4):
+// `HttpHardeningInitializer` — `providers`'a EKLENDİ, `OnApplicationBootstrap`
+// Nest modül grafiği kurulduktan SONRA koşar; `main.ts`/`createTestApp()`
+// İKİSİNDE DE `AppModule` üzerinden OTOMATİK etkin.
+import { HttpHardeningInitializer } from './http/http-hardening.initializer.js'
+// T-008/S3 EKLEMESİ (ROADMAP v0.0.7, architect K6, borç 1440+1441+1453):
+// `NoStoreHeadersMiddleware` — `configure()` zincirinin BAŞINA eklenir
+// (K-A5'in bağladığı `RequestContext → Tenant → Auth` GÖRELİ sırası
+// KORUNUR, bu middleware o üçlünün ÖNÜNE eklenir, aralarına GİRMEZ).
+import { NoStoreHeadersMiddleware } from './http/no-store-headers.middleware.js'
 import { LoggingModule } from './logging/logging.module.js'
 // T-002/ST-6 EKLEMESİ: `PrismaModule`/`RedisModule` (ikisi de `@Global`) —
 // `/health/ready`'nin ihtiyaç duyduğu `PrismaService`/`RedisService`'i TÜM
@@ -58,6 +68,9 @@ import { TrpcModule } from './trpc/trpc.module.js'
     HealthModule,
     TrpcModule,
   ],
+  // T-008/S3 EKLEMESİ (architect K6 madde 7): `HttpHardeningInitializer` —
+  // `OnApplicationBootstrap` kancası ile ETag/X-Powered-By'ı kapatır.
+  providers: [HttpHardeningInitializer],
 })
 export class AppModule implements NestModule {
   // ST-4 (`RequestContextMiddleware`) ve ST-5 (`TenantContextMiddleware`) bu
@@ -86,6 +99,17 @@ export class AppModule implements NestModule {
     // `TenantContextMiddleware`'in ÇÖZDÜĞÜ `tenant` alanına da ihtiyaç duyar;
     // üçü de AYNI zincirde, tek `consumer.apply()` çağrısında kalır (SATIR
     // SİLİNMEDİ/yeniden DÜZENLENMEDİ, yalnızca EKLENDİ).
+    // T-008/S3 EKLEMESİ (architect K6): `NoStoreHeadersMiddleware` AYRI bir
+    // `consumer.apply().forRoutes()` çağrısıyla, mevcut satırdan ÖNCE
+    // eklendi — SATIR SİLİNMEDİ/değiştirilmedi (`git diff --numstat` kanıtı
+    // raporda), yalnızca EKLENDİ. NestJS `configure()` içindeki ardışık
+    // `apply().forRoutes()` çağrılarını KAYIT SIRASINA göre bağlar (Express'in
+    // ara yazılım yığınıyla AYNI sıralama garantisi) — bu yüzden bu çağrı
+    // ALTTAKİ üçlüden ÖNCE koşar: yazdığı `cache-control`/`vary` başlıkları
+    // guard reddi (401/403/404) yanıtları DAHİL HER yanıtta bulunur (AC19).
+    // Üçlünün KENDİ ARALARINDAKİ sıra (K-A5) DEĞİŞMEDİ.
+    consumer.apply(NoStoreHeadersMiddleware).forRoutes({ path: '*path', method: RequestMethod.ALL })
+
     consumer
       .apply(RequestContextMiddleware, TenantContextMiddleware, AuthContextMiddleware)
       .forRoutes({ path: '*path', method: RequestMethod.ALL })

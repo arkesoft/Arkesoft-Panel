@@ -74,6 +74,14 @@ function buildBetterAuthRequest(req: AuthDelegationRequest, baseUrl: string): Re
  * gövde OLDUĞU GİBİ forward edilir; içerik Better Auth'un KENDİ ürettiği
  * başarı/hata şeklidir (ör. `EMAIL_NOT_VERIFIED` 403) — `AuthController`
  * bu içeriğe karışmaz.
+ *
+ * GÜNCELLEME (ROADMAP v0.0.7, T-008/S3, architect K6, EZME ÖNLEME): Better
+ * Auth delege yanıtları oturum durumu + `Set-Cookie` TAŞIR ve TAŞIMALIDIR —
+ * burada DEĞİŞMEDİ. `NoStoreHeadersMiddleware`'in guard'lardan ÖNCE yazdığı
+ * `Vary: Cookie`'yi Better Auth'un KENDİ `vary` değeri (varsa) EZMESİN diye
+ * bu döngü `vary` adlı başlığı `setHeader` YERİNE `appendHeader` ile yazar —
+ * `cache-control` ise HİÇ yazılmaz (politika platformun, tek kaynak
+ * `NoStoreHeadersMiddleware`).
  */
 async function forwardBetterAuthResponse(
   response: Response,
@@ -81,7 +89,12 @@ async function forwardBetterAuthResponse(
   httpAdapter: AbstractHttpAdapter,
 ): Promise<void> {
   for (const [name, value] of response.headers) {
-    if (name.toLowerCase() === 'set-cookie') {
+    const lowerName = name.toLowerCase()
+    if (lowerName === 'set-cookie' || lowerName === 'cache-control') {
+      continue
+    }
+    if (lowerName === 'vary') {
+      httpAdapter.appendHeader(res, name, value)
       continue
     }
     httpAdapter.setHeader(res, name, value)

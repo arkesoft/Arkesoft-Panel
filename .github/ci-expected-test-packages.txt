@@ -6,9 +6,8 @@
 # birinin test script'i eklediği ama hiçbir CI hattının bu paketi
 # kapsamadığı sessiz bir boşluğun fark edilmeden kalmasını önlemek.
 #
-# Bugün dördü: @arkesoft/api, @arkesoft/db, @arkesoft/errors, @arkesoft/trpc —
-# dördü de zaten "api" hattının bağımlılık kapanışında (api + db + errors +
-# trpc + config).
+# Bugün ALTISI: @arkesoft/api, @arkesoft/db, @arkesoft/errors, @arkesoft/trpc,
+# @arkesoft/admin, @arkesoft/ui.
 #
 # GÜNCELLEME (ROADMAP v0.0.6, T-007): tRPC paketi bir "test" script'i kazandı
 # ve kendi satırını aldı. Sessiz boşluk doğmuyor çünkü `apps/api`,
@@ -16,9 +15,36 @@
 # hattının derleme/test kapanışı içinde kapsanıyordu; burada yalnızca
 # dedektörün beyanı gerçeğe uyduruldu.
 #
+# GÜNCELLEME (ROADMAP v0.0.7, T-008/S1 — PO bulgusu, risk 1, architect
+# kaçırmıştı): `packages/ui` ve `apps/admin` ikisi de bir "test" script'i
+# kazandı (admin paneli iskeleti). İkisi de hangi CI hattının kapanışında:
+#
+#   - @arkesoft/admin → "admin" job'u, `filter: '@arkesoft/admin...'`
+#     (ci.yml:941) — bu paket + bağımlılık kapanışı için "Beşli kapı"
+#     (run-gates) koşuyor, "run-test" varsayılanı 'true' (admin job'u
+#     açıkça 'false' GEÇMİYOR) → test adımı GERÇEKTEN koşuyor.
+#   - @arkesoft/ui → `packages/*` altında, "shared" job'unun
+#     `filter: './packages/**'` kapanışında (ci.yml:1025) GÖRÜNÜYOR AMA bu
+#     job `run-test: 'false'` taşıyor (ci.yml:1026). Bu BOŞLUK yaratmıyor:
+#     v0.0.7/S5 `apps/admin`'i `@arkesoft/ui`'ye `workspace:*` ile bağımlı
+#     yaptı → paket artık "admin" hattının `--filter '@arkesoft/admin...'`
+#     kapanışına GİRİYOR (devops T-008 düzeltme turu 1, `turbo run test
+#     --filter='@arkesoft/admin...' --dry=json` ile doğrulandı:
+#     `@arkesoft/ui#test` komutu `vitest run --passWithNoTests
+#     --fsModuleCachePath node_modules/.vitest-cache`, `<NONEXISTENT>` değil)
+#     ve testi orada GERÇEKTEN koşuyor — "admin" job'u `run-test` için
+#     açıkça 'false' GEÇMİYOR, varsayılan 'true' geçerli.
+#     GÜNCELLEME (T-008 düzeltme turu 1, devops): `packages/ui`'nin süiti
+#     artık BOŞ DEĞİL — ölçüldü, `pnpm --filter @arkesoft/ui test` **17
+#     test** veriyor (`tokens.test.ts` 13 +
+#     `tailwind-custom-property-syntax.qa.test.ts` 4), ikisi de gerçekten
+#     "admin" job'unun test adımında koşuyor. Fonksiyonel boşluk yok.
+#
 # Satır başında # olan satırlar ve boş satırlar yorum sayılır, taranmaz.
 
+@arkesoft/admin
 @arkesoft/api
 @arkesoft/db
 @arkesoft/errors
 @arkesoft/trpc
+@arkesoft/ui

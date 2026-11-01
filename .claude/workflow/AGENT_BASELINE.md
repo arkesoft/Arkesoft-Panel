@@ -130,7 +130,7 @@ pnpm typecheck       # tsc --noEmit
 pnpm build           # tüm paketler
 pnpm test            # Vitest (v0.0.3'ten itibaren)
 pnpm test:isolation  # tenant izolasyon süiti (v0.0.13'ten itibaren)
-pnpm test:e2e        # Playwright (v0.0.19'dan itibaren)
+pnpm test:e2e        # Playwright (v0.0.7'den itibaren)
 pnpm format:check    # Prettier
 pnpm env:check       # ortam değişkeni şeması
 pnpm infra:up        # yerel altyapı (Postgres, Redis, Meilisearch, SeaweedFS, Mailpit)

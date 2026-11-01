@@ -266,9 +266,17 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
   // "Cache Everything", ters vekil, ingress) varsa RFC 9111 §4.2.2 gereği
   // `200 GET` sezgisel olarak saklanabilir ve `TenantGuard`+`AuthGuard`
   // zinciri sonraki (kimliksiz/başka kullanıcılı) istekler için TAMAMEN
-  // ATLANABİLİRDİ. `trpc.controller.ts`'in `forwardTrpcWebResponse`'u artık
-  // `Cache-Control: no-store, private` YAZIYOR ve `Vary`'ye `Cookie`'yi
-  // (tRPC'nin KENDİ yazdığı `trpc-accept, accept` değerini EZMEDEN) EKLİYOR.
+  // ATLANABİLİRDİ.
+  //
+  // GÜNCELLEME (ROADMAP v0.0.7, T-008/S3, architect K6, borç 1440+1441+1453):
+  // ESKİ çözüm (`trpc.controller.ts`'in `forwardTrpcWebResponse`'u) bu iki
+  // başlığı yalnızca BAŞARILI `/trpc` yanıtlarına yazıyordu — guard reddi
+  // (401/403/404) yanıtları bu başlıkları HİÇ TAŞIMIYORDU (0/5, AC19).
+  // Yazım ARTIK `NoStoreHeadersMiddleware`'de (GLOBAL, guard'lardan ÖNCE
+  // koşar) — HER yanıt (bu dosyanın `200`'ü dahil) `Cache-Control: no-store,
+  // private` TAŞIR; `trpc.controller.ts` yalnızca `Vary`'ye `Cookie`'yi
+  // (tRPC'nin KENDİ yazdığı `trpc-accept, accept` değerini EZMEDEN)
+  // `appendHeader` ile EKLER.
   it("GÜVENLİK — /trpc/tenant.current: Cache-Control: no-store, private + Vary'ye Cookie EKLENDİ (tRPC'nin trpc-accept/accept değeri EZİLMEDEN)", async () => {
     const response = await request(httpServer())
       .get('/trpc/tenant.current')
@@ -286,14 +294,16 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
     expect(varyValues).toContain('trpc-accept')
     expect(varyValues).toContain('accept')
 
-    // `ETag` HÂLÂ YAZILIYOR (Express'in varsayılan davranışı, bu alt görevin
-    // DOKUNMADIĞI bir katman) — ama RFC 9111 §5.2.2.5 gereği `no-store`
-    // bulunan bir yanıt HİÇBİR önbellek tarafından SAKLANAMAZ, dolayısıyla
-    // `ETag`'in sonraki bir istekte koşullu doğrulama için KULLANILMASI da
-    // yapısal olarak imkansızlaşır (saklanacak bir kopya yok) — ÖLÇÜLDÜ
-    // (gerçek yanıt, bkz. rapor): `etag: 'W/"a2-vmE4HWCHK7N2+tUKbdp52/vcRTc"'`
-    // ile BİRLİKTE `cache-control: 'no-store, private'` AYNI yanıtta.
-    expect(typeof response.headers['etag']).toBe('string')
+    // GÜNCELLEME (ROADMAP v0.0.7, T-008/S3, architect K6 madde 7, A-A4):
+    // `ETag` ARTIK YAZILMIYOR — `HttpHardeningInitializer`
+    // (`OnApplicationBootstrap`) `app.set('etag', false)` ile Express'in
+    // varsayılanını KAPATTI. RFC 9111 §5.2.2.5 gereği `no-store` bulunan bir
+    // yanıt HİÇBİR önbellek tarafından SAKLANAMAZ, dolayısıyla `ETag`'in
+    // koşullu doğrulama için kullanılması zaten yapısal olarak imkansızdı —
+    // bu assert'in GEVŞETİLMESİ DEĞİL, middleware kaynağına göre
+    // GÜNCELLENMESİdir (CLAUDE.md kısıtı): önceki hâl `etag`'in VARLIĞINI
+    // assert ediyordu, şimdi YOKLUĞUNU assert ediyor.
+    expect(response.headers['etag']).toBeUndefined()
   })
 
   it('GÜVENLİK — /trpc/session.me: AYNI iki başlık mevcut (yalnızca tenant.current değil, /trpc yüzeyinin TAMAMI)', async () => {

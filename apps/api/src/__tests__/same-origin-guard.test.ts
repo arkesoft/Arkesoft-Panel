@@ -17,15 +17,34 @@
 import { randomUUID } from 'node:crypto'
 import type { Server } from 'node:http'
 
+import { parseEnv } from '@arkesoft/config/env'
 import type { INestApplication } from '@nestjs/common'
 import request from 'supertest'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { detectSameOriginViolation } from '../auth/same-origin.guard.js'
+import { apiEnvSchema } from '../config/api-env.js'
+import type { ApiEnv } from '../config/api-env.js'
 import { createAuthenticatedSession } from './helpers/auth-fixture.js'
 import { createTestApp } from './helpers/create-test-app.js'
 
-const TRUSTED_BASE_URL = 'http://panel.arkesoft.localhost:3000'
+// GÜNCELLEME (ROADMAP v0.0.7, T-008/S3, architect K1, ADR-0011, A-A8 —
+// operatör `.env` geçişi SONRASI düzeltme): bu değer EVVELCE literal
+// (`http://panel.arkesoft.localhost:3000`) sabitlenmişti. "gerçek HTTP"
+// describe bloğundaki testler `createTestApp()`'i override VERMEDEN çağırır
+// — `SameOriginGuard`'ın GERÇEKTEN kullandığı `trustedOrigin` GERÇEK `.env`'in
+// `AUTH_BASE_URL`'İNDEN gelir (`auth-delegated-origin-check.qa.test.ts`/
+// `panel-origin-cors.test.ts`'in AYNI deseni). Literal bir port değerine
+// SABİTLEMEK bu dosyayı operatörün `.env` geçişine (K1, `:3000` → `:5173`)
+// KIRILGAN bırakıyordu — ÖLÇÜLDÜ (A-A8): geçiş yapılınca "Referer fallback"
+// testi (altta, "İZİN VERİLİR" iddiası) 200 BEKLERKEN 403 ALDI. Çözüm literali
+// SABİT TUTMAK DEĞİL, `env.AUTH_BASE_URL`'DEN TÜRETMEK — böylece bu dosya
+// gelecekteki port değişimlerine KALICI OLARAK bağışık olur (saf fonksiyon
+// testleri de ETKİLENMEZ: `detectSameOriginViolation`'a `trustedBaseUrl`
+// AÇIKÇA parametre olarak geçiyor, hangi değeri taşırsa taşısın başlık
+// değerleriyle TUTARLI kaldığı sürece testin iddiası DEĞİŞMEZ).
+const BASE_ENV: ApiEnv = parseEnv(apiEnvSchema)
+const TRUSTED_BASE_URL = BASE_ENV.AUTH_BASE_URL
 
 describe('detectSameOriginViolation — saf fonksiyon', () => {
   it('başlık YOK + GÜVENLİ metot (GET) → ihlal YOK (supertest/araçların varsayılan davranışını KIRMAZ)', () => {
@@ -54,11 +73,7 @@ describe('detectSameOriginViolation — saf fonksiyon', () => {
 
   it('Origin GÜVENİLİR orijinle TAM eşleşiyor → ihlal YOK', () => {
     expect(
-      detectSameOriginViolation(
-        { origin: 'http://panel.arkesoft.localhost:3000' },
-        'POST',
-        TRUSTED_BASE_URL,
-      ),
+      detectSameOriginViolation({ origin: TRUSTED_BASE_URL }, 'POST', TRUSTED_BASE_URL),
     ).toBeUndefined()
   })
 
@@ -76,7 +91,7 @@ describe('detectSameOriginViolation — saf fonksiyon', () => {
     expect(
       detectSameOriginViolation(
         {
-          origin: 'http://panel.arkesoft.localhost:3000',
+          origin: TRUSTED_BASE_URL,
           'sec-fetch-site': 'cross-site',
         },
         'POST',
@@ -100,7 +115,7 @@ describe('detectSameOriginViolation — saf fonksiyon', () => {
     () => {
       expect(
         detectSameOriginViolation(
-          { cookie: 'session_token=abc', referer: 'http://panel.arkesoft.localhost:3000/sessions' },
+          { cookie: 'session_token=abc', referer: `${TRUSTED_BASE_URL}/sessions` },
           'POST',
           TRUSTED_BASE_URL,
         ),

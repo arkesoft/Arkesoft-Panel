@@ -1,0 +1,21 @@
+<!doctype html>
+<!--
+  @arkesoft/admin — uygulama kabuğu (ROADMAP v0.0.7, T-008/S5)
+
+  `lang="tr"` + boş olmayan `<title>` (docs/ux/T-008.md erişilebilirlik
+  niyeti). Gerçek sayfa başlığı her rotanın kendi `<title>` değeriyle
+  (`meta.signInTitle`/`meta.dashboardTitle`, `src/main.tsx`'in router
+  üzerinden güncellediği) değişir — buradaki değer yalnızca İLK boya
+  (first paint) öncesi geçerli olan varsayılan.
+-->
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Arkesoft Panel</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

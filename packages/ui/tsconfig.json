@@ -1,6 +1,19 @@
 {
+  // `react.json` (tarayıcı preset'i) BİLEREK `compilerOptions.types` TAŞIMAZ
+  // — `apps/admin`/`apps/superadmin`/`apps/storefront` Node globallerine
+  // ihtiyaç duymaz, preset'e eklemek gereksiz kapsam büyütmesi olurdu.
+  // `packages/ui` bu kuralın İSTİSNASI: `src/__tests__/tokens.test.ts`
+  // `theme.css` ↔ `tokens.ts` pin testi için `node:fs`/`node:path`/`node:url`
+  // kullanıyor (ADR-0009 madde 5 — "iki temsil, pin testiyle bağlı" deseni,
+  // T-008/S2). `@types/node` paketin kendi bağımlılık grafiğinde var olsa da
+  // kök `node:*` ambient bildirimleri `types` listesine açıkça eklenmeden
+  // programa girmiyor (ÖLÇÜLDÜ: `tsc --noEmit --types node` ile 0 hata,
+  // `--explainFiles` `@types/react`'in `jsx: "react-jsx"` üzerinden otomatik
+  // girdiğini ama `@types/node`'un girmediğini gösterdi). Bu yüzden `types`
+  // yalnızca BU paketin tsconfig.json'ında, preset'te DEĞİL.
   "extends": "@arkesoft/config/tsconfig/react.json",
   "compilerOptions": {
+    "types": ["node"],
     "outDir": "dist",
     "rootDir": "src",
     "tsBuildInfoFile": "dist/.tsbuildinfo"

@@ -39,6 +39,8 @@
     "@types/node": "catalog:",
     "eslint": "catalog:",
     "eslint-config-prettier": "catalog:",
+    "eslint-plugin-jsx-a11y": "catalog:",
+    "eslint-plugin-react-hooks": "catalog:",
     "globals": "catalog:",
     "typescript": "catalog:",
     "typescript-eslint": "catalog:"

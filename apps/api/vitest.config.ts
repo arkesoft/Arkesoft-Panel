@@ -29,6 +29,11 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // ROADMAP v0.0.7 (T-008/S1, borç 1442): paket-yerel `fsModuleCachePath`
+    // — bkz. packages/errors/vitest.config.ts'teki aynı yorumun gerekçesi
+    // (top-level Vite `cacheDir` DEĞİL — o ayar bu paylaşımı değiştirmiyor,
+    // ÖLÇÜLDÜ).
+    fsModuleCachePath: 'node_modules/.vitest-cache',
     // ROADMAP v0.0.5, T-006/S7 (packages/db'deki K-E9 deseninin BİREBİR
     // ikizi): `*.isolation.test.ts` BU hattın değil, `pnpm test:isolation`'ın
     // (`vitest.isolation.config.ts`) sorumluluğunda. `include` deseni

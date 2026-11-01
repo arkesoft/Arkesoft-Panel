@@ -18,6 +18,11 @@ export default defineConfig({
     environment: 'node',
     globals: false,
     include: ['src/**/*.test.ts'],
+    // ROADMAP v0.0.7 (T-008/S1, borç 1442): paket-yerel `fsModuleCachePath`
+    // — bkz. packages/errors/vitest.config.ts'teki aynı yorumun gerekçesi
+    // (top-level Vite `cacheDir` DEĞİL — o ayar bu paylaşımı değiştirmiyor,
+    // ÖLÇÜLDÜ).
+    fsModuleCachePath: 'node_modules/.vitest-cache',
     typecheck: {
       enabled: true,
       include: ['src/**/*.test-d.ts'],

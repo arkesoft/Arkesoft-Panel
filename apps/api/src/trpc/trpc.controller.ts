@@ -16,10 +16,18 @@
 //      `withTenant()` üzerinden yaptığı üyelik kontrolü AYNEN tekrar
 //      kullanılır, tRPC katmanında KOPYALANMAZ (V2).
 //
-// `/trpc/*` ne `TENANT_EXEMPT_PATHS`'te ne `AUTH_EXEMPT_PATHS`'te yer alır —
-// bu dosya o iki allowlist'e HİÇBİR satır EKLEMEZ (architect riski 8). Kimse
-// `publicProcedure`'ü HTTP'de "erişilebilir" yapmak için bu iki kümeye satır
-// eklemeye KALKMASIN — bu BİLİNÇLİ bir tasarım kararıdır, eksik değil. Pipeline:
+// GÜNCELLEME (ROADMAP v0.0.7, T-008/S3, architect K2, ADR-0011): bu yorum
+// EVVELCE "`/trpc/*` ne `TENANT_EXEMPT_PATHS`'te ne `AUTH_EXEMPT_PATHS`'te
+// yer alır" diyordu — bu artık KİRACI yarısı için YANLIŞ. Doğrusu: AYRI
+// AYRI iki karar. `AUTH_EXEMPT_PATHS`'e HİÇBİR satır EKLENMEDİ ve
+// EKLENMEYECEK (`publicProcedure`'ü HTTP'de "kimlik gerektirmez" yapmak,
+// bu kümeye satır eklemekle AYNI şey değil — AYRI ve DAHA AĞIR bir karar,
+// v0.0.7'de YAPILMADI). `TENANT_EXEMPT_PATHS`'e v0.0.7'de **TEK** satır
+// eklendi: `/trpc/session.me` (gerekçe `tenant-exempt-paths.ts` dosya başı
+// yorumu, grup (4)) — `/trpc/*`'nin GERİ KALANI hâlâ kiracı bağlamından muaf
+// DEĞİL. Kimse `publicProcedure`'ü HTTP'de "erişilebilir" yapmak için bu iki
+// kümeye satır eklemeye KALKMASIN — bu BİLİNÇLİ bir tasarım kararıdır, eksik
+// değil. Pipeline:
 // `RequestContext → TenantContext → AuthContext middleware → TenantGuard
 // (unresolved → 404) → AuthGuard (oturumsuz → 401 · üye değil → 403) →
 // RateLimitGuard (/trpc'de anında true) → SameOriginGuard (@UseGuards,
@@ -77,26 +85,18 @@ function buildTrpcWebRequest(req: TrpcHttpRequest, baseUrl: string): Request {
  * `Set-Cookie` dahil, bugün tRPC bu başlığı yazmaz ama yardımcı jenerik
  * kalır).
  *
- * GÜVENLİK DÜZELTMESİ (security tur 1, medium bulgu — GUARD ATLATMA): bu
- * döngü tRPC'nin KENDİ ürettiği başlıkları (`vary: trpc-accept, accept` dahil)
- * olduğu gibi yazar ve hiçbir yerde `Cache-Control` üretmez. Kimlik Cookie ile
- * taşındığı için (Authorization DEĞİL), `Cache-Control`sız + `ETag`'li bir
- * `200 GET` RFC 9111 §4.2.2 gereği paylaşımlı bir önbellek (CDN/ters vekil/
- * ingress) tarafından sezgisel olarak saklanabilir — saklanan yanıt daha
- * sonra kimliksiz/başka kullanıcılı bir isteğe servis edilirse `TenantGuard`+
- * `AuthGuard` zinciri TAMAMEN ATLANIR (CLAUDE.md §7 madde 9). Bu yüzden döngü
- * BİTTİKTEN SONRA iki başlık EKLENİR:
- *   - `Cache-Control: no-store, private` → `setHeader` (yeni başlık, EZME
- *     riski yok) — hem paylaşımlı hem özel önbelleği devre dışı bırakır ve
- *     `ETag`'in saklama kararında kullanılmasını da etkisizleştirir.
- *   - `Vary: Cookie` → BİLEREK `appendHeader` (NOT `setHeader`) — tRPC'nin
- *     yukarıdaki döngüde yazdığı `trpc-accept, accept` değeri EZİLMEZ, Express
- *     `res.append()` virgülle BİRİKTİRİR.
- * Kapsam kararı (Task'ın "kapsam senin" notu): yalnızca `/trpc` kapatılıyor —
- * `apps/api/src/trpc/**` dışına çıkan ortak bir interceptor bu alt görevin
- * dosya listesinde DEĞİL. `/auth/*` için AYNI sınıf AÇIK kalıyor (security
- * tur 1'in ÖLÇTÜĞÜ, `/auth/sessions` de `cache-control` taşımıyor — v0.0.4/
- * v0.0.5 borcu, bu alt görev onu BÜYÜTMÜYOR) — RİSKLER'de bildirildi.
+ * GÜNCELLEME (ROADMAP v0.0.7, T-008/S3, architect K6, borç 1440+1441+1453):
+ * önbellek politikası (`Cache-Control`/`Vary: Cookie`) yazımı ARTIK BURADA
+ * DEĞİL — `NoStoreHeadersMiddleware` (guard'lardan ÖNCE koşan GLOBAL
+ * middleware, politika tek kaynağı `http/` dizinindeki yanıt başlığı politika
+ * modülü) HER yanıta (guard reddi dahil) bu başlıkları ZATEN yazmış durumda (security
+ * tur 1'in medium bulgusunun — GUARD ATLATMA, CLAUDE.md §7 madde 9 — kalıcı
+ * çözümü; ESKİ çözüm yalnızca BAŞARILI `/trpc` yanıtlarını kapatıyordu, guard
+ * reddini KAPATMIYORDU — 0/5). Bu döngü EZİLMEYİ önler: `cache-control` HİÇ
+ * yazılmaz (politika platformun) ve `vary` `setHeader` YERİNE `appendHeader`
+ * kullanır — tRPC'nin KENDİ ürettiği `vary: trpc-accept, accept` değeri
+ * middleware'in yazdığı `Cookie`'yi EZMESİN (Express `res.append()` virgülle
+ * BİRİKTİRİR, `res.set()` DEĞİŞTİRİR). `set-cookie` DEĞİŞMEDİ.
  */
 async function forwardTrpcWebResponse(
   response: Response,
@@ -104,7 +104,12 @@ async function forwardTrpcWebResponse(
   httpAdapter: AbstractHttpAdapter,
 ): Promise<void> {
   for (const [name, value] of response.headers) {
-    if (name.toLowerCase() === 'set-cookie') {
+    const lowerName = name.toLowerCase()
+    if (lowerName === 'set-cookie' || lowerName === 'cache-control') {
+      continue
+    }
+    if (lowerName === 'vary') {
+      httpAdapter.appendHeader(res, name, value)
       continue
     }
     httpAdapter.setHeader(res, name, value)
@@ -113,9 +118,6 @@ async function forwardTrpcWebResponse(
   for (const cookie of response.headers.getSetCookie()) {
     httpAdapter.appendHeader(res, 'set-cookie', cookie)
   }
-
-  httpAdapter.setHeader(res, 'cache-control', 'no-store, private')
-  httpAdapter.appendHeader(res, 'vary', 'Cookie')
 
   const rawBody = await response.text()
   httpAdapter.reply(res, rawBody.length > 0 ? rawBody : null, response.status)

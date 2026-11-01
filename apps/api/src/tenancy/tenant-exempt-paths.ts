@@ -15,7 +15,7 @@
 // sonucuna GÜVENİR (bkz. `tenant.guard.ts` dosya başı yorumu — tek kaynaktan
 // okunan tek karar, iki yerde tekrarlanan path-eşleştirme mantığı YOK).
 //
-// Birim testi (`tenant-exempt-paths.test.ts`) kümenin TAM OLARAK bu on iki
+// Birim testi (`tenant-exempt-paths.test.ts`) kümenin TAM OLARAK bu on üç
 // elemandan oluştuğunu assert eder — listeyi büyütmek bu testi DEĞİŞTİRMEYİ,
 // yani kod inceleme görünürlüğünü ZORUNLU kılar (R4 telafisi #2).
 //
@@ -48,10 +48,26 @@
 // biriydi, bu dosya ORİJİNAL — dördü BUNDAN kopyalanmıştı). Ortak modül NE
 // `tenancy`'ye NE `auth`'a bağımlı — PM R3'ün "tenancy → auth bağımlılığı
 // YOKTUR" ilkesi KORUNUR (`http/` iki modülden de bağımsız bir KATMAN).
+//
+// GÜNCELLEME (ROADMAP v0.0.7, T-008/S3, architect K2, ADR-0011): 12 → 13,
+// DÖRDÜNCÜ grup eklendi:
+//   (4) 1 panel yüzeyi ucu (`/trpc/session.me`) — panel host'u
+//       (`panel.arkesoft.{APP_BASE_DOMAIN}`) REZERVE bir alt alan adıdır
+//       (`reserved-subdomains.ts:22`) → `resolveHost` onu `reserved_subdomain`
+//       ile ÇÖZÜMSÜZ bırakır, bu ÖNCEKİ (1)/(2) grupları gibi tenant kavramı
+//       BU uç için HİÇ geçerli değil. Muafiyet KİMLİK muafiyeti DEĞİLDİR
+//       (`AUTH_EXEMPT_PATHS`'e HİÇBİR satır EKLENMEDİ, 9'da kalır) —
+//       `session.me` `protectedProcedure` (oturumsuz 401) ve dönüş tipi
+//       (`SessionIdentity`, `packages/trpc/src/schemas/session-identity.
+//       schema.ts`) yalnızca `{userId, sessionId}` taşır, `tenantId`/`slug`/
+//       `status` o tipe YAPISAL OLARAK giremez (sızdırmazlık tiple sağlanır,
+//       testle değil). Mekanizma TAM EŞLEŞME + `allowBatching: false`
+//       (`@arkesoft/trpc/server`) değişmezine dayanır — `trpc.controller.ts`
+//       dosya başı yorumunun GÜNCEL hâline bkz. (ADR-0011).
 
 import { normalizeRequestPath } from '../http/normalize-request-path.js'
 
-/** Tenant çözümü gerektirmeyen, tam eşleşmeli on iki uç. */
+/** Tenant çözümü gerektirmeyen, tam eşleşmeli on üç uç. */
 export const TENANT_EXEMPT_PATHS: ReadonlySet<string> = new Set([
   '/health',
   '/health/ready',
@@ -65,6 +81,7 @@ export const TENANT_EXEMPT_PATHS: ReadonlySet<string> = new Set([
   '/auth/sessions',
   '/auth/sessions/revoke',
   '/auth/sessions/revoke-all',
+  '/trpc/session.me',
 ])
 
 /**

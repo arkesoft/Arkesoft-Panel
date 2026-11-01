@@ -172,13 +172,19 @@ Tüm hata yanıtları aşağıdaki yapıyı taşır:
 # session.me — geçerli kullanıcı kimliği (üye kiracılar listesi değil)
 curl http://demo-magaza.arkesoft.localhost:3000/trpc/session.me \
   -H "Cookie: __Secure-better-auth.session_token=..." \
-  -H "Origin: http://localhost:5173"
+  -H "Origin: http://panel.arkesoft.localhost:5173"
 
 # tenant.current — geçerli kiracı özeti
 curl http://demo-magaza.arkesoft.localhost:3000/trpc/tenant.current \
   -H "Cookie: __Secure-better-auth.session_token=..." \
-  -H "Origin: http://localhost:5173"
+  -H "Origin: http://panel.arkesoft.localhost:5173"
 ```
+
+> **⚠ v0.0.7'den itibaren `Origin` panel host'u olmak zorunda.** `AUTH_BASE_URL` artık API'nin
+> kendi portunu değil, panelin tarayıcıda gördüğü orijini taşıyor (ADR-0011 madde 2). Eski örnek
+> (`Origin: http://localhost:5173`) bugün **403 `CROSS_SITE_REQUEST_REJECTED`** alır — `security`
+> tur 2'nin teşhisi: _"K1'in 'sessiz 403 tuzağı'nın doküman kardeşi."_ Yukarıdaki `curl` örnekleri
+> bu yüzden `http://panel.arkesoft.localhost:5173` kullanıyor.
 
 **İstemci tarafında** tipleri `@arkesoft/trpc` paketinden alıyorsunuz:
 
@@ -479,6 +485,40 @@ pnpm --filter @arkesoft/db run build   # guard derle
 
 **`--name` charset sınırlaması:** `migrate dev --name <ad>` bayrak değeri `/^[a-z0-9_]{1,64}$/` regex'ini izlemek zorunda. Prisma'nın kabul ettiği kümeden daha dar (büyük harf, boşluk, ekli çizgi yasak). Detayı ROADMAP v0.0.3 → Teknik Borç (T2-2).
 
+### Redis örneği tuzağı (v0.0.7+)
+
+API, Docker konteyneri `arkesoft-redis`'i **değil**, bu makinede ayrıca ayakta duran **homebrew
+`redis-server`**'ı (`127.0.0.1:6379`) kullanabilir. Sebep: homebrew'in loopback'i **spesifik**
+tutması, Docker'ın `*:6379`'u kaybetmesine yol açar. Sayaç okuyan (oran sınırı, önbellek) herkesi
+yanıltır — "neden sıfırlamadığım sayaç hâlâ dolu" gibi sorularda önce `lsof -nP -iTCP:6379
+-sTCP:LISTEN` ile hangi sürecin dinlediğini doğrulayın (`qa` keşfetti, `security` doğruladı).
+
+### Vite dev sunucusu config tuzağı (v0.0.7+)
+
+> Vite'ın HMR'ı modül kodundaki değişiklikleri yakalar, **`vite.config.ts`'teki değişiklikleri
+> yakalamaz**. `server.host`, `allowedHosts`, `cors` gibi bir ayar değiştirildiğinde elle
+> başlatılmış `vite --port <port> --strictPort` süreci **eski config ile çalışmaya devam eder** —
+> bir sonraki ajan (`qa`/`wcag`) farkında olmadan güncelliğini kaybetmiş bir sunucuyu ölçer. Kural:
+> `vite.config.ts`'e her değişiklikten sonra çalışan dev sunucusu kapatılıp yeniden başlatılmalı;
+> PID'i bilmiyorsan `lsof -nP -iTCP:<port> -sTCP:LISTEN` ile bul. `--strictPort` bağlantı
+> çakışmasını yakalar ama "hangi config servis ediliyor" sorusunu yakalamaz.
+
+(Kaynak: S1 ölçümü, T-008. Gerçek bir olay: Orkestratör 13:42'den beri ayakta duran bir `vite`'ı
+kapatmak zorunda kaldı çünkü bir önceki değişiklik turundan önceki yapılandırmayı servis ediyordu.)
+
+### `turbo.json` ve `VITE_*` (v0.0.7+)
+
+`turbo.json`'un `env` listesi bugün `VITE_*` içermiyor; panel **bilinçli olarak** hiçbir `VITE_*`
+değişkeni kullanmıyor (tek orijin topolojisinde API adresi **göreli**: `url: '/trpc'`). İleride
+bir `VITE_*` eklenirse `turbo.json`'un `env`'ine **eklenmeli**, yoksa cache yanlış değerle gömülü
+bir derlemeyi servis eder. `envDir` repo köküne **işaret etmiyor** (bilinçli: kök `.env`'in
+sırları Vite'ın görüş alanına hiç girmiyor). `ARKESOFT_PANEL_DEV_API_TARGET` **`VITE_` öneki
+taşımıyor** → bundle'a asla inline edilmez. Ayrıntı: "Panel (`apps/admin`) Geliştirme" bölümü.
+
+### `apps/api` dev script'i artık `.env`'i otomatik yükler (v0.0.7+)
+
+Ayrıntı: "Panel (`apps/admin`) Geliştirme" bölümü, "Panel geliştirme akışı" altında.
+
 ---
 
 ## Sorun giderme
@@ -652,5 +692,143 @@ Kontrol metinleri:
 - `.github/ci-forbidden-tokens.txt` — aranan yasak jeton'lar
 
 Değişiklik yapılırsa jeton'lar kendi dosyada izole (`.txt`) ve iş akışı glob'larından (`*.yml`) dışarı.
+
+---
+
+## Panel (`apps/admin`) Geliştirme (v0.0.7+)
+
+### `AUTH_BASE_URL` göçü — tek orijin topolojisi (ADR-0011)
+
+v0.0.7 ile `AUTH_BASE_URL`'in anlamı keskinleşti: artık **API'nin kendi portu değil, panelin
+tarayıcıda gördüğü platform orijini**. Değer `.env.example:120`'de `:3000` → `:5173` olarak
+değişti:
+
+```bash
+# v0.0.6 ve öncesi:
+AUTH_BASE_URL=http://panel.arkesoft.localhost:3000
+# v0.0.7'den itibaren:
+AUTH_BASE_URL=http://panel.arkesoft.localhost:5173
+```
+
+Mevcut `.env` dosyanızda bu satırı **elle** güncellemeniz gerekir — `pnpm env:check` yalnızca
+`.env`'i doğrular, `.env.example`'daki değişiklik otomatik yansımaz. Güncellemezseniz panel
+girişi **sessizce 403** alır (`same-origin.guard.ts` ve Better Auth'un kendi origin kontrolü
+`AUTH_BASE_URL`'e karşı karşılaştırır) — belirti "giriş çalışmıyor"tur, hata mesajı net değildir.
+
+**Port, `apps/admin/src/app/panel-config.ts:20`'deki `PANEL_DEV_PORT` sabitiyle birebir aynı
+olmak zorunda** (bugün `5173`); sapma aynı sessiz 403'ü üretir. `panel-origin-pin.test.ts`
+`.env.example`'daki portun bu sabite eşitliğini pinler.
+
+**Geri alma:** `AUTH_BASE_URL`'i `:3000`'e döndürüp API'yi yeniden başlatmak yeterlidir —
+şema/migration rollback'i gerekmez (ADR-0011 "Geri alma" notu). Tarayıcıdan panel üzerinden giriş
+bu durumda yine 403 alır (beklenen); API dışı istemciler (komut satırı, `curl`) etkilenmez.
+
+### Panel geliştirme akışı
+
+```bash
+pnpm infra:up                                  # Postgres, Redis, Meilisearch, SeaweedFS, Mailpit
+pnpm db:migrate
+pnpm db:seed
+pnpm --filter @arkesoft/api dev                # API, panelin vekillediği /trpc + /auth
+pnpm --filter @arkesoft/admin dev               # Vite dev sunucusu, panel.arkesoft.localhost:5173
+```
+
+**İlk kurulumda zorunlu ek adım** (Playwright henüz kurulu değilse):
+
+```bash
+pnpm exec playwright install chromium
+```
+
+`pnpm --filter @arkesoft/admin test:e2e` bu adım atlanırsa tarayıcı ikili dosyası bulunamadığı
+için başarısız olur. `pnpm test:e2e` (kök toplayıcı) **v0.0.19'dan itibaren** gelir; bu sürümde
+yalnızca **paket düzeyinde** `pnpm --filter @arkesoft/admin test:e2e` vardır — tek proje (chromium,
+masaüstü), tek spec, yerel koşum (bkz. `AGENT_BASELINE.md` komut referansı).
+
+**`apps/api`'nin `dev` script'i `.env`'i artık otomatik yükler** (`apps/api/package.json:26`:
+`node --watch --env-file-if-exists=../../.env dist/main.js`) — panel geliştiricisi `AUTH_BASE_URL`
+gibi değişkenleri elle `source` etmek **zorunda değildir**. Kök neden: script `apps/api`
+dizininde koştuğu için göreli `.env` yolu önceden kök `.env`'i değil `apps/api/.env`'i arıyordu
+(S1 ölçtü: _".env not found" + 17 Zod hatası_); `--env-file-if-exists=../../.env` ile düzeltildi.
+`start` (prod) script'ine **dokunulmadı** — prod'da env orkestrasyondan/secret yöneticisinden
+gelir.
+
+### Üretilmiş dosyalar ve gate muafiyetleri
+
+Platformda bugün **iki** üretilmiş (derleme zamanında yeniden yazılan) kaynak dosyası vardır:
+Prisma istemcisi (`packages/db`, bkz. [ADR-0001](./adr/0001-teknoloji-yigini.md)) ve
+`apps/admin/src/routeTree.gen.ts` (`@tanstack/router-plugin` tarafından **her `vite build`'de**
+yeniden yazılır).
+
+`routeTree.gen.ts` **üç** yerde elle tutulan bir muafiyete sahiptir:
+
+- `.prettierignore:22` — `apps/admin/src/routeTree.gen.ts`
+- `apps/admin/eslint.config.mjs:49` — `{ ignores: ['src/routeTree.gen.ts'] }`
+- `apps/admin/tsconfig.json:20` — dosya `include`'un **İÇİNDE** kalır (`"include": ["src/**/*",
+"e2e/**/*", "scripts/**/*", "*.config.ts"]`); `typecheck` kapsamı **daraltılmaz**.
+
+**Muafiyetin kapsamı yalnızca üretilmiş dosyaya aittir** — elle yazılmış kaynak taramaları (`any`,
+`@ts-ignore`, `console.log`, sınıf bileşeni) bu dosyayı **kapsamaz** ve elle yazılmış koda
+**genişletilemez**.
+
+**Risk kaydı (architect, T-008 düzeltme turu 1 — birebir):**
+
+> `routeTree.gen.ts` proje dışına karantinaya alınmaz (`include`'da kalır), ancak upstream'in
+> yazdığı `@ts-nocheck` nedeniyle **içeriği tip denetiminden geçmez**. Rota bağlantısının
+> doğruluğunun gerçek garantisi `tsc` değil, dosyanın her `vite build`'de **yeniden üretilmesi** ve
+> e2e spec'inin dört rotayı gerçekten gezmesidir.
+
+**Ölçülmüş ve tutan varsayım (A-A10, S1):** `routeTree.gen.ts` silinip
+`pnpm --filter @arkesoft/admin build` koşulunca **md5 birebir aynı** içerikle (`2829d942a06702e5a0692cf80b89b55a`)
+yeniden üretildi, build yeşil kaldı.
+
+**AC4/AC23'ün kanonik yasak-desen tarama komutu** (pozitif include glob'ları negatif exclude'dan
+**önce** verilirse ripgrep'te exclude'u **ezer** — ilk deneme bunu kanıtladı; doğru sıra: exclude
+**en sonda**):
+
+```bash
+rg -n --type ts '\bany\b' apps/admin/src packages/ui/src --glob '!**/routeTree.gen.ts'
+```
+
+Bu komut **0 eşleşme** ile çıkmalı (ripgrep eşleşme bulamadığında exit 1 verir — bu "geçti"
+anlamına gelir, komutun kendisinin başarısız olması değil).
+
+**Yeni borç kaydı:** Prisma istemcisi + `routeTree.gen.ts` iki üretilmiş artefakt; üçüncüsü
+doğduğunda dağınık muafiyetler tek bildirilmiş kayda (ve bir ADR'ye) terfi etmeli — bkz.
+`ROADMAP.md` → Teknik Borç → Vadesi v0.0.7.
+
+### `turbo.json` ve `VITE_*`
+
+`turbo.json`'un `build.env` listesi bugün `VITE_*` **içermiyor** — panel bu sürümde hiçbir
+`VITE_*` değişkeni kullanmıyor (tek orijin topolojisinde API adresi **göreli**: `url: '/trpc'`).
+`envDir` de repo köküne **işaret etmiyor** (bilinçli: kök `.env`'in sırları Vite'ın görüş alanına
+hiç girmiyor); dev-only `ARKESOFT_PANEL_DEV_API_TARGET` **`VITE_` öneki taşımıyor** → bundle'a asla
+inline edilmez.
+
+**İleride bir `VITE_*` değişkeni eklenirse** `turbo.json`'un `build.env`'ine **eklenmek
+zorundadır** — yoksa turbo, yanlış değerle gömülü bir derlemeyi önbellekten servis edebilir.
+
+### E2E operasyonel tavanı ve oran sınırı
+
+Kimlik doğrulama oran sınırları **ayrı** sayaçlardır (`apps/api/src/auth/rate-limit/rate-limit.policy.ts:56`):
+sign-in **20/15dk** (IP), sign-up **10/saat** (IP — `EMAIL_IP_LIMIT`). Panelin e2e koşumu ikisini
+de tüketir. **Ölçülmüş güncel maliyet (S5, düzeltme turu 2):** tam bir koşum **4 sign-in + 3
+sign-up** (`panel-flow.spec.ts` 3+3, `qa-blind-spot-and-negative-scenarios.qa.spec.ts` 1+0) →
+**saatte ~3 tam koşum** (sign-up tavanı belirleyici).
+
+Tavan aşıldığında belirti **429 + `Retry-After`**'dır. **Teşhis "flaky" DEĞİLDİR** — `qa` tur 1'de
+tavana oturdu ve bir test **~51 dakika** bloke oldu; bu beklenen davranıştır (borç, bkz.
+`ROADMAP.md` → Teknik Borç).
+
+**Global `platform:auth:*` flush YASAKTIR** (AC18'in "arada flush yok" şartı). Meşru bir kilitlenme
+durumunda yalnızca kendi geliştirme oturumunuzu sıfırlamak istiyorsanız yukarıdaki "Oran Sınırı
+Sıfırlanması" bölümündeki komutu kullanın — ama bunu bir e2e koşum **ölçümünün ortasında**
+yapmayın, sayıyı bozar.
+
+**⚠ `pnpm test`'in yan etkisi (`qa` keşfetti, `security` ve `solid` doğruladı):** zorunlu kapı
+komutu `pnpm test`, her `createTestApp()` çağrısında `platform:auth:*` namespace'ini **sıfırlar**
+(`apps/api/src/__tests__/helpers/create-test-app.ts:70-79`'un `flushRateLimitCounters`'ı, T-006/S8
+eklemesi — dosya başı yorumunda belgeli). **AC18'in "iki ardışık koşum" ölçümünü `pnpm test` ile
+ARADA koşmayın** — sayaçlar sıfırlanır ve ölçüm geçersiz olur. Doğru sıra: `pnpm test` → **arada
+hiçbir şey çalıştırmadan** iki ardışık `pnpm --filter @arkesoft/admin test:e2e`.
 
 ---

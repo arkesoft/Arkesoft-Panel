@@ -1,12 +1,17 @@
 // @arkesoft/api — TENANT_EXEMPT_PATHS testleri (ROADMAP v0.0.4, T-002/ST-5,
 // architect K-A4/K5, R4 telafisi #2)
 //
-// Kümenin TAM OLARAK on iki elemandan oluştuğunu assert eder — listeyi
+// Kümenin TAM OLARAK on üç elemandan oluştuğunu assert eder — listeyi
 // büyütmek bu testi DEĞİŞTİRMEYİ (inceleme görünürlüğünü) ZORUNLU kılar.
 //
 // GÜNCELLEME (ROADMAP v0.0.5, T-006/S5): 2 → 12 (gerekçe `tenant-exempt-
 // paths.ts` dosya başı yorumunda — panel host'u rezerve alt alan adı,
 // muafiyet olmadan hiçbir auth ucuna erişilemez).
+//
+// GÜNCELLEME (ROADMAP v0.0.7, T-008/S3, architect K2, ADR-0011): 12 → 13
+// (`/trpc/session.me` — dördüncü grup, gerekçe `tenant-exempt-paths.ts`
+// dosya başı yorumunda). `.size`'ı gevşetmek / `toContain`'e düşmek yasak —
+// küme eşitliği ELLE güncellendi.
 
 import { describe, expect, it } from 'vitest'
 
@@ -25,14 +30,15 @@ const EXPECTED_EXEMPT_PATHS = [
   '/auth/sessions',
   '/auth/sessions/revoke',
   '/auth/sessions/revoke-all',
+  '/trpc/session.me',
 ] as const
 
 describe('TENANT_EXEMPT_PATHS', () => {
-  it('tam olarak on iki eleman taşır', () => {
-    expect(TENANT_EXEMPT_PATHS.size).toBe(12)
+  it('tam olarak on üç eleman taşır', () => {
+    expect(TENANT_EXEMPT_PATHS.size).toBe(13)
   })
 
-  it('küme TAM OLARAK beklenen on iki elemandır', () => {
+  it('küme TAM OLARAK beklenen on üç elemandır', () => {
     expect(new Set(TENANT_EXEMPT_PATHS)).toEqual(new Set(EXPECTED_EXEMPT_PATHS))
   })
 
@@ -66,9 +72,10 @@ describe('TENANT_EXEMPT_PATHS', () => {
   })
 
   // ROADMAP v0.0.6, T-007/S6, architect riski 8 — muafiyet kümesi regresyonu:
-  // `/trpc/*` BİLİNÇLİ OLARAK bu kümede DEĞİL (v0.0.6'da erişilebilir
-  // publicProcedure yok); kardinalite assert'i (12) bu satırla DEĞİŞMEDİ.
-  it("/trpc/tenant.current MUAF DEĞİLDİR — v0.0.6'da tRPC yüzeyi kiracı bağlamından muaf değil", () => {
+  // `/trpc/*`'nin GERİ KALANI (yalnızca `/trpc/session.me` HARİÇ, v0.0.7'de
+  // dördüncü gruba EKLENDİ) BİLİNÇLİ OLARAK bu kümede DEĞİL — tam eşleşme,
+  // prefix/regex YASAK; kardinalite assert'i (13) bu satırla DEĞİŞMEDİ.
+  it('/trpc/tenant.current MUAF DEĞİLDİR — tRPC yüzeyinin GERİ KALANI kiracı bağlamından muaf değil', () => {
     expect(isTenantExemptPath('/trpc/tenant.current')).toBe(false)
   })
 })

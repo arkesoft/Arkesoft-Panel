@@ -1,10 +1,22 @@
 {
+  // Tek proje (ROADMAP v0.0.7, T-008/S4, architect K5): `src` + `e2e` +
+  // `scripts` + kök `*.config.ts` AYNI tsconfig'te. Gerekçe: `base.js`'in
+  // `projectService: true`'u her dosya için en yakın tsconfig'i arar —
+  // bu `include`'un DIŞINDA kalan `playwright.config.ts`/`e2e/*.spec.ts`
+  // (S5) lint'i KIRAR. `outDir`/`rootDir`/`declaration` KALDIRILDI —
+  // `apps/admin` bir uygulama, kütüphane DEĞİL (`build` artık `vite build`,
+  // bu proje yalnızca `tsc --noEmit` için kullanılıyor).
   "extends": "@arkesoft/config/tsconfig/react.json",
+  // DÜZELTME (S1 `@types/node` + `vite`'ı `apps/admin/package.json`'a
+  // ekleyip `pnpm install` koştuktan SONRA, 2026-10-31): architect K5'in
+  // istediği `types: ["node", "vite/client"]` ÖLÇÜLEREK doğrulandı —
+  // `pnpm --filter @arkesoft/admin typecheck` bu alanla exit 0 veriyor
+  // (önceki turda `"types": ["node"]` denemesi `@types/node` henüz
+  // bağımlılık listesinde OLMADIĞI için TS2688 ile kırılmıştı; artık
+  // kırılmıyor). Önceki "bilerek eksik bırakıldı" notu GEÇERSİZ.
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src",
-    "tsBuildInfoFile": "dist/.tsbuildinfo"
+    "types": ["node", "vite/client"]
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "e2e/**/*", "scripts/**/*", "*.config.ts"],
   "exclude": ["dist", "node_modules"]
 }

@@ -190,3 +190,43 @@ yalnızca "host çözümünden gelen kiracının kendisi" için geçerlidir.
    tartışılır.
 5. **Çerçeve hata kodu sözlüğü değişirse** — durum↔kod haritası ve gidiş-dönüş testi
    güncellenir.
+
+---
+
+## Ek (v0.0.7) — Üçüncü şekil: delege `/auth/*` yollarının kendi gövdesi
+
+> **Not:** Bu bölüm append-only eklenmiştir. **Madde 3 ve madde 4'ün metni ve numaralandırması
+> değişmemiştir** — üretim kodu madde numaralarına on iki yerden atıf yapıyor ve T-007'de bu
+> numaralandırma bir kez bozulup `solid`'den M5 medium'u almıştı (bkz. Varsayımlar tablosu,
+> ORKESTRATÖR-H3).
+
+Madde 4 "`/trpc` **yolunda** iki zarf" der ve bu doğrudur: o yolda gerçekten iki zarf vardır. Ek
+bir şekil **başka bir yolda** yaşar ve madde 4'ün konusu değildir — bu ek onu kayda geçirir; madde
+3 ve madde 4'ün metni ve numaralandırması **değişmemiştir** (üretim kodu madde numaralarına on iki
+yerden atıf yapıyor).
+
+`AuthController` delege yolların (`AUTH_DELEGATED_PATHS`, yedi yol) yanıtını **ham gövde + ham
+durumla** forward eder; içerik Better Auth'un kendi ürettiği şekildir ve `AuthController` ona
+karışmaz (`forwardBetterAuthResponse`). Ölçülmüş şekli: üst düzey `code` (SCREAMING_SNAKE_CASE,
+ör. `INVALID_ORIGIN` — qa tur 3, HTTP seviyesinde) + üst düzey `message` (**ham İngilizce**).
+`details` ve `requestId` **yoktur**. Dolayısıyla bu gövde platformun dört alanlı tel sözleşmesi
+**değildir** ve bir i18n anahtarı **taşımaz**.
+
+**Bağlayıcı istemci kuralı (v0.0.7'den itibaren):** panel **hiçbir** zarftan gelen metni ekrana
+basmaz. İstemci tarafı normalize tipi bir mesaj alanı **taşımaz**; gösterilecek metnin tek kaynağı
+istemcinin kendi kataloğudur ve anahtarı **kararlı hata kodudur** (`data.appError.code`, madde
+3.6 — çerçeve kodu `data.code` **değil**). Bu kural iki şeyi birden sağlar: ham sağlayıcı metni
+ekrana çıkamaz ve i18n anahtarı (`errors.*`) ekrana çıkamaz. Üç şeklin tek tipe indirgenmesi
+sıralı ve yapısal (şema tabanlı, `instanceof`'suz) probe'larla yapılır; sınıflandırılamayan gövde
+**fırlatmadan** jenerik sonuca düşer (fail-closed).
+
+Bu garanti üçüncü yazıcıdan (panel hata katmanının düzeltme turu 2'de `switch`+`assertNever`'e
+çevrilmesinden) sonra da yapısal olarak yerinde kaldı; `satisfies Record<PanelErrorCode, string>`
+(`apps/admin/src/messages/messages.ts:127`), private `GENERIC_ERROR_MESSAGE` (`:78`), değişmemiş
+`resolveErrorMessage` gövdesi (`:148-153`) ve mesaj alanı taşımayan `PanelError`
+(`apps/admin/src/errors/panel-error.ts:16-18`) `solid` tur 2'de satır satır doğrulandı.
+
+**i18n çözümlemesi geldiğinde (v0.0.18):** tel gövdesi **değişmez** (madde 3.2'nin anahtar taşıma
+kararı korunur); normalize tip o zaman i18n anahtarını da taşımaya başlar ve katalog anahtarı
+koddan anahtara kayar. Üçüncü şekil anahtar taşımadığı için **kod tabanlı eşleme kalıcıdır** —
+sağlayıcı kodları için ikinci bir eşleme tablosu gerekir.

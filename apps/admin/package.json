@@ -4,26 +4,41 @@
   "private": true,
   "type": "module",
   "description": "Tenant yönetim paneli (Vite + React)",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    }
-  },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "files": [
-    "dist"
-  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json --declaration --declarationMap",
+    "dev": "vite",
+    "build": "vite build && node ./scripts/check-compiled-css-contract.ts && node ./scripts/check-bundle-budget.ts && rm -rf dist/.vite",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests --fsModuleCachePath node_modules/.vitest-cache",
+    "test:e2e": "playwright test",
     "lint": "eslint .",
     "clean": "rm -rf dist .turbo"
   },
+  "dependencies": {
+    "@arkesoft/errors": "workspace:*",
+    "@arkesoft/trpc": "workspace:*",
+    "@arkesoft/ui": "workspace:*",
+    "@hookform/resolvers": "catalog:",
+    "@radix-ui/react-dropdown-menu": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-hook-form": "catalog:",
+    "tailwindcss": "catalog:",
+    "zod": "catalog:"
+  },
   "devDependencies": {
     "@arkesoft/config": "workspace:*",
+    "@playwright/test": "catalog:",
+    "@tailwindcss/vite": "catalog:",
+    "@tanstack/router-plugin": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
     "eslint": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
   }
 }

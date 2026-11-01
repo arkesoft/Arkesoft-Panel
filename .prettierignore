@@ -13,3 +13,19 @@ test-results/
 # Prisma generate çıktısı — .gitignore'dan bağımsız olarak Prettier burada da
 # açıkça hariç tutulmalı, aksi halde `format:check` üretilen kodu tarar (T-001/R-A6)
 packages/db/generated
+
+# TanStack Router'ın ürettiği dosya (ROADMAP v0.0.7, T-008/S1, architect K-
+# notu "routeTree.gen.ts somut tuzağı") — üretilmiş kod katı Prettier
+# kurallarımıza uymaz; hariç tutulmazsa `format:check` (AC21) kırılır.
+# ESLint `ignores` KARŞILIĞI apps/admin/eslint.config.mjs'te (S4) — iki taraf
+# birbirinden bağımsız ama mekanik olarak çapraz kontrol ediliyor (S5'in DoD'u).
+apps/admin/src/routeTree.gen.ts
+
+# Ajan çıktı dizinleri (borç 1457, T-004/T-006/T-007'de ÜÇ KEZ elle
+# biçimlendirilerek kapatılmıştı) — döngünün kendi ürettiği gate raporları,
+# Task dosyaları ve changeset'ler katı Prettier kurallarına tabi değildir;
+# `format:check` bunları taramamalı.
+.claude/workflow/reviews/**
+.claude/workflow/tasks/**
+.changeset/**
+docs/adr/**

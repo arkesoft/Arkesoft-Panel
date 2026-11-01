@@ -1,0 +1,48 @@
+/*
+ * @arkesoft/admin — global stil girişi (ROADMAP v0.0.7, T-008/S5)
+ *
+ * `main.tsx` BU dosyayı import eder (`import './styles.css'`) — Tailwind v4
+ * burada başlatılır.
+ *
+ * A-A2 (ÖLÇÜLDÜ, frontend): `@import '@arkesoft/ui/theme.css'` içindeki
+ * Tailwind v4 `@theme` bloğu `@tailwindcss/vite` eklentisiyle İŞLENİYOR —
+ * `pnpm --filter @arkesoft/admin build` sonrası `dist/assets/*.css`'te
+ * `--color-brand-500:#2563eb` gibi token'lar GERÇEKTEN üretilmiş hâlde
+ * bulundu (kanıt raporda). Yürümediği durum (yedek dal) GEREKMEDİ — hex
+ * KOPYALANMADI, `packages/ui`'ye DOKUNULMADI.
+ */
+@import 'tailwindcss';
+@import '@arkesoft/ui/theme.css';
+
+/*
+ * Tailwind v4 `@source` — ZORUNLU (architect/PO): `packages/ui`'nin
+ * kaynak dosyalarındaki sınıf adları bu paketin KENDİ `node_modules`
+ * dışında (workspace kaynak dizininde) yaşıyor; Tailwind'in otomatik
+ * içerik taraması `apps/admin/src` DIŞINA bakmaz. Bu satır OLMADAN
+ * `packages/ui` bileşenleri (Button/Input/Card/Toast/DataTable)
+ * STİLSİZ gelir (dosya başı yorumundaki klasik tuzak). Yol derinliği
+ * `apps/admin/src/styles.css` → `packages/ui/src` için üç seviye yukarı
+ * (`../../../`), DOĞRULANDI (`ls` ile).
+ *
+ * DÜZELTME TURU 1 (`solid` M2 ║ `wcag` M2 — bağlayıcı): glob `.tsx`'e EK
+ * OLARAK `.ts`'i de TARAMAK ZORUNDA. `packages/ui/src/tokens.ts`'teki
+ * `FOCUS_RING_CLASS_NAMES` (kanonik odak halkası sabiti) bir `.ts`
+ * dosyasında yaşıyor; glob `.tsx`'le sınırlı kalırsa bu sabitten üretilen
+ * Tailwind utility'leri (`--tw-ring-color` vb.) DERLENMEZ ve odak
+ * göstergesi SESSİZCE kaybolur (WCAG 2.4.11/2.4.13) — hiçbir test bunu
+ * yakalamaz. Bu glob'u `.tsx`'e geri DARALTMA.
+ */
+@source '../../../packages/ui/src/**/*.{ts,tsx}';
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+}

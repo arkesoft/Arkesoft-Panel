@@ -186,3 +186,89 @@ catalog:
   # sarmalayıcısı gerekmiyor).
   '@trpc/server': 11.19.0
   '@trpc/client': 11.19.0
+
+  # --- Admin paneli iskeleti (ROADMAP v0.0.7, T-008/S1 — A-A7) ---
+  # Hepsi CLAUDE.md §2 yığın tablosunda (Vite+React+TanStack Router/Query+
+  # Tailwind+shadcn/ui+react-hook-form+Playwright) veya PM/architect'in V1
+  # istisnası (shadcn/ui'nin taşıdığı birinci parti primitifler) kapsamında —
+  # yeni ana bağımlılık onayı gerekmiyor. Yöntem: her paket için
+  # `npm view <pkg> dist-tags.latest` ile çözülen sürüm, sonra
+  # `npm view <pkg> time --json` ile O SÜRÜMÜN yayın tarihi okundu (paket
+  # geneli `time.modified` DEĞİL — v0.0.5 hatasının tekrarı değil). Bugün
+  # 2026-10-31; 7 günden yeni (2026-10-24 sonrası) sürüm SEÇİLMEDİ —
+  # `minimumReleaseAgeExclude` izin kaydı eklenmeden (boş `git diff` ile
+  # kanıtlı) kurulum geçti. Hiçbirinin `peerDependencies`'inde TypeScript üst
+  # sınırı yok (`npm view <pkg> peerDependencies.typescript` → tamamı "none") →
+  # katalog `typescript: 6.0.3` pini sorunsuz kapsanıyor.
+  react: 19.3.1 # 2026-10-14 yayınlandı (dist-tag "latest")
+  # react-dom: react ile EXACT aynı sürüme kilitlendi — react-dom@19.3.1'in
+  # kendi peerDependencies'i "react": "^19.3.1" İSTİYOR (daha eski bir react-dom
+  # seçimi bu peer'ı kıracaktı).
+  react-dom: 19.3.1 # 2026-10-14 yayınlandı (dist-tag "latest")
+  # @tanstack/react-router: dist-tag "latest" (2026-10-22). Peer'ı
+  # react/react-dom >=18||>=19 — sorunsuz.
+  '@tanstack/react-router': 1.170.46 # 2026-10-22 yayınlandı
+  # @tanstack/react-query: dist-tag "latest" (5.105.0) 2026-10-26'da yayınlandı
+  # → BUGÜNDEN 5 gün, 7 gün eşiğini KARŞILAMIYOR. Bir önceki sürüm (5.104.5,
+  # 2026-10-19) seçildi — 12 gün, eşik üstü. Peer react/@types/react ^18||^19.
+  '@tanstack/react-query': 5.104.5 # 2026-10-19 yayınlandı (latest=5.105.0 ÇOK YENİ, 2026-10-26)
+  # react-hook-form: dist-tag "latest" (2026-10-23) — 8 gün, eşik üstü ama dar.
+  'react-hook-form': 7.91.0 # 2026-10-23 yayınlandı
+  # @hookform/resolvers: dist-tag "latest" (7.0.0) BUGÜN (2026-10-31)
+  # yayınlandı — 0 gün, kesinlikle seçilemez. 6.0.1/6.0.2 de 2026-10-27/28,
+  # eşik altı. Eşiği karşılayan en güncel sürüm 6.0.0 (2026-10-19, 12 gün).
+  # Peer'ı react-hook-form "^7.55.0" (7.91.0 kapsıyor) + zod "^3.25.0 || ^4.0.0"
+  # (katalog zod ^4.6.7 kapsıyor).
+  '@hookform/resolvers': 6.0.0 # 2026-10-19 yayınlandı (latest=7.0.0 BUGÜN yayınlandı, seçilemez)
+  # @radix-ui/react-dropdown-menu: dist-tag "latest" (2026-10-12) — 19 gün.
+  # shadcn/ui'nin UserMenu'de taşıdığı birinci parti primitif (V1 istisnası).
+  '@radix-ui/react-dropdown-menu': 2.2.1 # 2026-10-12 yayınlandı
+  # clsx: packages/ui'nin cn() yardımcısının parçası (shadcn/ui deseni).
+  clsx: 2.1.1 # 2024-04-23 yayınlandı
+  # tailwind-merge: clsx ile birlikte cn() — sınıf çakışmalarını çözer.
+  'tailwind-merge': 3.7.0 # 2026-09-12 yayınlandı
+  # tailwindcss: ANA SÜRÜM DOĞRULANDI — v4 (architect varsayımı, A-A7 ile
+  # teyitli). `@tailwindcss/vite` eklentisi MEVCUT ve aynı v4.3.3 sürümünde
+  # yayınlanıyor → PostCSS/autoprefixer yapılandırması gerekmiyor, `@theme`
+  # bloğu bu sürümde var. NEEDS_INPUT doğMADI.
+  tailwindcss: 4.3.3 # 2026-07-16 yayınlandı
+  # @types/react / @types/react-dom: react 19.3.1'in resmi tip paketleri,
+  # dist-tag "latest" ikisi de 19.3.0.
+  '@types/react': 19.3.0 # 2026-09-09 yayınlandı
+  '@types/react-dom': 19.3.0 # 2026-09-09 yayınlandı
+  # vite: dist-tag "latest" (2026-10-21) — 10 gün. Node motoru
+  # "^20.19.0 || >=22.12.0" — yerel Node 25.8.1 kapsıyor (nodemailer/vitest
+  # emsalindeki engine-strict kapalı uyarısı burada DOĞMUYOR).
+  vite: 8.3.5 # 2026-10-21 yayınlandı
+  # @vitejs/plugin-react: Vite'ın React desteğinin birinci parti eklentisi
+  # (V1 istisnası, yeni yığın kararı değil). Peer'ı vite "^8.0.0" — kapsıyor.
+  '@vitejs/plugin-react': 6.1.2 # 2026-10-05 yayınlandı
+  # @tailwindcss/vite: Tailwind'in Vite entegrasyonu (birinci parti). Peer'ı
+  # vite "^5.2.0 || ^6 || ^7 || ^8" — kapsıyor.
+  '@tailwindcss/vite': 4.3.3 # 2026-07-16 yayınlandı
+  # @tanstack/router-plugin: Router'ın file-based modunun kod üretici
+  # eklentisi (birinci parti). DİKKAT: peer'ı
+  # "@tanstack/react-router": "^1.170.46" İSTİYOR — yukarıdaki router sürümü
+  # (1.170.46) BİLEREK bu peer'ı tam karşılayacak şekilde seçildi.
+  '@tanstack/router-plugin': 1.168.48 # 2026-10-22 yayınlandı
+  # @playwright/test: dist-tag "latest" (2026-10-14) — 17 gün. Node motoru
+  # ">=20" — kapsıyor. Paket düzeyinde kullanım (v0.0.7 asgari, bkz. T-008
+  # PM kararı); kök toplayıcı v0.0.19'da.
+  '@playwright/test': 1.64.1 # 2026-10-14 yayınlandı
+  # eslint-plugin-react-hooks: Kullanıcı onayı (2026-10-31, T-008 PO) —
+  # React bağımlılığıyla birlikte eklenmesi deponun kendi taahhüdüydü
+  # (packages/config/eslint/react.js:4-6). Peer'ı eslint
+  # "^3...^10.0.0" — katalog eslint ^10.13.0 İÇİNDE, sorunsuz.
+  'eslint-plugin-react-hooks': 7.1.1 # 2026-04-17 yayınlandı
+  # eslint-plugin-jsx-a11y: Kullanıcı onayı (2026-10-31, T-008 PO) — aynı
+  # taahhüt. BİLİNEN UYUMSUZLUK: paketin son sürümü (6.10.2, 2024-10-26'dan
+  # beri güncellenmedi) peerDependencies'inde eslint'i yalnızca
+  # "^3...^9" kabul ediyor — katalog eslint ^10.13.0 bu aralığın DIŞINDA.
+  # `pnpm install` EXIT 0 verir (`strict-peer-dependencies=true` bu sınıf
+  # eşleşmeyen peer için YALNIZCA UYARI üretiyor, kurulumu durdurmuyor —
+  # ölçüldü: `pnpm peers check` "unmet peer eslint" bulgusu listeler).
+  # Üretici bu paketi 2024'ten beri ESLint 10 için güncellemedi; alternatif
+  # paket adı kullanıcı onayının kapsamı dışında. Bilinçli kabul edilen
+  # uyarı — NEEDS_INPUT'u GEREKTİRMEDİ çünkü kurulumu KIRMIYOR, sadece
+  # `pnpm peers check` çıktısında görünür kalıyor.
+  'eslint-plugin-jsx-a11y': 6.10.2 # 2024-10-26 yayınlandı (ESLint 10 peer'ı YOK — bilinen uyarı, bkz. yukarı)

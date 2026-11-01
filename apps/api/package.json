@@ -23,7 +23,7 @@
     "test": "vitest run",
     "test:isolation": "vitest run --config vitest.isolation.config.ts",
     "start": "node dist/main.js",
-    "dev": "tsc -p tsconfig.build.json --watch & node --watch dist/main.js"
+    "dev": "tsc -p tsconfig.build.json --watch & node --watch --env-file-if-exists=../../.env dist/main.js"
   },
   "dependencies": {
     "@arkesoft/config": "workspace:*",
