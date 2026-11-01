@@ -64,13 +64,43 @@ varsayımı Task dosyasına yaz ve devam et; ilerleyemiyorsan kullanıcıya sor.
 
 ### [6] Gate'ler
 
-**Hepsini tek mesajda, paralel çağır:** `qa`, `security`, `solid` + frontend varsa
-`wcag`, `perf`.
+**Hangi gate'ler koşar:** `solid` ve `qa` **her zaman**. `security`, `wcag`, `perf` yalnızca
+yüzeyi varsa — kararı **`architect`** verir ve gerekçesini Task dosyasına yazar
+(`WORKFLOW.md` → "Risk tabanlı gate seçimi"). Gerekçesiz atlama yasak; şüphede koştur.
+
+**Paralellik — iki istisna** (`WORKFLOW.md` → "Gate'ler paralel koşar"):
+
+- **Dosya değiştiren gate** (`perf`, `qa` — kasıtlı bozma yapıyorlar) ölçüm yapan
+  gate'lerle (`security`, `solid`) **paralel koşmaz**.
+- **Aynı portu isteyen gate** (`qa`, `wcag` — Playwright) port ajan başına
+  ayrılmamışsa sıralı koşar.
+
+Her gate'in briefine **koşturmaması gerekeni açıkça yaz** ("Playwright koşturma",
+"`admin build` koşturma") — yoksa çakışma sessizce yanlış ölçüm üretir.
+
+**Her briefte `BAĞLAM ÖZETİ` bloğu zorunlu** (`templates/handoff-in.md`). Gate ajanına
+önceki gate raporlarını **okutma** — ilgili bulguları brief'e **birebir kopyala**.
 
 ### [7] Düzeltme döngüsü (en fazla 3 tur)
 
-FAIL varsa: bulguları `sorumlu ajan` alanına göre ilgili üretim ajanına yönlendir.
-Düzeltmeden sonra **yalnızca FAIL veren gate'leri** yeniden koş. 3. turda hâlâ FAIL → Task durumunu `ESCALATED` yap, bulguları ve öneriyi kullanıcıya sun, dur.
+Düzeltme turu **yalnızca `critical`/`high`/`medium` için** açılır. **`low` bulgular doğrudan
+ROADMAP teknik borç tablosuna gider** — tur açmaz (`AGENT_BASELINE.md` §4). Tek istisna:
+aynı dosyada aynı düzenlemede kapanan `low`'lar ("yolu üstündeyse kapat").
+
+FAIL varsa bulguları `sorumlu ajan` alanına göre ilgili üretim ajanına yönlendir.
+
+**Düzeltmeden sonra yeniden koşum kapsamı** (`WORKFLOW.md` → "Gate turları ve yeniden
+koşum kapsamı"):
+
+| Önceki sonuç               | Kapsam                                                          |
+| -------------------------- | --------------------------------------------------------------- |
+| FAIL verdi                 | **TAM** yeniden denetim                                         |
+| PASS verdi, yüzeyi değişti | **DAR** — yalnızca kendi bulgularının kapanışı, yeni tarama yok |
+| PASS verdi, yüzeyi aynı    | **Koşmaz** — sonucu taşınır, kayda geçirilir                    |
+
+"Yüzeyi değişti" `git diff --stat` ile **ölçülür**, tahmin edilmez.
+
+3. turda hâlâ FAIL → Task durumunu `ESCALATED` yap, bulguları ve öneriyi kullanıcıya sun, dur.
 
 ### [8] docs
 

@@ -8,17 +8,36 @@
 
 ## 1. Okunacak dosyalar
 
-Sırayla:
+> **Token disiplini (2026-11-01).** Bu liste eskiden koşulsuzdu ve her ajan `ROADMAP.md`'nin
+> tamamını (1400+ satır) okuyordu. Ölçüm: ~25 ajan çağrısı × taban okuma ≈ **1M token**, tek
+> sürümde. Liste artık **rol bazlı ve hedefli**. Handoff paketindeki **BAĞLAM ÖZETİ** bloğu
+> geniş okumaların yerini tutar — Orkestratör onu zaten sentezliyor, ham kaynağı tekrar
+> taramak işi iki kez yapmaktır.
 
-| Dosya                          | Ne için                                                                        |
-| ------------------------------ | ------------------------------------------------------------------------------ |
-| `ARKESOFT_PROJECT_BRIEF.md`    | Ürün nedir, hedef kullanıcılar, rakipler, modüller                             |
-| `CLAUDE.md`                    | Yığın, yasaklar, monorepo haritası, kod standartları, tenant izolasyon listesi |
-| `ROADMAP.md`                   | Sürüm planı, kabul kriterleri, sürüm politikası, varsayımlar (A1–A17)          |
-| `.claude/workflow/WORKFLOW.md` | Döngünün tamamı ve kendi yerin                                                 |
+**Her ajan — zorunlu:**
+
+| Dosya                                      | Ne için                                               |
+| ------------------------------------------ | ----------------------------------------------------- |
+| `.claude/workflow/AGENT_BASELINE.md`       | Bu dosya: kısıtlar, şablonlar, FAIL kuralı, yasaklar  |
+| Handoff paketindeki **BAĞLAM ÖZETİ**       | Görevin durumu, ölçülmüş sayılar, önceki turların özü |
+| `CLAUDE.md` — **yalnızca ilgili bölümler** | Handoff hangi bölümlere atıf yaptıysa (§ numarasıyla) |
+
+**Role göre ek — yalnızca gerekeni oku:**
+
+| Rol                                   | Ek okuma                                                                                                                                  |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `pm`, `architect`, `po`               | `ROADMAP.md`'nin **ilgili sürüm bölümü** + `Sürüm Politikası`; `ARKESOFT_PROJECT_BRIEF.md` yalnızca `pm`                                  |
+| `ux`, `ui`                            | `docs/ux/<task>.md` / `docs/ui/<task>.md` ve kendi kapsamındaki bileşenler                                                                |
+| `frontend`, `backend`, `db`, `devops` | **Yalnızca kendi dosya listesi** + handoff'un atıf verdiği ADR'ler                                                                        |
+| Gate ajanları                         | **Yalnızca BAĞLAM ÖZETİ + denetlenecek dosyalar.** Önceki gate raporlarını **okuma** — ilgili bulgular handoff'a kopyalanmış olarak gelir |
+| `docs`, `release`                     | `ROADMAP.md`'nin ilgili bölümleri + değişen dosyaların listesi                                                                            |
+
+**`WORKFLOW.md`'yi okuma zorunluluğu kaldırıldı** — kendi yerini handoff paketi söylüyor.
+Döngünün tamamını bilmek yalnızca Orkestratör'ün işi.
 
 Görevle ilgili önceki ajan çıktıları handoff paketinde dosya yolu olarak verilir.
-**Verilmeyen dosyayı varsayma — oku veya `NEEDS_INPUT` döndür.**
+**Verilmeyen dosyayı varsayma — oku veya `NEEDS_INPUT` döndür.** Ama handoff'ta **özeti
+verilmiş** bir raporu ham hâlde okumak için gerekçe yaz; gerekçesiz geniş okuma israftır.
 
 ---
 
@@ -93,6 +112,28 @@ Kararı sen verme, kurala uy:
 - **low** — isimlendirme, ölü kod, iyileştirme önerisi.
 
 Önem derecesini şişirme veya küçültme. Emin değilsen bir alt seviyeyi seç ve gerekçesini açıklamaya yaz.
+
+### Bulgunun sonucu ne olur (2026-11-01)
+
+FAIL/PASS kararı ile **düzeltme turu açılması** ayrı şeylerdir:
+
+| Bulgu    | Gate sonucu | Düzeltme turu açar mı                              |
+| -------- | ----------- | -------------------------------------------------- |
+| critical | FAIL        | **Evet** — derhal                                  |
+| high     | FAIL        | **Evet**                                           |
+| medium   | ≥3 FAIL     | **Evet** (sayısı kaç olursa olsun)                 |
+| low      | PASS        | **Hayır** — doğrudan ROADMAP teknik borç tablosuna |
+
+**`low` bulgular için düzeltme turu koşturulmaz.** Gerekçe ölçülmüş: T-008'de PASS almış
+gate'lerin `low`'larını kapatmak için koşturulan ikinci düzeltme turu **0.63M token ve ~45 dakika**
+harcadı ve hiçbir davranış hatası düzeltmedi. Borç tablosu bu iş için var.
+
+**İstisna:** bir `low`, aynı turda açılmış bir `high`/`medium` düzeltmesiyle **aynı dosyada ve aynı
+düzenlemede** kapanıyorsa, uygulayan ajan onu da kapatır — ayrı tur açılmaz. Bunu handoff'ta
+"yolu üstündeyse kapat" diye işaretle.
+
+**Gate ajanı için sonuç:** `low` yazdığında düzeltme beklemiyorsun; **borç satırının metnini**
+yaz (SEV, `dosya:satır`, açıklama, sorumlu ajan, vade önerisi) ki `docs` kopyalayabilsin.
 
 ---
 

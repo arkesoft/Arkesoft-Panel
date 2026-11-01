@@ -29,11 +29,15 @@ Kullanıcı isteği
 [5] ÜRETİM      db → backend ║ frontend ║ devops
                 (db önce; backend db'yi bekler; frontend tRPC tiplerini bekler)
      ▼
-[6] GATE'LER    qa ║ security ║ solid ║ wcag* ║ perf*        (*frontend varsa)
+[6] GATE'LER    solid ║ qa  (her zaman)  +  security* ║ wcag* ║ perf*
+                (*yüzeyi varsa — kararı architect verir ve gerekçelendirir)
      │
      ├─ FAIL → [7] DÜZELTME (en fazla 3 tur)
+     │            yalnızca critical/high/medium için; low → borç tablosu
      │            bulgular sorumlu üretim ajanına gider
-     │            yalnızca FAIL veren gate'ler yeniden koşar
+     │            yeniden koşum: FAIL veren TAM · PASS+yüzey değişti DAR
+     │                           PASS+yüzey aynı koşmaz
+     │            düzeltme YENİ yüzey eklediyse o gate TAM koşar
      │            3. tur sonunda hâlâ FAIL → ESCALATED, kullanıcıya sun
      │
      └─ hepsi PASS
@@ -97,8 +101,51 @@ işaretlerse [2]–[5] atlanır; yalnızca ilgili üretim ajanı + `solid` + `qa
 - Bağımsız ajanlar **aynı mesajda** çağrılır → gerçekten paralel koşar.
 - **Aynı dosyaya iki ajan aynı anda yazamaz.** `po` alt görevleri dosya bazında
   çakışmasız böler; çakışma kaçınılmazsa sıralı çalışır.
-- Gate'ler **her zaman** paralel koşar.
 - Değiştirilemez sıralar: `db` → `backend` → `frontend`, `ux` → `ui` → `frontend`.
+- **Aynı `dist/`'e yazan iki ajan paralel koşmaz.** Tek ajan build koşturur, diğerlerine
+  açıkça yasaklanır.
+
+### Gate'ler paralel koşar — İKİ İSTİSNA DIŞINDA (2026-11-01)
+
+Gate'ler **salt-okunur değil**: `perf` ve `qa` kasıtlı bozma yapıyor (dosya değiştirip geri
+alıyor). T-008'de `perf`'in Deney A/C enjeksiyonları, `security` ölçüm yaparken ağacı değiştirdi;
+`security` fark edip ölçümlerini tekrarladı ama bu bir Orkestratör hatasıydı.
+
+| İstisna                                                  | Kural                                                                                                        |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **Dosya değiştiren gate** (`perf`, `qa` — kasıtlı bozma) | Ölçüm yapan gate'lerle (`security`, `solid`) **paralel koşmaz**. Önce ölçenler, sonra bozanlar; ya da tersi. |
+| **Aynı portu isteyen gate** (`qa`, `wcag` — Playwright)  | Port ajan başına ayrılabilir (aşağıdaki kalıp) ama **oran sınırı marjini** bağlayıcı kalıyor — bkz. uyarı.   |
+
+Her gate'in briefinde **koşturmaması gereken şey açıkça yazılır** ("Playwright koşturma",
+"`admin build` koşturma") — yoksa çakışma sessizce yanlış ölçüm üretir.
+
+### Playwright'ı farklı portta koşturma kalıbı (ölçülmüş, `devops` 2026-11-01)
+
+Port, Vite + Playwright + API'nin beklediği origin'de **birlikte** kaymak zorunda. Üçü ayrı
+ayrı kayarsa **sessiz 403** doğar (ADR-0011 madde 1-2). `devops` bunu negatif kontrolle
+kanıtladı: yalnızca Vite portunu kaydırmak `sign-up` çağrısını düşürüyor.
+
+```bash
+# 1) İkinci API süreci — AYRI AUTH_BASE_URL ile (apps/api altında).
+#    Node'un --env-file-if-exists'i önceden export edilmiş değeri EZMEZ, kod değişmez.
+API_PORT=3100 AUTH_BASE_URL="http://panel.arkesoft.localhost:5273" \
+  node --env-file-if-exists=../../.env dist/main.js
+
+# 2) O API'ye bakan e2e koşumu
+ARKESOFT_PANEL_E2E_PORT=5273 ARKESOFT_PANEL_DEV_API_TARGET=http://127.0.0.1:3100 \
+  pnpm --filter @arkesoft/admin test:e2e
+```
+
+Süreci başlatan gate ajanı **işi bitince kendi kapatır** — aksi hâlde port ve Redis bağlantısı
+sızdırır.
+
+> **⚠ Kazanç sınırlı — `devops` ölçtü.** `platform:auth:*` oran sınırı sayacı **IP bazlı** ve
+> port/origin bileşeni **yok** (`rate-limit.guard.ts:173`). İki eşzamanlı API süreci **aynı
+> sayaç uzayını paylaşır** → port ayrımı oran sınırı çakışmasını **çözmez**. İki tam suite
+> = 8 sign-in + 6 sign-up: tavanların altında ama **marjin yok**; üçüncü bir tüketici 429
+> üretir ve "flaky" gibi görünür. Bu yüzden `qa` ve `wcag`'ı **tam** suite ile eşzamanlı
+> koşturmak hâlâ riskli; dar `--grep` koşumları güvenli. Kalıcı çözüm ROADMAP'te
+> (`Vadesi v0.0.15`, scope'a origin/port bileşeni).
 
 ---
 
@@ -110,6 +157,87 @@ işaretlerse [2]–[5] atlanır; yalnızca ilgili üretim ajanı + `solid` + `qa
 | ≥ 3 `medium`                     | **FAIL**                      |
 | 1–2 `medium`                     | PASS, teknik borca kaydedilir |
 | Yalnızca `low`                   | PASS, teknik borca kaydedilir |
+
+**Düzeltme turu yalnızca `critical`/`high`/`medium` için açılır.** `low` bulgular doğrudan
+ROADMAP teknik borç tablosuna gider — ayrıntı `AGENT_BASELINE.md` §4, "Bulgunun sonucu ne olur".
+
+---
+
+## Gate turları ve yeniden koşum kapsamı (2026-11-01)
+
+Ölçüm: T-008'de iki tam gate turu **2.6M token** harcadı. Tur 2 **sıfır `high`** buldu
+(2 `medium` + 21 `low`) ama tur 1 kadar pahalıydı, çünkü her gate'e **tam yeniden denetim**
+yaptırıldı. Kural artık şu:
+
+| Gate'in önceki turdaki sonucu    | Yeniden koşum kapsamı                                                                                    |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **FAIL** verdi                   | **TAM** — bulduğu her şeyi yeniden denetler + yeni bulgu arar                                            |
+| **PASS** verdi, yüzeyi değişti   | **DAR** — yalnızca _"kendi önceki bulgularım kapandı mı"_ + değişen dosyalar. Yeni alan taraması **yok** |
+| **PASS** verdi, yüzeyi değişmedi | **Koşmaz.** Sonucu taşınır, Orkestratör bunu kayda geçirir                                               |
+
+**"Yüzeyi değişti" ne demek:** o gate'in kendi bulgularının dosyaları ya da o gate'in denetlediği
+katman (örn. `security` için `apps/api` + env + bağımlılıklar; `perf` için build çıktısı + bütçe)
+düzeltme turunda değişti mi — `git diff --stat` ile **ölçülür**, tahmin edilmez.
+
+### ⚠ DAR kapsamın kör noktası — düzeltmenin DOĞURDUĞU hata
+
+DAR kapsam yalnızca _"önceki bulgularım kapandı mı"_ sorar. **Bir düzeltmenin eklediği YENİ
+yüzeyde doğan yeni hatayı göremez.**
+
+Ölçülmüş vaka (T-008): `wcag` tur 1'de "skip-link yok" diye `low` yazdı. S5 skip-link'i ekledi.
+`wcag` tur 2'de **skip-link'in hiçbir şeyi atlamadığını** buldu (`<main>`'in `tabIndex`'i yok →
+odak `<body>`'ye düşüyor, sonraki Tab skip-link'e geri dönüyor → WCAG 2.4.1 karşılanmıyor) —
+`medium`. Bu bulgu **tur 1'de yoktu**, çünkü denetlenen şey tur 1'de **mevcut değildi**. DAR
+kapsamla koşsaydı **kaçardı**.
+
+**Bağlayıcı kural:** düzeltme turunda **yeni dosya, yeni bileşen, yeni prop veya yeni kullanıcı
+yüzeyi** eklendiyse, o yüzeyi denetleyen gate **DAR değil TAM** koşar — PASS vermiş olsa bile.
+Orkestratör bunu `git diff --stat` ile ölçer: **`create mode` / yeni export / yeni DOM öğesi
+varsa TAM.** Yalnızca mevcut satırların değiştiği (refactor, yorum, eşik) düzeltmelerde DAR
+yeterlidir.
+
+**Dar brief nasıl yazılır:** önceki turun bulgularını handoff'a **birebir kopyala**, "her biri için
+`KAPANDI`/`AÇIK` kararı ver" de, ve **"yeni alan taraması yapma"** diye açıkça yaz. Rapor
+dosyasını okutma — bulgular zaten brief'in içinde.
+
+**Üç tur sınırı değişmedi:** 3. turda hâlâ FAIL varsa Task `ESCALATED`, kullanıcıya sorulur.
+
+---
+
+## Risk tabanlı gate seçimi (2026-11-01)
+
+Beş gate'i koşulsuz koşturmak israftır. **Hangi gate'lerin yüzeyi olduğunu `architect` belirler**
+ve Task dosyasına yazar; Orkestratör ona uyar.
+
+| Gate       | Koşar mı                                                                                                         |
+| ---------- | ---------------------------------------------------------------------------------------------------------------- |
+| `solid`    | **Her zaman** — kod kalitesi ve katman sınırı her sürümde var                                                    |
+| `qa`       | **Her zaman** — kabul kriteri her sürümde var                                                                    |
+| `security` | Yeni endpoint/prosedür/kuyruk işi · kiracı tablosu · env · bağımlılık · auth yüzeyi · dış sağlayıcı varsa        |
+| `wcag`     | **Yalnızca** render edilen arayüz değiştiyse (`apps/admin`, `apps/superadmin`, `apps/storefront`, `packages/ui`) |
+| `perf`     | **Yalnızca** bundle, sorgu, önbellek veya build çıktısı değiştiyse                                               |
+
+`architect` "bu gate'in yüzeyi yok" derken **gerekçe yazar** (ör. _"v0.0.9 `theme-sdk`
+sözleşmesi — render edilen arayüz yok, `wcag` N/A"_). Gerekçesiz atlama **yasak**; şüphede
+koştur.
+
+---
+
+## Maliyet kaydı (2026-11-01)
+
+Yukarıdaki üç kuralın (bağlam özeti, `low` → borç, dar yeniden koşum) işe yarayıp yaramadığı
+**ölçülmeden bilinemez**. Orkestratör her Task dosyasına kapanışta şu tabloyu ekler:
+
+| Aşama | Ajan sayısı | Token | Ajan süresi |
+| ----- | ----------- | ----- | ----------- |
+
+**Taban çizgisi — T-008 (optimizasyon ÖNCESİ):** görünen toplam **~4.8M token / ~5.5 saat**
+(sıkıştırma öncesi üretim fazı hariç; onunla birlikte **~7M**). Dağılım: gate tur 1 1.42M ·
+`architect` 0.19M · düzeltme turu 1 0.96M · gate tur 2 1.18M · düzeltme turu 2 0.63M ·
+`docs`+`release` 0.45M.
+
+**Hedef:** benzer büyüklükte bir sürümde **~2.5–3M token**. Sapma varsa sebebi Task dosyasına
+yazılır — kural yanlışsa düzeltilir, uygulanmadıysa Orkestratör hatası olarak kaydedilir.
 
 ---
 

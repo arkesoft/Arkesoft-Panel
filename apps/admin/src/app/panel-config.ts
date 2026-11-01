@@ -1,7 +1,8 @@
 // @arkesoft/admin — Panel yapılandırma sabitleri (ROADMAP v0.0.7, T-008/S4,
-// architect K1/K5)
+// architect K1/K5; devops chore "gate paralelliği için Playwright portunun
+// ajan başına ayrılması" — port override eklendi, VARSAYILAN DEĞİŞMEDİ)
 //
-// PANEL_DEV_PORT TEK doğruluk kaynağıdır. `.env.example`'daki
+// PANEL_DEV_PORT varsayılan TEK doğruluk kaynağıdır. `.env.example`'daki
 // `AUTH_BASE_URL` (şema + `panel.arkesoft.localhost` + port 5173), Vite
 // dev/preview sunucusunun portu (S5, `vite.config.ts` + `--strictPort`) VE
 // Playwright'ın hedef aldığı port BUNDAN türemek ZORUNDADIR — sapma GÖRÜNMEYEN bir
@@ -9,15 +10,56 @@
 // hatadan çok "giriş çalışmıyor"dur). `panel-origin-pin.test.ts` bu sabiti
 // `.env.example`'daki port numarasına eşitleyerek pinler.
 //
+// PORT OVERRIDE (devops, gate paralelliği): `ARKESOFT_PANEL_E2E_PORT` env
+// değişkeni VERİLİRSE `resolvePanelDevPort` o değeri kullanır — `vite.
+// config.ts` VE `playwright.config.ts` AYNI fonksiyonu çağırır, böylece
+// ikisi BİRLİKTE kayar (drift imkânsız kalır). Bu dosyanın KENDİSİ
+// `process.env` OKUMAZ — TRPC_URL/AUTH_* gibi bu modül de tarayıcı
+// paketine (`api/auth-rest.ts`, `api/trpc-client.ts`) dahil edilir; Node-only
+// env okuması buraya SIZARSA tarayıcıda `process is not defined` ile çöker.
+// Gerçek `process.env['ARKESOFT_PANEL_E2E_PORT']` OKUMASI yalnızca Node
+// tarafındaki `vite.config.ts`/`playwright.config.ts`'te yapılır (K5'teki
+// `ARKESOFT_PANEL_DEV_API_TARGET` ile AYNI desen); bu fonksiyon saf bir
+// string→number doğrulayıcıdır, `apps/api`'nin `AUTH_BASE_URL`'ini BURADAN
+// KAYDIRMAZ — o, API sürecinin KENDİ ortam değişkeni, bu paketin dosya
+// listesi DIŞINDA (bkz. devops raporu KARARLAR/RİSKLER).
+//
 // TRPC_URL ve AUTH_* yolları GÖRELİ'dir (mutlak URL YOK, `VITE_*` YOK) — K5:
 // tek orijin topolojisinde (CORS açılmadı, ADR-0011) panelin API adresi
 // bundle'a asla gömülmez; dev/prod birebir aynı kod çalışır.
 
 /**
- * Vite dev/preview sunucusunun dinlediği port. `.env.example`'daki
- * `AUTH_BASE_URL` ile AYNI olmak zorundadır (K1).
+ * Vite dev/preview sunucusunun VARSAYILAN dinlediği port. `.env.example`'daki
+ * `AUTH_BASE_URL` ile AYNI olmak zorundadır (K1). `panel-origin-pin.test.ts`
+ * bu sabiti pinler — override uygulanmış bir koşumda DEĞİL, bu VARSAYILANA
+ * karşı doğrular.
  */
 export const PANEL_DEV_PORT = 5173
+
+/**
+ * `rawOverride` (tipik olarak `process.env['ARKESOFT_PANEL_E2E_PORT']`)
+ * geçerli bir pozitif tamsayıysa onu, aksi hâlde (tanımsız/boş)
+ * `PANEL_DEV_PORT`'u döner. Geçersiz (tamsayı değil, aralık dışı) bir değer
+ * fail-fast `Error` fırlatır — port birliği değişmezini SESSİZCE bozmak
+ * yerine gürültülü kırılır (K1'in `strictPort` felsefesiyle aynı).
+ *
+ * SAF fonksiyon: `process.env`'e BURADA dokunulmaz (yukarıdaki dosya başı
+ * yorumuna bkz.) — çağıran Node-only dosya okur, buraya değer olarak verir.
+ */
+export function resolvePanelDevPort(rawOverride: string | undefined): number {
+  if (rawOverride === undefined || rawOverride.trim() === '') {
+    return PANEL_DEV_PORT
+  }
+
+  const parsed = Number.parseInt(rawOverride, 10)
+  if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65_535) {
+    throw new Error(
+      `ARKESOFT_PANEL_E2E_PORT geçersiz: "${rawOverride}" — 1-65535 aralığında bir tamsayı olmalı`,
+    )
+  }
+
+  return parsed
+}
 
 /** tRPC HTTP uç noktası — göreli (K5). */
 export const TRPC_URL = '/trpc'

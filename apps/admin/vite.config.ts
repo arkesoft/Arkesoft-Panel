@@ -4,9 +4,10 @@
 // A-A1 (ÖLÇÜLDÜ, frontend): Vite'ın `*.localhost` için "varsayılan izin
 // ver"i FAIL-OPEN bir davranıştır — bu dosya ona GÜVENMEZ (fail-closed, K1).
 // `server.allowedHosts` İÇİNDE `panel.arkesoft.localhost` AÇIKÇA yazılır;
-// `server.port` + `strictPort: true` ile `PANEL_DEV_PORT`'a (K1'in "sessiz
-// 403 tuzağı" telafisi) PIN'lenir — port ÇAKIŞIRSA sessizce başka porta
-// kaymak YERİNE GÜRÜLTÜLÜ kırılır.
+// `server.port` + `strictPort: true` ile `PANEL_DEV_PORT`'a (varsayılan;
+// `ARKESOFT_PANEL_E2E_PORT` ile override edilebilir, `resolvePanelDevPort`'a
+// bkz.) (K1'in "sessiz 403 tuzağı" telafisi) PIN'lenir — port ÇAKIŞIRSA
+// sessizce başka porta kaymak YERİNE GÜRÜLTÜLÜ kırılır.
 //
 // DÜZELTME TURU 1 (`security` low 8a): `server.host: true` SİLİNDİ — tüm
 // ağ arayüzlerine bağlanmak (`0.0.0.0`) GEREKSİZDİ: `panel.arkesoft.
@@ -47,7 +48,7 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { z } from 'zod'
 
-import { PANEL_DEV_PORT, TRPC_URL } from './src/app/panel-config.js'
+import { resolvePanelDevPort, TRPC_URL } from './src/app/panel-config.js'
 
 /**
  * Dev-only proxy hedefi — `VITE_` ÖNEKİ YOK (K5), bu yüzden istemci
@@ -58,6 +59,13 @@ import { PANEL_DEV_PORT, TRPC_URL } from './src/app/panel-config.js'
  */
 const devApiTargetSchema = z.string().pipe(z.url()).default('http://127.0.0.1:3000')
 const API_PROXY_TARGET = devApiTargetSchema.parse(process.env['ARKESOFT_PANEL_DEV_API_TARGET'])
+
+// devops (gate paralelliği): `ARKESOFT_PANEL_E2E_PORT` VERİLMEZSE davranış
+// birebir ESKİSİ GİBİDİR (`resolvePanelDevPort(undefined) === PANEL_DEV_PORT`
+// — `panel-config.ts` ölçer/pinler). Okuma BURADA (Node-only dosya) yapılır,
+// `panel-config.ts`'in KENDİSİ `process.env`'e dokunmaz (o dosya tarayıcı
+// paketine de dahil edilir — bkz. dosya başı yorumu).
+const PORT = resolvePanelDevPort(process.env['ARKESOFT_PANEL_E2E_PORT'])
 
 export default defineConfig({
   // Kök `.env`'i Vite'ın görüş alanına hiç SOKMAZ (K5 bilinçli güvenlik
@@ -80,7 +88,7 @@ export default defineConfig({
     tailwindcss(),
   ],
   server: {
-    port: PANEL_DEV_PORT,
+    port: PORT,
     strictPort: true,
     allowedHosts: ['panel.arkesoft.localhost'],
     // Vite dev sunucusunun KENDİ varsayılanı tüm yanıtlara (dev-only, prod'da

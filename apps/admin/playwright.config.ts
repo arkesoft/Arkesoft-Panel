@@ -10,9 +10,11 @@
 // A-A9 (ÖLÇÜLDÜ, frontend+qa): `vite preview`'un varsayılan portu **4173**
 // — `AUTH_BASE_URL` `:5173` ile eşleşmez, her giriş SESSİZCE 403 alırdı
 // (K1 "sessiz 403 tuzağı"nın AYNISI). `webServer.command` bu yüzden `vite`
-// (DEV sunucusu, `--port`/`--strictPort` AÇIKÇA `PANEL_DEV_PORT`'a pinli) —
-// `vite preview` DEĞİL. Port ÇAKIŞIRSA `--strictPort` GÜRÜLTÜLÜ kırılır
-// (sessizce başka porta kaymaz).
+// (DEV sunucusu, `--port`/`--strictPort` AÇIKÇA `resolvePanelDevPort`'un
+// döndürdüğü porta pinli — varsayılan `PANEL_DEV_PORT`, `ARKESOFT_PANEL_
+// E2E_PORT` ile override edilebilir, devops "gate paralelliği" chore'una
+// bkz.) — `vite preview` DEĞİL. Port ÇAKIŞIRSA `--strictPort` GÜRÜLTÜLÜ
+// kırılır (sessizce başka porta kaymaz).
 //
 // AC18 (bütçe, bağlayıcı — DÜZELTME TURU 2: `solid` tur 2 M-N1, yorum
 // düzeltildi): `workers: 1` + HER SPEC dosyasının KENDİSİ `test.describe.
@@ -52,9 +54,19 @@
 // GÜNCELLEMEK ZORUNDA.
 import { defineConfig, devices } from '@playwright/test'
 
-import { PANEL_DEV_PORT } from './src/app/panel-config.js'
+import { resolvePanelDevPort } from './src/app/panel-config.js'
 
-const BASE_URL = `http://panel.arkesoft.localhost:${String(PANEL_DEV_PORT)}`
+// devops (gate paralelliği): `ARKESOFT_PANEL_E2E_PORT` VERİLMEZSE davranış
+// birebir ESKİSİ GİBİDİR. `vite.config.ts` AYNI fonksiyonu AYNI env
+// değişkeninden okur — ikisi BİRLİKTE kayar (K1'in değişmezi: Vite portu =
+// Playwright'ın hedef aldığı port). `AUTH_BASE_URL`'in (apps/api, SUNUCU
+// tarafı) de BU PORTLA eşleşmesi gerekir — BU DOSYA onu KAYDIRAMAZ (apps/api
+// bu görevin dosya listesi DIŞINDA); override kullanan çağıran, kendi
+// `AUTH_BASE_URL`/`API_PORT` ile eşleşen AYRI bir `apps/api` süreci
+// başlatmak ZORUNDADIR — aksi hâlde K1'in "sessiz 403 tuzağı" AYNEN
+// tekrarlanır (bkz. devops raporu KARARLAR/RİSKLER).
+const PORT = resolvePanelDevPort(process.env['ARKESOFT_PANEL_E2E_PORT'])
+const BASE_URL = `http://panel.arkesoft.localhost:${String(PORT)}`
 
 export default defineConfig({
   testDir: './e2e',
@@ -72,7 +84,7 @@ export default defineConfig({
     baseURL: BASE_URL,
   },
   webServer: {
-    command: `vite --port ${String(PANEL_DEV_PORT)} --strictPort`,
+    command: `vite --port ${String(PORT)} --strictPort`,
     url: BASE_URL,
     reuseExistingServer: !process.env['CI'],
     timeout: 30_000,
