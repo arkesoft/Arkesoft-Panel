@@ -42,6 +42,14 @@ jobs:
       superadmin: ${{ steps.decide.outputs.superadmin }}
       storefront: ${{ steps.decide.outputs.storefront }}
       shared: ${{ steps.decide.outputs.shared }}
+      # ROADMAP v0.0.9, T-010/S9 (R-A) — "theme-sdk" job'u için ayrı çıktı.
+      # Ad BİLEREK tireSİZ ("themeSdk"): bu değer aşağıda bir "if:" ifadesinde
+      # nokta erişimiyle okunuyor ("needs.plan.outputs.themeSdk") — ifade
+      # motorunda "-" çıkarma (subtraction) operatörüdür, "theme-sdk" yazımı
+      # "theme" EKSİ "sdk" olarak ayrıştırılırdı (iş akışı job'unun kendi
+      # tire'li kimliği "theme-sdk" bundan ETKİLENMEZ, çünkü o yalnızca bir
+      # YAML harita anahtarı/liste öğesi, ifade erişimi DEĞİL).
+      themeSdk: ${{ steps.decide.outputs.themeSdk }}
     steps:
       - name: Depoyu checkout et (tam geçmiş — affected hesaplaması için)
         uses: actions/checkout@v4
@@ -89,6 +97,7 @@ jobs:
           superadmin=false
           storefront=false
           shared=false
+          theme_sdk=false
 
           root_rule=false
           root_rule_unresolved=false
@@ -270,12 +279,16 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$fail_open" = true ] || [ "$root_rule" = true ]; then
-            api=true; admin=true; superadmin=true; storefront=true; shared=true
+            api=true; admin=true; superadmin=true; storefront=true; shared=true; theme_sdk=true
           else
             printf '%s\n' "$names" | grep -Fxq '@arkesoft/api' && api=true
             printf '%s\n' "$names" | grep -Fxq '@arkesoft/admin' && admin=true
             printf '%s\n' "$names" | grep -Fxq '@arkesoft/superadmin' && superadmin=true
             printf '%s\n' "$names" | grep -Fxq '@arkesoft/storefront' && storefront=true
+            # ROADMAP v0.0.9, T-010/S9 (R-A) — "theme-sdk" kendi ayrı hattını
+            # "@arkesoft/theme-sdk" doğrudan (veya kapanışı) etkilendiğinde
+            # alır; mekanizma admin/superadmin/storefront ile BİREBİR aynı.
+            printf '%s\n' "$names" | grep -Fxq '@arkesoft/theme-sdk' && theme_sdk=true
             # shared: packages/ altındaki paketlerden en az biri etkilendiyse
             # true (kaynak: $shared_names — yukarıda --dry=json'dan türetildi,
             # elle regex YOK).
@@ -290,6 +303,7 @@ jobs:
             echo "superadmin=$superadmin"
             echo "storefront=$storefront"
             echo "shared=$shared"
+            echo "themeSdk=$theme_sdk"
           } >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------
@@ -991,9 +1005,22 @@ jobs:
   # ---------------------------------------------------------------------
   # shared — dört uygulama hattının kapanışına girmeyen paylaşılan
   # paketler (ui, integrations, theme-sdk, trpc + config/db/errors'ın
-  # kendisi). "test" YOK: kendi test script'i olan üç paket zaten "api"
-  # hattının kapanışında; burada tekrar koşmak sessiz bir boşluk
-  # DOĞURMAZ (T-003 K-B2.7).
+  # kendisi). "test" YOK: kendi test script'i olan paketler ya "api"
+  # hattının kapanışında (db, errors, trpc) ya "admin" hattının
+  # kapanışında (ui) ya da kendi ayrı hattında (theme-sdk — ROADMAP
+  # v0.0.9, T-010/S9, R-A; aşağıdaki "theme-sdk" job'una bakın); burada
+  # tekrar koşmak sessiz bir boşluk DOĞURMAZ (T-003 K-B2.7).
+  #
+  # GÜNCELLEME (ROADMAP v0.0.9, T-010/S9): bu yorum eskiden "theme-sdk …
+  # test YOK" diyordu — bu artık YANLIŞ. `@arkesoft/theme-sdk` bir "test"
+  # script'i kazandı (S1) ama ona `workspace:*` ile bağımlı HİÇBİR paket
+  # yok, yani dört uygulama hattının kapanışına GİRMİYOR. Bu "shared"
+  # job'u onu `./packages/**` filtresinde GÖRÜYOR ama `run-test: 'false'`
+  # taşıyor — AYNI filtre `@arkesoft/db`'nin Postgres İSTEYEN süitini de
+  # kapsıyor ve bu job Postgres provision ETMİYOR; burada "run-test"i
+  # 'true' yapmak o süiti Postgres'siz bir job'a sokardı (gerileme).
+  # Çözüm: theme-sdk kendi dar filtresiyle (`@arkesoft/theme-sdk...`),
+  # DB gerektirmeyen ayrı bir job alır (aşağıda).
   # ---------------------------------------------------------------------
   shared:
     name: shared
@@ -1031,6 +1058,41 @@ jobs:
           run-isolation: 'false'
 
   # ---------------------------------------------------------------------
+  # theme-sdk — @arkesoft/theme-sdk'nın "test" script'ini GERÇEKTEN
+  # koşturan hat (ROADMAP v0.0.9, T-010/S9 — R-A'nın çözümü). theme-sdk'ya
+  # `workspace:*` ile bağımlı hiçbir paket yok, bu yüzden dört uygulama
+  # hattının (api/admin/superadmin/storefront) kapanışına girmiyor; yukarı
+  # bakın — "shared" job'u onu görür ama `run-test: 'false'` taşır çünkü
+  # aynı filtre (`./packages/**`) @arkesoft/db'nin Postgres isteyen
+  # süitini de kapsar ve bu job Postgres provision ETMEZ. Dar filtre
+  # (`@arkesoft/theme-sdk...`) theme-sdk'yı @arkesoft/db'den AYIRIR — bu
+  # job'da db DEĞİL, yalnızca theme-sdk (bugün bağımlılığı yok →
+  # kapanış = theme-sdk'nın kendisi) koşar; db'nin Postgres isteyen süiti
+  # bu job'a HİÇ girmez (gerileme yok).
+  # ---------------------------------------------------------------------
+  theme-sdk:
+    name: theme-sdk
+    needs: plan
+    if: needs.plan.outputs.themeSdk == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Depoyu checkout et
+        uses: actions/checkout@v4
+
+      - name: Çalışma alanını hazırla
+        uses: ./.github/actions/setup-workspace
+
+      - name: Beşli kapıyı çalıştır
+        uses: ./.github/actions/run-gates
+        with:
+          filter: '@arkesoft/theme-sdk...'
+          # theme-sdk'nın DB'ye erişimi yok, "test:isolation" script'i yok
+          # — aynı gerekçe (yukarıdaki "admin"/"superadmin"/"storefront"
+          # job'larındaki not).
+          run-isolation: 'false'
+
+  # ---------------------------------------------------------------------
   # ci-gate — TEK toplayıcı (aggregate) check (AC9). Varsayılan-reddet:
   # izinli küme {success, skipped}, dışındaki HER DEĞER (failure,
   # cancelled, ileride eklenecek yeni bir değer) başarısızlık sayılır.
@@ -1041,7 +1103,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [plan, repo, guards, api, admin, superadmin, storefront, shared]
+    needs: [plan, repo, guards, api, admin, superadmin, storefront, shared, theme-sdk]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

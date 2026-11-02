@@ -1,10 +1,18 @@
 {
+  // Tip kontrolü projesi: src/ kaynakları + scripts/ (S7'nin tek I/O
+  // noktası, generate-contract-schema.ts) + kök düzeyindeki yapılandırma
+  // dosyaları (vitest.config.ts) denetlenir. `projectService: true`
+  // (packages/config/eslint/base.js:234) her dosya için en yakın
+  // tsconfig.json'ı kullanıyor — include dar kalırsa scripts/ ve
+  // vitest.config.ts "projeye dahil değil" hatası verir (packages/tenancy
+  // emsali: tsconfig.json:13 → ["src/**/*", "*.config.ts"]). Derleme için
+  // ayrı proje kullanılır: tsconfig.build.json (yalnızca src/**, scripts/
+  // dist/'e ASLA girmez).
   "extends": "@arkesoft/config/tsconfig/node.json",
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src",
-    "tsBuildInfoFile": "dist/.tsbuildinfo"
+    "noEmit": true,
+    "types": ["node"]
   },
-  "include": ["src/**/*"],
-  "exclude": ["dist", "node_modules"]
+  "include": ["src/**/*", "scripts/**/*", "*.config.ts"],
+  "exclude": ["node_modules", "dist"]
 }

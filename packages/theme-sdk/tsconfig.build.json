@@ -1,0 +1,17 @@
+{
+  // Derleme projesi: yalnızca src/ TypeScript kaynaklarını dist/'e üretir.
+  // Testler derlenmez — paket yalnızca üretim kodunu dağıtır
+  // (packages/errors / packages/tenancy deseninin birebir kopyası).
+  // NOT: errors/tenancy düz src/ yapısına sahip olduğu için "src/__tests__" yeterliydi;
+  // theme-sdk'de testler alt dizinlere de açıldı (src/settings/__tests__,
+  // src/manifest/__tests__) — bu yüzden glob derinliğe bakmaksızın her __tests__
+  // dizinini eşler, yeni bir alt dizin test klasörü eklense bile.
+  "extends": "@arkesoft/config/tsconfig/node.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "tsBuildInfoFile": "dist/.tsbuildinfo"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "src/**/__tests__"]
+}

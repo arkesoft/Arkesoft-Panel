@@ -59,6 +59,21 @@
 #     '@arkesoft/storefront...'`, ci.yml:986) kapanışında, "run-test"
 #     açıkça 'false' GEÇİLMİYOR → test adımı GERÇEKTEN koşuyor.
 #
+# GÜNCELLEME (ROADMAP v0.0.9, T-010/S9 — devops, R-A'yı çözer):
+# `packages/theme-sdk` bir "test" script'i kazandı (S1, "vitest run"),
+# ama ona `workspace:*` ile bağımlı HİÇBİR paket yok → dört uygulama
+# hattının (api/admin/superadmin/storefront) kapanışına GİRMİYOR.
+# "shared" job'unun (`filter: './packages/**'`, ci.yml:1025) kapanışında
+# GÖRÜNÜYOR ama bu job `run-test: 'false'` taşıyor (ci.yml:1026) — AYNI
+# filtre `@arkesoft/db`'nin Postgres İSTEYEN süitini de kapsadığı ve bu
+# job Postgres provision ETMEDİĞİ için orada 'true' yapmak gerileme
+# olurdu. Çözüm: yeni, DAR bir hat — `theme-sdk` job'u (`filter:
+# '@arkesoft/theme-sdk...'`, ci.yml), @arkesoft/db'yi KAPSAMAZ, "run-test"
+# açıkça 'false' GEÇİLMİYOR → test adımı GERÇEKTEN koşuyor
+# (`turbo run test --filter='@arkesoft/theme-sdk...' --dry=json` ile
+# doğrulandı: `@arkesoft/theme-sdk#test` komutu `vitest run`,
+# `<NONEXISTENT>` değil). Sessiz boşluk doğmuyor; 8 → 9 satır.
+#
 # Satır başında # olan satırlar ve boş satırlar yorum sayılır, taranmaz.
 
 @arkesoft/admin
@@ -67,5 +82,6 @@
 @arkesoft/errors
 @arkesoft/storefront
 @arkesoft/tenancy
+@arkesoft/theme-sdk
 @arkesoft/trpc
 @arkesoft/ui
