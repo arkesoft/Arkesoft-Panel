@@ -171,7 +171,9 @@ pnpm typecheck       # tsc --noEmit
 pnpm build           # tüm paketler
 pnpm test            # Vitest (v0.0.3'ten itibaren)
 pnpm test:isolation  # tenant izolasyon süiti (v0.0.13'ten itibaren)
-pnpm test:e2e        # Playwright (v0.0.7'den itibaren)
+pnpm --filter @arkesoft/<app> test:e2e   # Playwright — PAKET BAZINDA (v0.0.7'den itibaren)
+                     # KÖK `pnpm test:e2e` script'i YOK (pm T-009'da ölçtü, R6).
+                     # Bugün yalnızca apps/admin'de var; borç: devops/docs.
 pnpm format:check    # Prettier
 pnpm env:check       # ortam değişkeni şeması
 pnpm infra:up        # yerel altyapı (Postgres, Redis, Meilisearch, SeaweedFS, Mailpit)

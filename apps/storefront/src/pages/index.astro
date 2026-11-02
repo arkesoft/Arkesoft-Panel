@@ -1,0 +1,32 @@
+---
+// @arkesoft/storefront — kiracı sayfası (200) (ROADMAP v0.0.8, T-009/S6,
+// architect "Sayfalar ve uçlar", `docs/ux/T-009.md` "Kiracı sayfası")
+//
+// K13b (bağlayıcı): bu dosyada KOŞUL/DÖNGÜ/`try`/fetch/env okuma/tür
+// dönüşümü YOK — `requireResolvedTenant` çağrısı tek bir fonksiyon
+// çağrısıdır (mantığın kendisi `src/lib/storefront-tenant-context.ts`'te
+// yaşar); `Astro.locals.tenant` HER ZAMAN `resolved`dir (`src/middleware.ts`
+// K21 adım 3 garantisi — `unresolved` durumu bu sayfaya hiç ULAŞMAZ).
+import BaseLayout from '../layouts/BaseLayout.astro'
+import { TenantGreeting } from '../components/TenantGreeting.tsx'
+import { requireResolvedTenant } from '../lib/storefront-tenant-context.js'
+import { MESSAGES } from '../messages/messages.js'
+
+const resolvedTenant = requireResolvedTenant(Astro.locals.tenant)
+const storeName = resolvedTenant.tenant.name
+---
+
+<BaseLayout
+	lang="tr"
+	title={MESSAGES.storefront.tenant.title(storeName)}
+	description={MESSAGES.storefront.tenant.metaDescription(storeName)}
+>
+	<link rel="canonical" href={`${resolvedTenant.origin}/`} slot="head-extra" />
+	<h1 class="text-2xl font-semibold">{MESSAGES.storefront.tenant.heading(storeName)}</h1>
+	<p>{MESSAGES.storefront.tenant.body}</p>
+	<TenantGreeting
+		client:idle
+		summary={MESSAGES.storefront.tenant.disclosureSummary}
+		body={MESSAGES.storefront.tenant.disclosureBody(storeName)}
+	/>
+</BaseLayout>

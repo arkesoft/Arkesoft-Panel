@@ -24,6 +24,7 @@ import { expectTypeOf, test } from 'vitest'
 
 import type { RouterOutputs } from '../index.js'
 import type { TenantSummary } from '../schemas/tenant-summary.schema.js'
+import type { StorefrontTenant } from '../schemas/storefront-tenant.schema.js'
 import type { SessionIdentity } from '../schemas/session-identity.schema.js'
 
 // `test()` sarmalayıcıları ÇALIŞMA ZAMANINDA YÜRÜMEZ (bu dosya
@@ -65,4 +66,18 @@ test('session.me çıktısı literal tel şekliyle TAM eşleşir (totoloji karş
 test('session.me çıktısı export edilen SessionIdentity tipiyle de eşleşir (export belgesi)', () => {
   // Export'un KENDİ belgesi.
   expectTypeOf<RouterOutputs['session']['me']>().toEqualTypeOf<SessionIdentity>()
+})
+
+test('storefront.currentTenant çıktısı literal tel şekliyle TAM eşleşir (totoloji karşıtı — şemadan TÜRETİLMEDİ, ROADMAP v0.0.8, T-009/S5)', () => {
+  // POZİTİF/JENERİK PİN — beklenen şekil LİTERAL (architect K3'ün TEK alanı,
+  // `id`/`slug`/`status`/`primaryDomain`/`planId`/`deletedAt` BİLİNÇLİ OLARAK
+  // yok).
+  expectTypeOf<RouterOutputs['storefront']['currentTenant']>().toEqualTypeOf<{
+    name: string
+  }>()
+})
+
+test('storefront.currentTenant çıktısı export edilen StorefrontTenant tipiyle de eşleşir (export belgesi)', () => {
+  // Export'un KENDİ belgesi — bu, yukarıdaki LİTERAL pinin YERİNE geçmez.
+  expectTypeOf<RouterOutputs['storefront']['currentTenant']>().toEqualTypeOf<StorefrontTenant>()
 })

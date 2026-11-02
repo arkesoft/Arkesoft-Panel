@@ -60,6 +60,7 @@ arkesoft/
 ├── packages/
 │   ├── db/             # Prisma şeması, migration, seed, RLS politikaları
 │   ├── errors/         # AppError hiyerarşi tabanı, hata gövdesi tel sözleşmesi, redaction
+│   ├── tenancy/        # Host→kiracı seçici çözümleme: hostname normalizasyonu, rezerve etiketler (bağımlılığı yok)
 │   ├── trpc/           # Router tipleri, Zod şemaları, istemci factory
 │   ├── ui/             # Paylaşılan shadcn bileşenleri, şema→form motoru
 │   ├── theme-sdk/      # Tema sözleşmesi, theme.json şeması, migration API
@@ -79,17 +80,18 @@ arkesoft/
 
 ### Sorumluluk sınırları
 
-| Paket                            | Yapar                                                                 | Yapmaz                                                |
-| -------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------- |
-| `apps/api`                       | İş mantığı, yetkilendirme, kuyruk işleri, tRPC router implementasyonu | Sunum (presentation) mantığı                          |
-| `apps/admin` / `apps/superadmin` | Sunum, form durumu, istemci tarafı doğrulama                          | İş kuralı; doğrulama her zaman sunucuda tekrar edilir |
-| `apps/storefront`                | Tema render, SEO, önbellek                                            | Yazma işlemi (API üzerinden gider)                    |
-| `packages/db`                    | Şema, migration, RLS, seed                                            | İş mantığı                                            |
-| `packages/errors`                | `AppError` hiyerarşi tabanı, hata gövdesi tel sözleşmesi, redaction   | Domain hatası tanımı; i18n çözümlemesi; log yazma     |
-| `packages/trpc`                  | Sözleşme (girdi/çıktı şemaları) ve tipler                             | İş mantığı                                            |
-| `packages/theme-sdk`             | Tema sözleşmesi ve doğrulama                                          | Tenant verisine erişim                                |
-| `packages/integrations`          | Dış sağlayıcı adaptörleri                                             | Veritabanına yazma — sonucu çağırana döner            |
-| `packages/ui`                    | Sunum bileşenleri                                                     | Veri çekme, tRPC bağımlılığı                          |
+| Paket                            | Yapar                                                                                                                                 | Yapmaz                                                                                                                                                                         |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `apps/api`                       | İş mantığı, yetkilendirme, kuyruk işleri, tRPC router implementasyonu                                                                 | Sunum (presentation) mantığı                                                                                                                                                   |
+| `apps/admin` / `apps/superadmin` | Sunum, form durumu, istemci tarafı doğrulama                                                                                          | İş kuralı; doğrulama her zaman sunucuda tekrar edilir                                                                                                                          |
+| `apps/storefront`                | Tema render, SEO, önbellek                                                                                                            | Yazma işlemi (API üzerinden gider)                                                                                                                                             |
+| `packages/db`                    | Şema, migration, RLS, seed                                                                                                            | İş mantığı                                                                                                                                                                     |
+| `packages/errors`                | `AppError` hiyerarşi tabanı, hata gövdesi tel sözleşmesi, redaction                                                                   | Domain hatası tanımı; i18n çözümlemesi; log yazma                                                                                                                              |
+| `packages/tenancy`               | Host→kiracı **seçici** çözümlemesinin saf kuralları: hostname normalizasyonu, taban alan adı eşlemesi, slug biçimi, rezerve etiketler | I/O · veritabanı erişimi · HTTP/çatı bağımlılığı · **`TenantContext` ÜRETİMİ** (tek üretici `apps/api`'nin `TenantResolverService`'i) · yetkilendirme · kiracı verisine erişim |
+| `packages/trpc`                  | Sözleşme (girdi/çıktı şemaları) ve tipler                                                                                             | İş mantığı                                                                                                                                                                     |
+| `packages/theme-sdk`             | Tema sözleşmesi ve doğrulama                                                                                                          | Tenant verisine erişim                                                                                                                                                         |
+| `packages/integrations`          | Dış sağlayıcı adaptörleri                                                                                                             | Veritabanına yazma — sonucu çağırana döner                                                                                                                                     |
+| `packages/ui`                    | Sunum bileşenleri                                                                                                                     | Veri çekme, tRPC bağımlılığı                                                                                                                                                   |
 
 **Bağımlılık yönü:** `apps/*` → `packages/*`. Paketler arası döngüsel bağımlılık yasak. `packages/ui` hiçbir uygulamaya veya `trpc`'ye bağımlı olmaz. **`packages/errors` hiçbir iç pakete bağımlı değildir** (yalnızca `zod`).
 
@@ -318,7 +320,7 @@ Yeni bir endpoint, prosedür, kuyruk işi veya tablo eklerken **her maddeyi** do
 - [ ] Tabloda `tenant_id` kolonu var ve `NOT NULL`.
 - [ ] Tabloda RLS etkin ve politika `current_setting('app.tenant_id')` ile karşılaştırıyor.
 - [ ] `(tenant_id, <sorgulanan kolon>)` bileşik indeksi var.
-- [ ] Prosedür `tenantProcedure` (veya `permissionProcedure`) kullanıyor; `publicProcedure` değil.
+- [ ] Prosedür `tenantProcedure` (veya `permissionProcedure`) kullanıyor; `publicProcedure` değil; istisna: kimlik doğrulaması yok ama kiracı zorunlu olan `publicTenantProcedure` (kiracı iki katmanda zorlanır) — bkz. ADR-0012 §1.
 - [ ] Sorgular `withTenant(tenantId)` istemcisi üzerinden gidiyor; ham `prisma` çağrısı yok.
 - [ ] Girdideki hiçbir `id` doğrudan güvenilmiyor; sahiplik (ownership) doğrulanıyor.
 - [ ] Kuyruk işinin payload'ında `tenantId` var ve worker işin başında tenant context kuruyor.

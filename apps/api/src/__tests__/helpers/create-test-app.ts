@@ -40,6 +40,51 @@
 // uygulamasına, rate-limit sayaçları açısından TEMİZ bir başlangıç verir.
 // `SCAN` kullanılır (`KEYS` DEĞİL — büyük anahtar uzayında bloklamaz,
 // production-safe desen, burada gerekli olmasa da tutarlılık için).
+//
+// T-009/S8 EKLEMESİ — İKİ FAIL-CLOSED KAPI (security T-008 tur2 medium +
+// solid tur2 low, ÖLÇÜLDÜ: bu dosyada `NODE_ENV` kontrolü YOKTU, Redis host
+// allowlist'i YOKTU — `grep -c NODE_ENV` → 0). Senaryo: biri paylaşılan/canlı
+// bir ortamı teşhis ederken `REDIS_URL`'i o ortama işaret eder HÂLDE zorunlu
+// kapı komutu `pnpm test` koşulursa, 30 çağıran dosyanın HER `createTestApp()`'i
+// `platform:auth:*` NAMESPACE'İNİ dakikalarca TEKRAR TEKRAR siler — sign-in
+// (20/15dk), sign-up (10/saat), şifre sıfırlama sayaçları SÜREKLİ sıfırlanır
+// → credential-stuffing botu PRATİKTE SINIRSIZ deneme kazanır. `solid`'in
+// değerlendirmesi: "kabul edilebilir dev kolaylığı DEĞİL, test izolasyon
+// defekti." Kapılar `flushRateLimitCounters`'ın İLK satırlarında, Redis'e
+// HİÇBİR komut gitmeden önce çalışır:
+//   (a) `process.env.NODE_ENV !== 'test'` → fırlat.
+//   (b) çözülen Redis host'u (`new URL(apiEnv.REDIS_URL).hostname`) loopback
+//       allowlist'inde (`127.0.0.1`/`::1`/`localhost`) DEĞİLSE → fırlat.
+//
+// `NODE_ENV` KAYNAĞI — `process.env` (ApiEnv DEĞİL), ÖLÇÜLEREK seçildi —
+// İLK denemede `ApiEnv.NODE_ENV` kullanıldı (`tenant-resolver.service.ts:11-13`
+// ve `auth-instance.ts:17-33`'ün AYNI kuralını taşıdığı düşünülerek: "NODE_ENV
+// API_ENV PROVIDER'INDAN okunur") ve bu `pnpm --filter @arkesoft/api test`'i
+// KIRDI: `auth-flow.test.ts`/`tenant-resolution.test.ts` gibi BAŞKA, İLGİSİZ
+// davranışları (üretim çerez modu, dev-header baypas'ı, açık yönlendirme
+// koruması) doğrulamak için `apiEnv: { ...BASE_ENV, NODE_ENV: 'development'
+// }`/`'production'` OVERRIDE EDEN GERÇEK, ÖNCEDEN VAR OLAN testleri KIRDI —
+// bu testler GERÇEKTEN vitest altında (`process.env.NODE_ENV` HER ZAMAN
+// `'test'`) koşuyor, yalnızca DI'YA enjekte edilen `ApiEnv.NODE_ENV`'i KENDİ
+// SENARYOLARI için override ediyorlar; bu flush kapısının AMACI (gerçekten
+// test SÜRECİNDE miyiz?) ile bu testlerin AMACI (DI'ya başka bir `NODE_ENV`
+// enjekte ETMEK) ÇAKIŞIYOR. Doğru kaynak `process.env.NODE_ENV` —
+// vitest'in KENDİSİ bunu HER ZAMAN `'test'` kurar (bu dosyanın ÜSTÜNDEKİ
+// `apiEnv` alanı yorumunun aksine, bu DEĞER testler tarafından DI üzerinden
+// ASLA override EDİLEMEZ — tam olarak istenen özellik: kapı, hiçbir testin
+// kendi senaryosu için enjekte ettiği `ApiEnv.NODE_ENV`'den ETKİLENMEZ). Bu
+// aynı zamanda "helper DI'dan ÖNCE koşabilir" riskini YAPISAL olarak ortadan
+// kaldırır — `process.env` DI GRAFİĞİNE bağımlı değildir, HER ZAMAN erişilir.
+// `REDIS_URL` için AYNI risk YOK (hiçbir test `apiEnv.REDIS_URL`'i KENDİ
+// senaryosu için override ETMİYOR, ÖLÇÜLDÜ — `rg REDIS_URL __tests__`); bu
+// yüzden (b) `apiEnv.REDIS_URL`'den OKUMAYA devam eder (DI'dan gelen GERÇEK
+// bağlantı hedefi, `RedisModule`'ün `REDIS_CLIENT` provider'ının AYNI
+// değerden kurduğu istemciyle TUTARLI). Negatif testler (`create-test-app-
+// fail-closed.test.ts`): (a) `process.env.NODE_ENV`'i GEÇİCİ olarak
+// mutasyona uğratıp `finally`'de GERİ ALIR (fileParallelism:false — BAŞKA
+// bir dosyayla eşzamanlı KOŞMAZ, sızıntı riski YOK); (b) `apiEnv.REDIS_URL`
+// override'ı (global mutasyonsuz, K-A4/AC6 deseni). Allowlist MODÜL SABİTİ
+// (env'den OKUNMAZ, K-A8 emsali — eşik gevşetilemez disiplini).
 
 import type { Server } from 'node:http'
 import type { Writable } from 'node:stream'
@@ -66,8 +111,41 @@ const RATE_LIMIT_KEY_SCAN_PATTERN = 'platform:auth:*'
 /** `scanStream` TÜM Node `Readable`'lar gibi tip bilgisi TAŞIMAZ — her grup Zod ile doğrulanır, `as` KULLANILMAZ. */
 const scanBatchSchema = z.array(z.string())
 
-/** T-006/S8 EKLEMESİ — dosya başı yorumu. */
-async function flushRateLimitCounters(redisService: RedisService): Promise<void> {
+/**
+ * T-009/S8 EKLEMESİ — FAIL-CLOSED allowlist, MODÜL SABİTİ (env'den OKUNMAZ,
+ * dosya başı yorumu). `flushRateLimitCounters` yalnızca bu üç loopback
+ * hostname'inden birine çözülen `REDIS_URL` için çalışır.
+ */
+const RATE_LIMIT_FLUSH_ALLOWED_REDIS_HOSTS: ReadonlySet<string> = new Set([
+  '127.0.0.1',
+  '::1',
+  'localhost',
+])
+
+/**
+ * T-006/S8 EKLEMESİ, T-009/S8'de İKİ FAIL-CLOSED KAPI eklendi — dosya başı
+ * yorumu. Kapılar Redis'e HİÇBİR komut gitmeden ÖNCE, fonksiyonun İLK
+ * satırlarında çalışır.
+ */
+async function flushRateLimitCounters(apiEnv: ApiEnv, redisService: RedisService): Promise<void> {
+  // Dosya başı yorumu — KASITLI OLARAK `process.env.NODE_ENV` (ApiEnv DEĞİL):
+  // testler KENDİ senaryoları için `apiEnv.NODE_ENV`'i override EDEBİLİR
+  // (ör. üretim çerez modu testleri) — bu kapı o override'dan ETKİLENMEMELİ.
+  const realNodeEnv = process.env['NODE_ENV']
+  if (realNodeEnv !== 'test') {
+    throw new Error(
+      `flushRateLimitCounters yalnızca NODE_ENV=test ortamında koşabilir — fail-closed kapı tetiklendi (ölçülen process.env.NODE_ENV: ${String(realNodeEnv)})`,
+    )
+  }
+
+  const redisHost = new URL(apiEnv.REDIS_URL).hostname
+
+  if (!RATE_LIMIT_FLUSH_ALLOWED_REDIS_HOSTS.has(redisHost)) {
+    throw new Error(
+      `flushRateLimitCounters yalnızca loopback Redis'e (127.0.0.1/::1/localhost) karşı koşabilir — fail-closed kapı tetiklendi (çözülen host: ${redisHost})`,
+    )
+  }
+
   const stream = redisService.client.scanStream({ match: RATE_LIMIT_KEY_SCAN_PATTERN, count: 100 })
 
   for await (const batch of stream) {
@@ -156,7 +234,18 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
 
   // T-006/S8 EKLEMESİ — dosya başı yorumu: HER test uygulaması rate-limit
   // sayaçları açısından TEMİZ başlar (çapraz dosya birikimi, ÖLÇÜLDÜ).
-  await flushRateLimitCounters(app.get(RedisService))
+  // T-009/S8: `apiEnv` DI'DAN (override edilmiş olabilir, K-A4/AC6) okunur —
+  // iki fail-closed kapı bu değere göre karar verir. Kapı fırlatırsa (negatif
+  // testler, `create-test-app-fail-closed.test.ts`) `app` ZATEN `init()`
+  // edilmiş olur — KAPATILMADAN fırlatmak DB/Redis bağlantısını SIZDIRIR;
+  // bu yüzden hata burada YAKALANIR, `app.close()` ile temizlenir, SONRA
+  // orijinal hata (sarmalanmadan, `catch {}` DEĞİL) yeniden fırlatılır.
+  try {
+    await flushRateLimitCounters(app.get<ApiEnv>(API_ENV), app.get(RedisService))
+  } catch (error) {
+    await app.close()
+    throw error
+  }
 
   return { app }
 }

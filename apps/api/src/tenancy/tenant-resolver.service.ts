@@ -17,7 +17,7 @@
 //      başlığı göndermek Kullanıcı Onayı #1'in kapattığı deliği DENEME
 //      sinyalidir, kendi başına gözlemlenebilir bir "çözümsüz" sonuç olmalı
 //      (R4 telafisi #7).
-//   2. Aksi hâlde `Host` başlığından (`resolve-host.ts`, SAF fonksiyon).
+//   2. Aksi hâlde `Host` başlığından (`@arkesoft/tenancy`'nin `resolve-host.ts`'i, SAF fonksiyon).
 //
 // SORGU BÜTÇESİ: istek başına EN FAZLA 1 `findUnique`, AYRIK dallar (slug
 // XOR primaryDomain, asla ikisi). ÇÖZÜMSÜZ hâllerin HİÇBİRİNDE sorgu
@@ -29,6 +29,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import type { Tenant } from '@arkesoft/db'
 
 import type { NodeEnv } from '@arkesoft/config/env'
+import { normalizeHostname, resolveHost } from '@arkesoft/tenancy'
 
 import type { ApiEnv } from '../config/api-env.js'
 import { API_ENV } from '../config/config.tokens.js'
@@ -36,7 +37,6 @@ import { assertNever } from '../errors/assert-never.js'
 import type { HttpRequestHeaders } from '../http/http-request.types.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import type { TenantContext, TenantResolution } from '../request-context/request-context.types.js'
-import { normalizeHostname, resolveHost } from './resolve-host.js'
 
 /** `TenantResolverService`'in Prisma'dan okuduğu MİNİMAL satır şekli — `name` YOK. */
 type TenantRow = Pick<Tenant, 'id' | 'slug' | 'status' | 'deletedAt'>
@@ -104,7 +104,7 @@ function classifyDevHeader(
 
 @Injectable()
 export class TenantResolverService {
-  /** `APP_BASE_DOMAIN` açılışta `resolve-host.ts`'in AYNI normalizasyonundan geçer (K-A4). */
+  /** `APP_BASE_DOMAIN` açılışta `@arkesoft/tenancy`'nin `resolve-host.ts`'indeki AYNI normalizasyondan geçer (K-A4). */
   private readonly normalizedBaseDomain: string
   private readonly nodeEnv: NodeEnv
 

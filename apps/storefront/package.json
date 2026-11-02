@@ -1,29 +1,39 @@
 {
   "name": "@arkesoft/storefront",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Çok kiracılı vitrin (Astro SSR) — tema runtime",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    }
-  },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "files": [
-    "dist"
-  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json --declaration --declarationMap",
+    "dev": "astro dev",
+    "build": "astro build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests --fsModuleCachePath node_modules/.vitest-cache",
+    "test:e2e": "playwright test",
     "lint": "eslint .",
-    "clean": "rm -rf dist .turbo"
+    "clean": "rm -rf dist .turbo .astro"
+  },
+  "dependencies": {
+    "@arkesoft/tenancy": "workspace:*",
+    "@arkesoft/trpc": "workspace:*",
+    "@arkesoft/errors": "workspace:*",
+    "astro": "catalog:",
+    "@astrojs/node": "catalog:",
+    "@astrojs/react": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tailwindcss": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@arkesoft/config": "workspace:*",
+    "@tailwindcss/vite": "catalog:",
+    "@playwright/test": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "eslint": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

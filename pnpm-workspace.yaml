@@ -272,3 +272,36 @@ catalog:
   # uyarı — NEEDS_INPUT'u GEREKTİRMEDİ çünkü kurulumu KIRMIYOR, sadece
   # `pnpm peers check` çıktısında görünür kalıyor.
   'eslint-plugin-jsx-a11y': 6.10.2 # 2024-10-26 yayınlandı (ESLint 10 peer'ı YOK — bilinen uyarı, bkz. yukarı)
+
+  # --- Storefront iskeleti (ROADMAP v0.0.8, T-009) — üç yeni ana bağımlılık,
+  # Kullanıcı Onayı (2026-11-01, PM kararı ①) ile kabul edildi. CLAUDE.md §2
+  # yığın tablosu vitrin için Astro'yu zaten zorunlu kılıyor; `@astrojs/tailwind`
+  # BİLİNÇLİ EKLENMEDİ — o Tailwind v3 köprüsü, v4'ün (katalogda zaten var,
+  # `@tailwindcss/vite` 4.3.3) resmî entegrasyon yolu değil (architect K12).
+  #
+  # Bugün 2026-11-01. Yöntem öncekiyle AYNI: `npm view <pkg> dist-tags.latest`
+  # ile çözülen sürüm, sonra `npm view <pkg>@<sürüm> time --json` ile O
+  # SÜRÜMÜN yayın tarihi okundu (paket geneli `time.modified` DEĞİL — v0.0.5
+  # hatası tekrarlanmadı). 7 günden yeni (2026-10-25 sonrası) sürüm SEÇİLMEDİ;
+  # `minimumReleaseAgeExclude` izin kaydı EKLENMEDİ (boş `git diff` ile kanıtlı).
+  #
+  # astro: dist-tag "latest" 7.4.4 (2026-10-28, 4 gün — ÇOK YENİ). Bir önceki
+  # 7.4.3 de 2026-10-28 (aynı gün, 4 gün — ÇOK YENİ). Eşiği karşılayan ilk
+  # sürüm 7.4.2. Peer'ı opsiyonel `@astrojs/markdown-remark` dışında yok;
+  # `typescript` peer'ı YOK (katalog 6.0.3 pinine etkisi yok). `engines.node`
+  # ">=22.23.4" — yerel Node 25.8.1 ve `.nvmrc` (24) ikisi de kapsıyor.
+  astro: 7.4.2 # 2026-10-21 yayınlandı (latest=7.4.4 ÇOK YENİ, 2026-10-28)
+  # @astrojs/node: dist-tag "latest" 11.1.9 (2026-10-19) — 13 gün, eşik üstü,
+  # doğrudan seçildi. A-M4 ÖLÇÜLDÜ: `npm view @astrojs/node@11.1.9
+  # peerDependencies` → `"astro": "^7.2.1"` — yukarıdaki 7.4.2'yi kapsıyor
+  # (`^7.2.1` aralığı `>=7.2.1 <8.0.0`). `engines.node` ">=22.23.4" — kapsıyor.
+  '@astrojs/node': 11.1.9 # 2026-10-19 yayınlandı (dist-tag "latest")
+  # @astrojs/react: dist-tag "latest" 7.1.2 (2026-10-28, 4 gün — ÇOK YENİ).
+  # Bir önceki 7.1.1 (2026-10-21) — 11 gün, eşik üstü, seçildi. A-M4 ÖLÇÜLDÜ:
+  # `npm view @astrojs/react@7.1.1 peerDependencies` →
+  # `"react"/"react-dom": "^17.0.2 || ^18.0.0 || ^19.0.0"` — katalog
+  # react/react-dom 19.3.1'i kapsıyor; `@types/react`/`@types/react-dom` peer'ı
+  # da katalog 19.3.0'ı kapsıyor. `oxc-transform-react` peer'ı
+  # `peerDependenciesMeta`'da `optional: true` — karşılanmamış olması
+  # kurulumu etkilemiyor (bilinen, bloklayıcı değil).
+  '@astrojs/react': 7.1.1 # 2026-10-21 yayınlandı (latest=7.1.2 ÇOK YENİ, 2026-10-28)

@@ -1,0 +1,24 @@
+---
+// @arkesoft/storefront — "Mağaza şu anda yanıt vermiyor" (503) (ROADMAP
+// v0.0.8, T-009/S6, architect "Sayfalar ve uçlar", `docs/ux/T-009.md`
+// "Mağaza ulaşılamıyor")
+//
+// "Yeniden dene" bağlantısı `Astro.originPathname`'i (rewrite ÖNCESİ orijin
+// yol — Astro'nun kendi API'si, `src/middleware.ts`'in `context.rewrite(
+// '/503')` çağırdığı YOL DEĞİL) kullanır — gerçek bir `<a href>` gezinmesi,
+// `location.reload()` DEĞİL, JS GEREKTİRMEZ. HTTP durumu (503) bu sayfada
+// AYARLANMAZ (I-404 — yalnızca `src/middleware.ts`).
+import BaseLayout from '../layouts/BaseLayout.astro'
+import { MESSAGES } from '../messages/messages.js'
+---
+
+<BaseLayout
+	lang="tr"
+	title={MESSAGES.storefront.unavailable.title}
+	description={MESSAGES.storefront.unavailable.metaDescription}
+>
+	<meta name="robots" content="noindex" slot="head-extra" />
+	<h1 class="text-2xl font-semibold">{MESSAGES.storefront.unavailable.heading}</h1>
+	<p>{MESSAGES.storefront.unavailable.body}</p>
+	<a class="underline" href={Astro.originPathname}>{MESSAGES.storefront.unavailable.retry}</a>
+</BaseLayout>

@@ -10,6 +10,9 @@
 export { tenantStatusSchema, tenantSummarySchema } from './schemas/tenant-summary.schema.js'
 export type { TenantStatusWire, TenantSummary } from './schemas/tenant-summary.schema.js'
 
+export { storefrontTenantSchema } from './schemas/storefront-tenant.schema.js'
+export type { StorefrontTenant } from './schemas/storefront-tenant.schema.js'
+
 export { sessionIdentitySchema } from './schemas/session-identity.schema.js'
 export type { SessionIdentity } from './schemas/session-identity.schema.js'
 

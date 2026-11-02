@@ -1,0 +1,25 @@
+---
+// @arkesoft/storefront — "Mağaza bulunamadı" (404) (ROADMAP v0.0.8, T-009/S6,
+// architect "Sayfalar ve uçlar", `docs/ux/T-009.md` "Mağaza bulunamadı")
+//
+// AC6 (bağlayıcı): bu sayfa HER ziyarette BAYT BAYT AYNIDIR — kiracıdan
+// türemiş hiçbir veri (ad/slug/sebep kodu/host listesi) YOK, `Astro.locals`
+// OKUNMAZ. HTTP durumu (404) BU sayfada AYARLANMAZ — `src/middleware.ts`
+// (K21) `context.rewrite('/404')` ile bu sayfayı render edip durumu KENDİSİ
+// damgalar (I-404).
+//
+// K13b: bu dosyada frontmatter'da TEK satır da yok (import dışında) —
+// gerekmiyor.
+import BaseLayout from '../layouts/BaseLayout.astro'
+import { MESSAGES } from '../messages/messages.js'
+---
+
+<BaseLayout
+	lang="tr"
+	title={MESSAGES.storefront.notFound.title}
+	description={MESSAGES.storefront.notFound.metaDescription}
+>
+	<meta name="robots" content="noindex" slot="head-extra" />
+	<h1 class="text-2xl font-semibold">{MESSAGES.storefront.notFound.heading}</h1>
+	<p>{MESSAGES.storefront.notFound.body}</p>
+</BaseLayout>

@@ -1,5 +1,10 @@
-// @arkesoft/api — resolve-host.ts tablo testi (ROADMAP v0.0.4, T-002/ST-5,
+// @arkesoft/tenancy — resolve-host.ts tablo testi (ROADMAP v0.0.4, T-002/ST-5,
 // architect K-A4, R4 telafisi #5)
+//
+// TERFİ NOTU (ROADMAP v0.0.8, T-009/S1): bu dosya `apps/api/src/__tests__/
+// resolve-host.test.ts`'ten BİREBİR TAŞINDI (kopya DEĞİL) — vaka listesi
+// (gövde) DEĞİŞMEDİ, yalnızca import yolu relatifleştirildi
+// (`../tenancy/resolve-host.js` → `../resolve-host.js`).
 //
 // ≥25 vaka — architect'in saldırı vektörü listesinin TAMAMI ad ad burada.
 // Taban alan adı testlerde SABİT: `arkesoft.localhost` (`.env.example` ile
@@ -7,8 +12,8 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { normalizeHostname, resolveHost } from '../tenancy/resolve-host.js'
-import type { ResolveHostResult } from '../tenancy/resolve-host.js'
+import { normalizeHostname, resolveHost } from '../resolve-host.js'
+import type { ResolveHostResult } from '../resolve-host.js'
 
 const BASE = 'arkesoft.localhost'
 
@@ -138,6 +143,19 @@ const cases: readonly Case[] = [
     name: 'SONDAKİ NOKTA soyulur: demo-magaza.arkesoft.localhost. → subdomain(demo-magaza)',
     rawHost: 'demo-magaza.arkesoft.localhost.',
     expected: { kind: 'subdomain', slug: 'demo-magaza' },
+  },
+
+  // --- Düzeltme turu 1 (T-009, security bulgu 2) — BOŞ host özel alan adı
+  // dalından ÖNCE reddedilir ---------------------------------------------
+  {
+    name: 'TEK NOKTA Host: "." → unparsable_host (normalizeHostname("") üretir, BOŞ host custom-domain dalına SIZMAZ)',
+    rawHost: '.',
+    expected: { kind: 'unresolved', reason: 'unparsable_host' },
+  },
+  {
+    name: 'ÇİFT NOKTA Host: ".." → custom-domain(".") (tek sondaki nokta soyulur, kalan "." BOŞ DEĞİL — host.length===0 kontrolü tetiklenmez, WHATWG URL authority kırılması burada OLUŞMAZ)',
+    rawHost: '..',
+    expected: { kind: 'custom-domain', host: '.' },
   },
 
   // --- IDN / punycode --------------------------------------------------------------

@@ -1,10 +1,25 @@
 {
+  // ROADMAP v0.0.8 (T-009/S3, devops K10): `apps/storefront` kütüphaneden
+  // uygulamaya geçiyor — `apps/admin/tsconfig.json:5-8` emsali.
+  // `outDir`/`rootDir`/`tsBuildInfoFile` KALDIRILDI: `build` artık
+  // `astro build` (S4), bu proje yalnızca `tsc --noEmit` için kullanılıyor.
   "extends": "@arkesoft/config/tsconfig/react.json",
+  // `types: ["node"]` — ÖLÇÜLEREK (devops, A-M3/K13c bağlamında) seçildi,
+  // `apps/admin`'in `["node","vite/client"]` emsalinin BİREBİR kopyası
+  // DEĞİL: storefront `import.meta.env` (Vite ambient tipleri) KULLANMAZ,
+  // ortam değişkenlerini K17 gereği `process.env` üzerinden okur (tek dosya,
+  // `src/lib/storefront-env.ts` — S4) → `node` gerekli. `astro/client`
+  // BİLEREK EKLENMEDİ: K13c `astro:*` sanal modül ithalini yasaklıyor, bu
+  // ambient tip paketi o sanal modüllerin (`astro:content` vb.) tiplerini
+  // taşıyor; kullanılmayacak bir yüzeyin ambient tipini eklemek yanlış
+  // pozitif tip güvenliği hissi verir. ⚠ `@types/node` BU DEĞİŞİKLİKLE AYNI
+  // ANDA `package.json`'a eklendi (TS2688 tuzağı, `apps/admin` S1 emsali) —
+  // ikisi ayrı committe olursa `typecheck` kırılır. Bu karar S4'ün gerçek
+  // `src/**` dosyalarıyla henüz DOĞRULANAMADI (`astro.config.ts` yok); S4
+  // farklı bir ambient tipe ihtiyaç duyarsa bu alanı güncelleyecek.
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src",
-    "tsBuildInfoFile": "dist/.tsbuildinfo"
+    "types": ["node"]
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "e2e/**/*", "*.config.ts"],
   "exclude": ["dist", "node_modules"]
 }

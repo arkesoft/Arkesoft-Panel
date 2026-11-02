@@ -1,25 +1,30 @@
 // @arkesoft/trpc — initTRPC kurulumu, errorFormatter, procedure builder'ları
 // (ROADMAP v0.0.6, T-007/ST-2, architect "tRPC sözleşmesi" + "Hata eşlemesi"
-// bölümleri, ADR-0009, ADR-0010)
+// bölümleri, ADR-0009, ADR-0010; DÖRDÜNCÜ BUILDER — ROADMAP v0.0.8, T-009/S5,
+// architect K1, ADR-0012)
 //
 // Transformer YOK (K5 — tel sözleşmesi yalnızca JSON ilkelleri taşır, `Date`
 // yok → `superjson` gibi bir serileştirme bağımlılığı eklenmez).
 //
+// Merdiven iki eksenin çarpımıdır (architect K1):
 //   t = initTRPC.context<TrpcContext>().create({ errorFormatter })
-//   base               = t.procedure.use(appErrorBoundary)
-//   publicProcedure    = base
-//   protectedProcedure = base.use(requireAuth)
-//   tenantProcedure    = protectedProcedure.use(requireTenant)
+//   base                   = t.procedure.use(appErrorBoundary)
+//   publicProcedure        = base                                   // kimlik YOK  · kiracı YOK
+//   publicTenantProcedure  = base.use(requireTenant)                 // kimlik YOK  · kiracı ZORUNLU (ADR-0012)
+//   protectedProcedure     = base.use(requireAuth)                   // kimlik ZORUNLU · kiracı YOK
+//   tenantProcedure        = protectedProcedure.use(requireTenant)   // kimlik ZORUNLU · kiracı ZORUNLU
 //
 // BATCHING KAPALI BAĞLAYICI DEĞİŞMEZLİK (architect riski 5, ADR-0009 madde 8):
 // bu dosyanın KENDİSİ batching'i kapatmaz (bu `handler/create-trpc-request-
 // handler.ts`'nin işi, `allowBatching: false`) — ama burada tanımlanan
-// `publicProcedure`'ün HTTP yüzeyinde erişilebilir olma mekanizması (≥v0.1.0,
-// `AUTH_EXEMPT_PATHS`'e TAM YOL eşleşmesiyle giriş) BU DEĞİŞMEZLİĞE dayanır:
-// batched bir istekte TEK HTTP yolu BİRDEN FAZLA prosedür taşır ve yol-bazlı
-// muafiyet mekanizması SESSİZCE geçersizleşir. Batching'i açmak ADR-0009'u
-// yeniden değerlendirmeyi gerektirir — bu dosyada veya `handler/`'da hiçbir
-// koşulda `httpBatchLink`/`batching: {enabled: true}` kullanılmaz.
+// `publicProcedure`/`publicTenantProcedure`'ün HTTP yüzeyinde erişilebilir
+// olma mekanizması (TAM YOL eşleşmesiyle `AUTH_EXEMPT_PATHS`'e giriş —
+// `publicTenantProcedure` için v0.0.8/ADR-0012'den itibaren, `publicProcedure`
+// için hâlâ ≥v0.1.0) BU DEĞİŞMEZLİĞE dayanır: batched bir istekte TEK HTTP
+// yolu BİRDEN FAZLA prosedür taşır ve yol-bazlı muafiyet mekanizması
+// SESSİZCE geçersizleşir. Batching'i açmak ADR-0009'u yeniden değerlendirmeyi
+// gerektirir — bu dosyada veya `handler/`'da hiçbir koşulda
+// `httpBatchLink`/`batching: {enabled: true}` kullanılmaz.
 
 import { initTRPC, TRPCError } from '@trpc/server'
 import { genericTransportErrorBody, isAppError, toErrorBody } from '@arkesoft/errors'
@@ -200,14 +205,40 @@ export const router = t.router
 const base = t.procedure.use(appErrorBoundary)
 
 /**
- * Taban prosedür — `ctx.auth`/`ctx.tenant` daraltması YAPMAZ. v0.0.6'da
- * HTTP yüzeyinde erişilebilir bir yolu YOKTUR (architect riski 8): `/trpc`
- * yüzeyinin tamamı `apps/api`'nin guard zincirinde kimlik + üyelik ister.
- * Gerçek yayınlama mekanizması (≥v0.1.0) prosedürün TAM yolunu
- * `AUTH_EXEMPT_PATHS`'e tek tek eklemektir — BATCHING KAPALI kaldığı sürece
- * bu yol-bazlı muafiyet güvenlidir (bkz. dosya başı yorumu).
+ * Taban prosedür — `ctx.auth`/`ctx.tenant` daraltması YAPMAZ. v0.0.8'de HÂLÂ
+ * HTTP yüzeyinde erişilebilir bir yolu YOKTUR (architect riski 8 — bu durum
+ * v0.0.6'dan beri DEĞİŞMEDİ): merdiven dördüncü bir builder'la genişledi
+ * (ADR-0012) ama `/trpc` yüzeyinin kimlik+üyelik gerektirmeyen TEK dalı artık
+ * {@link publicTenantProcedure}'dür — bu builder'ın KENDİSİ değil.
+ * Gerçek yayınlama mekanizması (≥v0.1.0, bu builder için) prosedürün TAM
+ * yolunu `AUTH_EXEMPT_PATHS`'e tek tek eklemektir — BATCHING KAPALI kaldığı
+ * sürece bu yol-bazlı muafiyet güvenlidir (bkz. dosya başı yorumu).
  */
 export const publicProcedure = base
+
+/**
+ * Anonim AMA kiracıya kapsamlı prosedürler için taban (ROADMAP v0.0.8,
+ * T-009/S5, architect K1, ADR-0012). Üç zorunlu değişmez:
+ *
+ * ① Kimlik doğrulama YOKTUR — `ctx.auth` daraltılmaz, `requireAuth` zincire
+ *    HİÇ girmez (vitrin ziyaretçisi anonimdir).
+ *
+ * ② Kiracı bağlamı ZORUNLUDUR ve İKİ KATMANDA zorlanır: (a) HTTP yolunda
+ *    `TenantGuard` kiracısız isteği `/trpc`'ye hiç bırakmadan ÖNCE 404 verir
+ *    (ADR-0010 madde 5); (b) bu builder'ın kendisi de mevcut
+ *    {@link requireTenant} middleware'ini (DEĞİŞTİRİLMEDEN, `tenantProcedure`
+ *    ile PAYLAŞILARAK) uygular — HTTP-dışı bir çağıran `TenantGuard`'ı atlasa
+ *    bile `ctx.tenant.kind !== 'resolved'` ise burada durur.
+ *
+ * ③ Bu builder'ı kullanan HER prosedürün TAM HTTP yolu `AUTH_EXEMPT_PATHS`'e
+ *    TEK TEK eklenmek ZORUNDADIR (`apps/api`, ayrı alt görev) VE ADR-0012'nin
+ *    dört koşulunu (A: çıktı o host'ta zaten herkese açık olandan fazlasını
+ *    taşımaz · B: yanıt salt okunur `query`, hiçbir yetki/eylem yeteneği
+ *    taşımaz · C: `ctx.tenant` yalnızca `tenantId` olarak okunup doğrudan
+ *    porta geçirilir · D: istek başına DB maliyeti ve enumerasyon oranı
+ *    beyan edilir) KARŞILAMAK ZORUNDADIR.
+ */
+export const publicTenantProcedure = base.use(requireTenant)
 
 /** Kimlik doğrulama zorunlu; `ctx.auth` `'authenticated'` varyantına daralır. */
 export const protectedProcedure = base.use(requireAuth)

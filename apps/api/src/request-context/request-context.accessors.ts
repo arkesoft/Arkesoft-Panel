@@ -2,7 +2,8 @@
 // T-002/ST-4, architect K-A5)
 //
 // Bu dosya DI'SIZ saf fonksiyonlardan oluşur — `requestContextStorage`'ın
-// modül seviyesi tek örnek olmasının SEBEBİ bu: `resolve-host.ts` gibi saf
+// modül seviyesi tek örnek olmasının SEBEBİ bu: `@arkesoft/tenancy`'nin
+// `resolve-host.ts`'i gibi saf
 // fonksiyonlar (ST-5) veya DI dışında kurulan `ZodValidationPipe` (ST-4)
 // Nest konteynerine ihtiyaç duymadan okuyabilir.
 //

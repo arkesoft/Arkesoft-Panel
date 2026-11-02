@@ -21,8 +21,9 @@
 //
 // GÜNCELLEME (ROADMAP v0.0.5, T-006/S5, architect "TENANT İZOLASYONU" bölümü,
 // PM riski 6 — BEKLENEN): 2 → 12. Gerekçe: panel giriş yüzeyi platform host'u
-// `panel.arkesoft.{APP_BASE_DOMAIN}`'dir; `panel` `reserved-subdomains.ts:22`'de
-// REZERVE → `resolveHost` onu `reserved_subdomain` ile ÇÖZÜMSÜZ bırakır.
+// `panel.arkesoft.{APP_BASE_DOMAIN}`'dir; `panel` `@arkesoft/tenancy`'nin
+// `reserved-subdomains.ts:30`'unda REZERVE → `resolveHost` onu
+// `reserved_subdomain` ile ÇÖZÜMSÜZ bırakır.
 // Muafiyet OLMADAN hiçbir auth ucuna erişilemez (panel host'unda kiracı asla
 // çözülemez — bu BEKLENEN, panel kiracı değildir).
 //
@@ -53,7 +54,7 @@
 // DÖRDÜNCÜ grup eklendi:
 //   (4) 1 panel yüzeyi ucu (`/trpc/session.me`) — panel host'u
 //       (`panel.arkesoft.{APP_BASE_DOMAIN}`) REZERVE bir alt alan adıdır
-//       (`reserved-subdomains.ts:22`) → `resolveHost` onu `reserved_subdomain`
+//       (`@arkesoft/tenancy`'nin `reserved-subdomains.ts:30`'u) → `resolveHost` onu `reserved_subdomain`
 //       ile ÇÖZÜMSÜZ bırakır, bu ÖNCEKİ (1)/(2) grupları gibi tenant kavramı
 //       BU uç için HİÇ geçerli değil. Muafiyet KİMLİK muafiyeti DEĞİLDİR
 //       (`AUTH_EXEMPT_PATHS`'e HİÇBİR satır EKLENMEDİ, 9'da kalır) —

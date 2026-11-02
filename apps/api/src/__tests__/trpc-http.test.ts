@@ -27,7 +27,12 @@ import { appErrorBodySchema } from '@arkesoft/errors'
 import { createTrpcClient, trpcErrorDataSchema } from '@arkesoft/trpc'
 import type { TrpcClient } from '@arkesoft/trpc'
 import { createTrpcRequestHandler } from '@arkesoft/trpc/server'
-import type { TenantReadPort, TrpcContext, TrpcRequestHandler } from '@arkesoft/trpc/server'
+import type {
+  StorefrontTenantReadPort,
+  TenantReadPort,
+  TrpcContext,
+  TrpcRequestHandler,
+} from '@arkesoft/trpc/server'
 import request from 'supertest'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
@@ -195,12 +200,18 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
     const probeTenantRead: TenantReadPort = {
       findSummary: () => Promise.reject(new ProbeDetailsError()),
     }
+    // Bu probe `storefront.currentTenant`'ı ÇAĞIRMAZ — stub yalnızca
+    // `TrpcPorts`'un (v0.0.8'den itibaren ZORUNLU) alanını doldurmak için
+    // var, hiçbir assert buna dayanmaz.
+    const probeStorefrontTenantRead: StorefrontTenantReadPort = {
+      findPublicTenant: () => Promise.reject(new ProbeDetailsError()),
+    }
     const context: TrpcContext = {
       requestId,
       logger: { info: () => undefined, warn: () => undefined, error: () => undefined },
       auth: { kind: 'authenticated', userId: 'probe-user', sessionId: 'probe-session' },
       tenant: { kind: 'resolved', tenantId: 'probe-tenant', slug: 'probe', status: 'active' },
-      ports: { tenantRead: probeTenantRead },
+      ports: { tenantRead: probeTenantRead, storefrontTenantRead: probeStorefrontTenantRead },
       errors: {
         unauthenticated: () => new UnauthenticatedError(),
         tenantContextRequired: () => new TenantContextRequiredError(),
@@ -319,5 +330,40 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
       .split(',')
       .map((value: string) => value.trim().toLowerCase())
     expect(varyValues).toContain('cookie')
+  })
+
+  // AC13 (ROADMAP v0.0.8, T-009/S7, ADR-0012) — `storefront.currentTenant`
+  // GERÇEK HTTP yanıtının gövdesi `{name}`'in DIŞINDA HİÇBİR ALAN taşımaz
+  // (`planId`/`deletedAt`/`id`/`slug`/`status`/`primaryDomain` → 0 bayt) VE
+  // bu yüzey OTURUMSUZ (`Cookie` YOK) 200 döner — kimlik ekseni açıldı, tenant
+  // ekseni (`x-arkesoft-tenant` → host çözümü) DEĞİŞMEDİ.
+  it('AC13 — /trpc/storefront.currentTenant: OTURUMSUZ 200, gövde yalnızca {name} (altı yasak alan 0 bayt)', async () => {
+    const response = await request(httpServer())
+      .get('/trpc/storefront.currentTenant')
+      .set('x-arkesoft-tenant', tenantSlug)
+
+    expect(response.status).toBe(200)
+
+    const body = z
+      .object({ result: z.object({ data: z.record(z.string(), z.unknown()) }) })
+      .parse(response.body)
+
+    expect(Object.keys(body.result.data)).toEqual(['name'])
+
+    const forbiddenKeys = ['planId', 'deletedAt', 'id', 'slug', 'status', 'primaryDomain']
+    for (const key of forbiddenKeys) {
+      expect(key in body.result.data, `${key} BEKLENMEDEN tele yazıldı`).toBe(false)
+    }
+  })
+
+  // AC13 — çözümsüz host (bilinmeyen slug) → 404, `TenantGuard`'ın normal
+  // davranışı; kimlik muafiyeti (`AUTH_EXEMPT_PATHS`) kiracı çözümünü
+  // ATLAMAZ — `TENANT_EXEMPT_PATHS` BU yolu İÇERMİYOR (değişmedi).
+  it('AC13 — /trpc/storefront.currentTenant: ÇÖZÜMSÜZ host (bilinmeyen slug) → 404', async () => {
+    const response = await request(httpServer())
+      .get('/trpc/storefront.currentTenant')
+      .set('x-arkesoft-tenant', uniqueSlug('s7-unresolved'))
+
+    expect(response.status).toBe(404)
   })
 })

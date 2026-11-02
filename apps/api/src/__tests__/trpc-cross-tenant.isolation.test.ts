@@ -217,3 +217,141 @@ describe('AC6 — /trpc/tenant.current çapraz kiracı oturumu (gerçek Postgres
     20_000,
   )
 })
+
+// ROADMAP v0.0.8, T-009/S8, CLAUDE.md §7 madde 11 — `/trpc/storefront.
+// currentTenant`'ın ÇAPRAZ OKUMA testleri. Bu yüzeyin YAZMA tarafı YOK
+// (salt okunur `query`, girdi şeması YOK) → çapraz YAZMA testi TANIMSIZ;
+// madde 11'in metni BİLEREK çapraz OKUMA testiyle karşılanır (architect
+// K7 + ADR-0012). AYRI `describe` — yukarıdaki süit kimlikli/yetkili
+// senaryoları (`tenant.current`) ölçüyor, bu süit ANONİM yüzeyi ölçüyor;
+// ikisini AYNI `describe`'a koymak iki güven seviyesini (kimlikli-tenant /
+// anonim-tenant) karıştırırdı — `storefront.router.ts`'in dosya başı
+// yorumunun AYNI ayrım gerekçesi.
+describe('/trpc/storefront.currentTenant — çapraz kiracı OKUMA (madde 11, ADR-0012, ROADMAP v0.0.8/T-009/S8)', () => {
+  let app: INestApplication<Server> | undefined
+  let prismaService: PrismaService
+
+  beforeAll(async () => {
+    const testApp = await createTestApp()
+    app = testApp.app
+    prismaService = app.get(PrismaService)
+  })
+
+  afterAll(async () => {
+    if (app !== undefined) {
+      await app.close()
+    }
+  })
+
+  function httpServer(): Server {
+    if (app === undefined) {
+      throw new Error('test uygulaması henüz kurulmadı')
+    }
+    return app.getHttpServer()
+  }
+
+  it(
+    "host A ile çağrı A'nın adını, host B ile çağrı B'nin adını döner — " +
+      "A'nın adı B'nin yanıtında BAYT DÜZEYİNDE geçmez (ve tersi)",
+    async () => {
+      const slugA = uniqueSlug('storefront-cross-a')
+      const slugB = uniqueSlug('storefront-cross-b')
+      const nameA = `Vitrin Çapraz Kiracı A ${randomUUID().slice(0, 8)}`
+      const nameB = `Vitrin Çapraz Kiracı B ${randomUUID().slice(0, 8)}`
+
+      const tenantA = await prismaService.db.tenant.create({
+        data: { slug: slugA, name: nameA, status: TenantStatus.active },
+      })
+      const tenantB = await prismaService.db.tenant.create({
+        data: { slug: slugB, name: nameB, status: TenantStatus.active },
+      })
+
+      try {
+        const responseA = await request(httpServer())
+          .get('/trpc/storefront.currentTenant')
+          .set('x-arkesoft-tenant', slugA)
+        const responseB = await request(httpServer())
+          .get('/trpc/storefront.currentTenant')
+          .set('x-arkesoft-tenant', slugB)
+
+        expect(responseA.status).toBe(200)
+        expect(responseB.status).toBe(200)
+
+        const storefrontBodySchema = z.object({
+          result: z.object({ data: z.object({ name: z.string() }) }),
+        })
+        const bodyA = storefrontBodySchema.parse(responseA.body)
+        const bodyB = storefrontBodySchema.parse(responseB.body)
+
+        expect(bodyA.result.data.name).toBe(nameA)
+        expect(bodyB.result.data.name).toBe(nameB)
+
+        // --- Bayt düzeyinde çapraz sızıntı yok — A'nın adı B'nin HAM
+        // gövdesinde/başlığında, B'nin adı A'nın HAM gövdesinde/başlığında
+        // GEÇMEZ. ----------------------------------------------------------
+        const rawBodyA = JSON.stringify(responseA.body)
+        const rawBodyB = JSON.stringify(responseB.body)
+        expect(rawBodyA).not.toContain(nameB)
+        expect(rawBodyA).not.toContain(tenantB.id)
+        expect(rawBodyA).not.toContain(tenantB.slug)
+        expect(rawBodyB).not.toContain(nameA)
+        expect(rawBodyB).not.toContain(tenantA.id)
+        expect(rawBodyB).not.toContain(tenantA.slug)
+
+        const rawHeadersA = JSON.stringify(responseA.headers)
+        const rawHeadersB = JSON.stringify(responseB.headers)
+        expect(rawHeadersA).not.toContain(nameB)
+        expect(rawHeadersA).not.toContain(tenantB.id)
+        expect(rawHeadersB).not.toContain(nameA)
+        expect(rawHeadersB).not.toContain(tenantA.id)
+      } finally {
+        await prismaService.db.tenant.delete({ where: { id: tenantA.id } })
+        await prismaService.db.tenant.delete({ where: { id: tenantB.id } })
+      }
+    },
+  )
+
+  it(
+    "soft-delete edilmiş kiracının host'u → 404, gövdede kiracı adı/slug 0 bayt " +
+      '(AC6 — var olmayan vs. soft-delete edilmiş AYNI cevap, madde 12)',
+    async () => {
+      const slug = uniqueSlug('storefront-cross-softdel')
+      const name = `Vitrin Soft Delete ${randomUUID().slice(0, 8)}`
+
+      const tenant = await prismaService.db.tenant.create({
+        data: { slug, name, status: TenantStatus.active },
+      })
+
+      try {
+        await prismaService.db.tenant.update({
+          where: { id: tenant.id },
+          data: { deletedAt: new Date() },
+        })
+
+        const response = await request(httpServer())
+          .get('/trpc/storefront.currentTenant')
+          .set('x-arkesoft-tenant', slug)
+
+        expect(response.status).toBe(404)
+
+        // `TenantGuard` (global `APP_GUARD`) tRPC resolver'a ULAŞMADAN
+        // FIRLATIR (bu dosyanın yukarıdaki 403 vakasının AYNI gerekçesi) —
+        // gövde tRPC'nin KENDİ hata zarfına (`trpcErrorDataSchema`) SARILMAZ,
+        // `AppExceptionFilter`'ın FLAT `appErrorBodySchema`'sıdır.
+        const errorBody = appErrorBodySchema.parse(response.body)
+        expect(errorBody.code).toBe('TENANT_NOT_FOUND')
+
+        const rawBody = JSON.stringify(response.body)
+        expect(rawBody).not.toContain(name)
+        expect(rawBody).not.toContain(slug)
+        expect(rawBody).not.toContain(tenant.id)
+
+        const rawHeaders = JSON.stringify(response.headers)
+        expect(rawHeaders).not.toContain(name)
+        expect(rawHeaders).not.toContain(slug)
+      } finally {
+        await prismaService.db.tenant.delete({ where: { id: tenant.id } })
+      }
+    },
+  )
+})

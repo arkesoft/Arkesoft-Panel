@@ -7,11 +7,13 @@
 
 import { router } from '../trpc.js'
 import { sessionRouter } from './session.router.js'
+import { storefrontRouter } from './storefront.router.js'
 import { tenantRouter } from './tenant.router.js'
 
 export const appRouter = router({
   session: sessionRouter,
   tenant: tenantRouter,
+  storefront: storefrontRouter,
 })
 
 /** İstemci factory'sinin (`client/create-trpc-client.ts`) tiplediği kök router tipi. */

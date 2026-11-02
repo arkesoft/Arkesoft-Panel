@@ -1,0 +1,37 @@
+---
+// @arkesoft/storefront — BaseLayout: üç sayfanın (kiracı/404/503) paylaştığı
+// ÇATI (ROADMAP v0.0.8, T-009/S6, architect "Sayfalar ve uçlar", `docs/ux/
+// T-009.md` "Erişilebilirlik niyeti" — tam bir `h1`, `<link rel=canonical>`,
+// `<meta name=robots>`).
+//
+// K13b (bağlayıcı): bu dosyada KOŞUL/DÖNGÜ/`try`/fetch/env okuma/tür
+// dönüşümü YOK. `<meta name="robots">`/`<link rel="canonical">` gibi
+// SAYFAYA ÖZGÜ, KOŞULLU öğeler `{condition && <el/>}` gibi bir JS
+// koşuluyla DEĞİL, adlandırılmış SLOT kompozisyonuyla (`head-extra`)
+// çözülür — hiçbir sayfa koşulsuz boş kalmaz, hiçbir dal gerekmez: 404/503
+// bu slota kendi `<meta name="robots" content="noindex">` öğesini GEÇİRİR,
+// kiracı sayfası kendi `<link rel="canonical">` öğesini geçirir, index.astro
+// HİÇBİRİNİ geçirmezse slot boş kalır (robots meta yok → indekslenebilir).
+import '../styles/global.css'
+
+interface Props {
+  readonly lang: string
+  readonly title: string
+  readonly description: string
+}
+---
+
+<html lang={Astro.props.lang}>
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>{Astro.props.title}</title>
+		<meta name="description" content={Astro.props.description} />
+		<slot name="head-extra" />
+	</head>
+	<body class="bg-white text-[#1F2937]">
+		<main class="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-4 px-4 py-8">
+			<slot />
+		</main>
+	</body>
+</html>

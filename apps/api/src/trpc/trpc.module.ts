@@ -10,12 +10,13 @@
 
 import { Module } from '@nestjs/common'
 
+import { StorefrontTenantReadPortAdapter } from './ports/storefront-tenant-read.port.adapter.js'
 import { TenantReadPortAdapter } from './ports/tenant-read.port.adapter.js'
 import { TrpcController } from './trpc.controller.js'
 import { TrpcErrorsPortAdapter } from './trpc-errors.port.adapter.js'
 
 @Module({
   controllers: [TrpcController],
-  providers: [TenantReadPortAdapter, TrpcErrorsPortAdapter],
+  providers: [TenantReadPortAdapter, StorefrontTenantReadPortAdapter, TrpcErrorsPortAdapter],
 })
 export class TrpcModule {}

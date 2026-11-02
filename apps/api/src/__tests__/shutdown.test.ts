@@ -6,6 +6,28 @@
 // `$connect()` YOK — K-A3, bağlantı ancak BURADA kurulur), SIGTERM gönderilir;
 // exit kodu VE `pg_stat_activity`'deki satır sayısı DOĞRULANIR (K-A8'in
 // deterministik ölçümü).
+//
+// FIX (ROADMAP v0.0.8, T-009/S8, borç 1461 — flaky ~%5, T-006'dan taşınan üçüncü
+// devir): KÖK NEDEN OKUNARAK bulundu, zar atışıyla DEĞİL — `health.controller.
+// ts` BİLEREK iki ayrı uç tanımlıyor: `GET /health` (liveness, I/O YOK, HER
+// ZAMAN anında 200) ve `GET /health/ready` (readiness, DB + Redis `ping()`,
+// her kontrol `withTimeout(…, READINESS_CHECK_TIMEOUT_MS=2000)` ile sınırlı —
+// `health/with-timeout.ts`). ÖNCEKİ hâl bu testte `/health`'i POLL ediyordu
+// (`waitUntilReady`) ama `/health/ready`'yi TEK ATIŞLA (`fetch` + tek
+// `expect`) kontrol ediyordu. `/health` I/O yapmadığı için her zaman anında
+// `200` döner; Redis istemcisi (`redis.module.ts`) uygulama açılışında
+// ARKA PLANDA bağlanır (eager değil) ve ioredis bağlantı kurulana kadar
+// komutları KUYRUKLAR (`enableOfflineQueue` varsayılanı `true`) — yani
+// `/health/ready`'nin İLK çağrısı, Redis/Postgres bağlantısı henüz
+// TAMAMLANMAMIŞKEN gelebilir. Normalde bağlantı kurulumu birkaç ms (ölçüldü,
+// bkz. aşağıdaki PR), ama CI'da başka süreçlerin (aynı turbo grafiğindeki
+// diğer paketlerin testleri) yarattığı CPU/zamanlayıcı gecikmesi altında bu
+// birkaç ms'nin 2000ms bütçeyi NADİREN aşması mümkündür — tek atışlı kontrol
+// bu durumda RETRY OLMADAN 503 görüp testi düşürür. DÜZELTME: `/health/ready`
+// de `/health` gibi `waitUntilReady` ile POLLANIR (aynı 20sn bütçe, aynı
+// 150ms aralık) — nihai `expect(...).toBe(200)` DEĞİŞMEDİ (gevşetme YOK),
+// yalnızca "ne zaman" kontrol edildiği düzeltildi. Kanıt: `KARARLAR`'da art
+// arda 10 koşum.
 
 import { setTimeout as delay } from 'node:timers/promises'
 
@@ -24,16 +46,24 @@ const READY_TIMEOUT_MS = 20_000
 const READY_POLL_INTERVAL_MS = 150
 const SHUTDOWN_TEST_TIMEOUT_MS = 40_000
 
-async function waitUntilReady(url: string): Promise<void> {
+/**
+ * `url` `response.ok` (2xx) dönene kadar POLL eder ve nihai `Response`'u
+ * döner — hem liveness (`/health`) hem readiness (`/health/ready`) için
+ * kullanılır (bkz. dosya başı FIX notu, borç 1461). Süre dolarsa son durum
+ * kodu/hatasıyla fırlatır.
+ */
+async function waitUntilReady(url: string): Promise<Response> {
   const deadline = Date.now() + READY_TIMEOUT_MS
   let lastError: unknown
+  let lastStatus: number | undefined
 
   while (Date.now() < deadline) {
     try {
       const response = await fetch(url)
       if (response.ok) {
-        return
+        return response
       }
+      lastStatus = response.status
     } catch (error) {
       lastError = error
     }
@@ -41,7 +71,7 @@ async function waitUntilReady(url: string): Promise<void> {
   }
 
   throw new Error(
-    `waitUntilReady: ${url} ${String(READY_TIMEOUT_MS)}ms içinde hazır olmadı — son hata: ${String(lastError)}`,
+    `waitUntilReady: ${url} ${String(READY_TIMEOUT_MS)}ms içinde hazır olmadı — son durum: ${String(lastStatus)}, son hata: ${String(lastError)}`,
   )
 }
 
@@ -100,8 +130,10 @@ describe('AC11 — SIGTERM sonrası graceful shutdown (deterministik ölçüm, K
         await waitUntilReady(`http://127.0.0.1:${String(SHUTDOWN_CHILD_PORT)}/health`)
 
         // DB'ye giden EN AZ bir istek — eager `$connect()` YOK (K-A3),
-        // bağlantı ancak bu istekten SONRA kurulur.
-        const readyResponse = await fetch(
+        // bağlantı ancak bu istekten SONRA kurulur. `/health/ready` de POLL
+        // edilir (borç 1461 FIX'i, dosya başı yorumu) — DB/Redis bağlantısı
+        // arka planda kurulurken tek atışlı bir kontrol nadiren 503 görebilir.
+        const readyResponse = await waitUntilReady(
           `http://127.0.0.1:${String(SHUTDOWN_CHILD_PORT)}/health/ready`,
         )
         expect(readyResponse.status).toBe(200)

@@ -78,4 +78,15 @@ describe('TENANT_EXEMPT_PATHS', () => {
   it('/trpc/tenant.current MUAF DEĞİLDİR — tRPC yüzeyinin GERİ KALANI kiracı bağlamından muaf değil', () => {
     expect(isTenantExemptPath('/trpc/tenant.current')).toBe(false)
   })
+
+  // GÜNCELLEME (ROADMAP v0.0.8, T-009/S7, ADR-0012): `/trpc/storefront.
+  // currentTenant` `AUTH_EXEMPT_PATHS`'e eklendi (kimlik ekseni) AMA bu
+  // kümeye (kiracı ekseni) EKLENMEDİ — vitrin ziyaretçisi KİMLİKSİZDİR ama
+  // KİRACISIZ DEĞİLDİR, kiracı `Host`'tan ÇÖZÜLMEK ZORUNDADIR
+  // (`TenantGuard`'ın çözümsüz host'u 404 ile reddetme davranışı KORUNUR).
+  // Kardinalite assert'i (13) BU satırla DEĞİŞMEDİ — iki ekseni OYNAMADIĞININ
+  // mekanik kanıtı budur.
+  it('/trpc/storefront.currentTenant MUAF DEĞİLDİR — kimlik ekseni açıldı, kiracı ekseni OYNAMADI', () => {
+    expect(isTenantExemptPath('/trpc/storefront.currentTenant')).toBe(false)
+  })
 })

@@ -1,0 +1,15 @@
+{
+  // Tip kontrolü projesi: src/ kaynakları + kök düzeyindeki yapılandırma dosyaları
+  // (vitest.config.ts) denetlenir. Derleme için ayrı proje kullanılır:
+  // tsconfig.build.json (packages/errors deseninin birebir kopyası).
+  "extends": "@arkesoft/config/tsconfig/node.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // `URL` ambient tipi (resolve-host.ts:78) için — bu paket DOM'a bağımlı
+    // DEĞİL (react.json DEĞİL, node.json), `URL` Node'un global tip
+    // tanımlarından (`@types/node`) gelir.
+    "types": ["node"]
+  },
+  "include": ["src/**/*", "*.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -6,7 +6,7 @@
 // `prismaService.db.tenant.findUnique` üzerinde kurulur.
 //
 // DÜRÜST NOT (ST-5 → sonraki ajanlara): DoD metni "11 çözümsüz sebebin HER
-// BİRİNDE 0 çağrı" diyor; bu, resolve-host.ts'in SAF olarak ürettiği 8 sebep
+// BİRİNDE 0 çağrı" diyor; bu, `@arkesoft/tenancy`'nin `resolve-host.ts`'inin SAF olarak ürettiği 8 sebep
 // + `header_rejected_in_production` (toplam 9) için DOĞRU — ama `no_row` ve
 // `soft_deleted` TANIM OLARAK bir Prisma okumasının SONUCUDUR (satırın
 // olmadığını/silindiğini bir sorgu atmadan BİLMENİN yolu yok; K-A4'ün kendi
@@ -81,7 +81,7 @@ describe('TenantResolverService', () => {
     }
   })
 
-  // --- 9 sebep — SORGU YOK (resolve-host.ts'in saf reddi + üretim başlık reddi) ---
+  // --- 9 sebep — SORGU YOK (`@arkesoft/tenancy`'nin resolve-host.ts'inin saf reddi + üretim başlık reddi) ---
   const zeroQueryReasonCases: readonly {
     readonly reason: string
     readonly requestHeaders: HttpRequestHeaders

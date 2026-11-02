@@ -19,15 +19,21 @@
 // GÜNCELLEME (ROADMAP v0.0.7, T-008/S3, architect K2, ADR-0011): bu yorum
 // EVVELCE "`/trpc/*` ne `TENANT_EXEMPT_PATHS`'te ne `AUTH_EXEMPT_PATHS`'te
 // yer alır" diyordu — bu artık KİRACI yarısı için YANLIŞ. Doğrusu: AYRI
-// AYRI iki karar. `AUTH_EXEMPT_PATHS`'e HİÇBİR satır EKLENMEDİ ve
-// EKLENMEYECEK (`publicProcedure`'ü HTTP'de "kimlik gerektirmez" yapmak,
-// bu kümeye satır eklemekle AYNI şey değil — AYRI ve DAHA AĞIR bir karar,
-// v0.0.7'de YAPILMADI). `TENANT_EXEMPT_PATHS`'e v0.0.7'de **TEK** satır
-// eklendi: `/trpc/session.me` (gerekçe `tenant-exempt-paths.ts` dosya başı
-// yorumu, grup (4)) — `/trpc/*`'nin GERİ KALANI hâlâ kiracı bağlamından muaf
-// DEĞİL. Kimse `publicProcedure`'ü HTTP'de "erişilebilir" yapmak için bu iki
-// kümeye satır eklemeye KALKMASIN — bu BİLİNÇLİ bir tasarım kararıdır, eksik
-// değil. Pipeline:
+// AYRI iki karar. `TENANT_EXEMPT_PATHS`'e v0.0.7'de **TEK** satır eklendi:
+// `/trpc/session.me` (gerekçe `tenant-exempt-paths.ts` dosya başı yorumu,
+// grup (4)) — `/trpc/*`'nin GERİ KALANI hâlâ kiracı bağlamından muaf DEĞİL.
+//
+// GÜNCELLEME (ROADMAP v0.0.8, T-009/S7, ADR-0012): `AUTH_EXEMPT_PATHS`'e
+// v0.0.8'de **TEK** satır eklendi: `/trpc/storefront.currentTenant`
+// (`publicTenantProcedure` — kimlik YOK, kiracı ZORUNLU; gerekçe
+// `auth-exempt-paths.ts` dosya başı yorumu, dördüncü grup, ADR-0012'nin dört
+// koşulu). `TENANT_EXEMPT_PATHS` BU satırla DEĞİŞMEDİ (13'te kalır) — vitrin
+// ziyaretçisi KİMLİKSİZDİR ama KİRACISIZ DEĞİLDİR, kiracı `Host`'tan
+// çözülmek ZORUNDADIR. Kimse `publicProcedure`'ü (kiracı da gerektirmeyen
+// taban builder, `@arkesoft/trpc/server`'ın `trpc.ts`'i) HTTP'de
+// "erişilebilir" yapmak için bu iki kümeye GEREKÇESİZ satır eklemeye
+// KALKMASIN — her ekleme ADR-0012 gibi AYRI ve AÇIK bir karar gerektirir, bu
+// BİLİNÇLİ bir tasarım sınırıdır, eksik değil. Pipeline:
 // `RequestContext → TenantContext → AuthContext middleware → TenantGuard
 // (unresolved → 404) → AuthGuard (oturumsuz → 401 · üye değil → 403) →
 // RateLimitGuard (/trpc'de anında true) → SameOriginGuard (@UseGuards,
@@ -47,6 +53,7 @@ import type { ApiEnv } from '../config/api-env.js'
 import { API_ENV } from '../config/config.tokens.js'
 import type { HttpRequestLike, HttpResponseLike } from '../http/http-request.types.js'
 import { toWebHeaders } from '../http/to-web-headers.js'
+import { StorefrontTenantReadPortAdapter } from './ports/storefront-tenant-read.port.adapter.js'
 import { TenantReadPortAdapter } from './ports/tenant-read.port.adapter.js'
 import { createTrpcContext } from './trpc-context.factory.js'
 import { TrpcErrorsPortAdapter } from './trpc-errors.port.adapter.js'
@@ -132,6 +139,8 @@ export class TrpcController {
     @Inject(API_ENV) private readonly env: ApiEnv,
     @Inject(HttpAdapterHost) private readonly adapterHost: HttpAdapterHost,
     @Inject(TenantReadPortAdapter) private readonly tenantRead: TenantReadPortAdapter,
+    @Inject(StorefrontTenantReadPortAdapter)
+    private readonly storefrontTenantRead: StorefrontTenantReadPortAdapter,
     @Inject(TrpcErrorsPortAdapter) private readonly errorsPort: TrpcErrorsPortAdapter,
   ) {}
 
@@ -139,7 +148,10 @@ export class TrpcController {
   @All('trpc/*path')
   async handle(@Req() req: TrpcHttpRequest, @Res() res: HttpResponseLike): Promise<void> {
     const request = buildTrpcWebRequest(req, this.env.AUTH_BASE_URL)
-    const context = createTrpcContext({ tenantRead: this.tenantRead }, this.errorsPort)
+    const context = createTrpcContext(
+      { tenantRead: this.tenantRead, storefrontTenantRead: this.storefrontTenantRead },
+      this.errorsPort,
+    )
 
     const response = await handleTrpcRequest({ req: request, context })
     await forwardTrpcWebResponse(response, res, this.adapterHost.httpAdapter)

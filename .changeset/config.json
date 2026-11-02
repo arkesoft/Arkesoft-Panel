@@ -12,6 +12,7 @@
       "@arkesoft/integrations",
       "@arkesoft/storefront",
       "@arkesoft/superadmin",
+      "@arkesoft/tenancy",
       "@arkesoft/ui"
     ]
   ],

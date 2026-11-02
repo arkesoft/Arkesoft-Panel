@@ -1,7 +1,7 @@
 // @arkesoft/api — ALS sözleşmesi: depo (ROADMAP v0.0.4, T-002/ST-4, architect K-A5)
 //
-// MODÜL SEVİYESİ TEK örnek — Nest provider DEĞİL. Böylece `apps/api/src/tenancy/
-// resolve-host.ts` gibi SAF fonksiyonlar (ST-5) ve `src/validation/zod-validation.pipe.ts`
+// MODÜL SEVİYESİ TEK örnek — Nest provider DEĞİL. Böylece `@arkesoft/tenancy`'nin
+// `resolve-host.ts`'i gibi SAF fonksiyonlar (ST-5) ve `src/validation/zod-validation.pipe.ts`
 // gibi Nest DI'siz kurulan pipe'lar DI konteynerine ihtiyaç duymadan depoyu okuyabilir.
 // Modül seviyesinde `const` olduğu için Node'un modül önbelleği (require/import cache)
 // tek örnek garantisini sağlar — birden fazla `new AsyncLocalStorage()` çağrısı YOK.

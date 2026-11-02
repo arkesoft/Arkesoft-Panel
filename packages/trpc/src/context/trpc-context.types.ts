@@ -11,6 +11,7 @@
 
 import type { TenantStatusWire } from '../schemas/tenant-summary.schema.js'
 import type { TenantReadPort } from '../ports/tenant-read.port.js'
+import type { StorefrontTenantReadPort } from '../ports/storefront-tenant-read.port.js'
 import type { TrpcErrorFactoryPort } from '../ports/trpc-error-factory.port.js'
 
 /**
@@ -55,9 +56,14 @@ export interface TrpcLoggerPort {
  * Context'ten enjekte edilen tüm port arayüzlerinin toplu sözleşmesi
  * (ADR-0009 madde 2). Resolver'lar `ctx.ports.*` üzerinden tek bir çağrı
  * yapar; portlar `apps/api`'de uygulanır.
+ *
+ * `storefrontTenantRead` (ROADMAP v0.0.8, T-009/S5, ADR-0012) BİLEREK
+ * `tenantRead`'den AYRI bir port — ikisinin dönüş tipi farklıdır
+ * (`StorefrontTenant` vs. `TenantSummary`); sızdırmazlık bu ayrıma dayanır.
  */
 export interface TrpcPorts {
   readonly tenantRead: TenantReadPort
+  readonly storefrontTenantRead: StorefrontTenantReadPort
 }
 
 /**

@@ -235,13 +235,17 @@ RLS politikaları v0.0.13'te geliyor. Bu pencerede `TenantContextMiddleware`,
 `TenantGuard` ve `getTenantContext()` zincirindeki bir hata **doğrudan çapraz tenant
 veri sızıntısıdır** ve veritabanı bunu yakalamaz.
 
-`apps/api/src/tenancy/**` ve `src/request-context/**` değiştirilirken:
+`packages/tenancy/src/**` (host→tenant **seçici**: normalizasyon, rezerve etiketler
+— v0.0.8'den itibaren `@arkesoft/tenancy`, `apps/api`'den terfi etti), `apps/api/src/tenancy/**`
+(`TenantGuard`, `TenantContextMiddleware`, `TenantResolverService` — `TenantContext` **üretimi**
+hâlâ burada) ve `src/request-context/**` değiştirilirken:
 
-1. `src/__tests__/resolve-host.test.ts` (35+ vaka) — tüm host normalizasyonu ve
-   saldırı vektörleri kapsamlı biçimde test edilmeli
-2. `src/__tests__/tenant-exempt-paths.test.ts` — allowlist (`/health`, `/health/ready`)
+1. `packages/tenancy/src/__tests__/resolve-host.test.ts` (35+ vaka) — tüm host normalizasyonu ve
+   saldırı vektörleri kapsamlı biçimde test edilmeli (dosya v0.0.8'de `apps/api`'den buraya
+   **taşındı**, kopyalanmadı)
+2. `apps/api/src/__tests__/tenant-exempt-paths.test.ts` — allowlist (`/health`, `/health/ready`)
    değişmesi algılanmalı
-3. `src/__tests__/concurrency.test.ts` (20 eşzamanlı istek) — ALS sızıntısı, shared
+3. `apps/api/src/__tests__/concurrency.test.ts` (20 eşzamanlı istek) — ALS sızıntısı, shared
    mutable state ve child logger karışması testsiz kalmamalı
 
 Bu üç test **mutlaka yeşil** kalmalıdır.
@@ -830,5 +834,52 @@ komutu `pnpm test`, her `createTestApp()` çağrısında `platform:auth:*` names
 eklemesi — dosya başı yorumunda belgeli). **AC18'in "iki ardışık koşum" ölçümünü `pnpm test` ile
 ARADA koşmayın** — sayaçlar sıfırlanır ve ölçüm geçersiz olur. Doğru sıra: `pnpm test` → **arada
 hiçbir şey çalıştırmadan** iki ardışık `pnpm --filter @arkesoft/admin test:e2e`.
+
+---
+
+## Vitrin (`apps/storefront`) Geliştirme (v0.0.8+)
+
+### `CLAUDECODE` tuzağı — `astro dev` arka plana düşer
+
+Astro 7.4.2'nin bağımlılığı **`am-i-vibing`** bir AI ajanı tarafından çalıştırılıp
+çalıştırılmadığını ortam değişkenlerinden tespit eder. `CLAUDECODE=1` (veya
+`CLAUDE_CODE_ENTRYPOINT`/`AI_AGENT`) ortamda varken `astro dev`'i **otomatik arka plana alır** ve bu,
+Playwright'ın `webServer` yönetimini _"Process exited early"_ ile kırar (ölçüldü: T-009/S9).
+
+**Çözüm:** `astro dev`'i (ve dolayısıyla `apps/storefront`'un Playwright koşumunu) bir AI ajanı
+oturumu içinden çalıştırırken üç değişkeni **temizleyin**:
+
+```bash
+env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u AI_AGENT \
+  pnpm --filter @arkesoft/storefront test:e2e
+```
+
+### `astro dev`'in `envDir`'i repo kökünü otomatik yüklemez
+
+`apps/storefront`'un `envDir`'i `apps/storefront`'un kendisidir (panel'in `envDir`
+kararıyla aynı gerekçe — kök `.env`'in sırları Astro/Vite'ın görüş alanına hiç girmez).
+Kök `.env`'inizdeki değerler **otomatik yüklenmez**; kabuktan geçirilmesi gerekir
+(`env -u ... VAR=... pnpm ...` veya kabuk `export`'u).
+
+### Yeni ön koşul: `STOREFRONT_API_BASE_URL`
+
+Vitrinin sunucu taraflı tRPC istemcisi API'nin iç adresini bu değişkenden okur
+(`apps/storefront/src/lib/storefront-env.ts`, açılışta fail-fast). `.env.example`'da
+tanımlı; **yerel `.env`'inize de eklemeniz gerekir** (bkz. yukarıdaki `envDir` notu —
+`.env.example`'a eklenmiş olması kök `.env`'inize otomatik yansımaz):
+
+```bash
+STOREFRONT_API_BASE_URL=http://127.0.0.1:3000
+```
+
+Eksikse vitrin modül yüklemede açıkça çöker (fail-closed, sessiz bozulma yok).
+
+### `*.arkesoft.localhost` çözümü
+
+Playwright/Chromium ve `curl`/`ping` test edilen tüm host kalıpları
+(`demo-magaza`/`yok`/`panel`/`a.b`/`arkesoft.localhost`) **`/etc/hosts` kaydı gerekmeden**
+127.0.0.1'e çözüldü (RFC 6761, `.localhost` TLD'si). Özel alan adı fixture'ları için
+`.arkesoft.localhost` sonekiyle bitmeyen bir host (`<suffix>.localhost`) seçilirse
+`resolveHost` doğru şekilde `custom-domain` dalına düşer ve yine `/etc/hosts` gerekmez.
 
 ---

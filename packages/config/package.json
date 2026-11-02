@@ -1,6 +1,6 @@
 {
   "name": "@arkesoft/config",
-  "version": "0.0.3",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Paylaşılan tsconfig, ESLint, Prettier, Tailwind preset'leri ve ortam değişkeni şemaları",

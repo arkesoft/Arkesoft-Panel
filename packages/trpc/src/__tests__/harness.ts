@@ -37,6 +37,7 @@ import type {
   TrpcTenantState,
 } from '../context/trpc-context.types.js'
 import type { TenantReadPort } from '../ports/tenant-read.port.js'
+import type { StorefrontTenantReadPort } from '../ports/storefront-tenant-read.port.js'
 import type { TrpcErrorFactoryPort } from '../ports/trpc-error-factory.port.js'
 import type { TenantSummary } from '../schemas/tenant-summary.schema.js'
 
@@ -153,6 +154,27 @@ export function createFakeTenantReadPort(summary: TenantSummary): TenantReadPort
       }
 
       return Promise.resolve(summary)
+    },
+  }
+}
+
+/**
+ * `StorefrontTenantReadPort`'un sahte uygulaması (ROADMAP v0.0.8, T-009/S5,
+ * ADR-0012). Port TOTAL'dır (architect K4) — `tenantId` beklenen özetinkiyle
+ * eşleşmiyorsa `null` DÖNMEZ, {@link HarnessTenantNotFoundError} fırlatır.
+ * Dönüş değeri BİLEREK `summary`'nin TAMAMI değil, tek alanı (`name`) —
+ * `StorefrontTenant`'ın sözleşmesiyle aynı sızdırmazlık burada da korunur.
+ */
+export function createFakeStorefrontTenantReadPort(
+  summary: TenantSummary,
+): StorefrontTenantReadPort {
+  return {
+    findPublicTenant(tenantId) {
+      if (tenantId !== summary.id) {
+        return Promise.reject(new HarnessTenantNotFoundError(tenantId))
+      }
+
+      return Promise.resolve({ name: summary.name })
     },
   }
 }
@@ -293,6 +315,7 @@ export interface CreateHarnessOptions {
   readonly tenant?: TrpcTenantState
   readonly tenantSummary?: TenantSummary
   readonly tenantRead?: TenantReadPort
+  readonly storefrontTenantRead?: StorefrontTenantReadPort
   readonly errors?: TrpcErrorFactoryPort
   readonly logger?: RecordingLogger
 }
@@ -333,7 +356,11 @@ export function createHarness(options: CreateHarnessOptions = {}): Harness {
       slug: tenantSummary.slug,
       status: tenantSummary.status,
     },
-    ports: { tenantRead: options.tenantRead ?? createFakeTenantReadPort(tenantSummary) },
+    ports: {
+      tenantRead: options.tenantRead ?? createFakeTenantReadPort(tenantSummary),
+      storefrontTenantRead:
+        options.storefrontTenantRead ?? createFakeStorefrontTenantReadPort(tenantSummary),
+    },
     errors: options.errors ?? createFakeErrorFactoryPort(),
   }
 

@@ -23,6 +23,7 @@ import { describe, expect, it } from 'vitest'
 import {
   HARNESS_TENANT_SUMMARY,
   createFakeErrorFactoryPort,
+  createFakeStorefrontTenantReadPort,
   createFakeTenantReadPort,
   createHarness,
   createRecordingLogger,
@@ -70,7 +71,10 @@ describe('publicProcedure — hermetik semantik (architect K4)', () => {
       logger: createRecordingLogger(),
       auth: { kind: 'anonymous' },
       tenant: { kind: 'absent' },
-      ports: { tenantRead: createFakeTenantReadPort(HARNESS_TENANT_SUMMARY) },
+      ports: {
+        tenantRead: createFakeTenantReadPort(HARNESS_TENANT_SUMMARY),
+        storefrontTenantRead: createFakeStorefrontTenantReadPort(HARNESS_TENANT_SUMMARY),
+      },
       errors: createFakeErrorFactoryPort(),
     }
 
@@ -136,6 +140,90 @@ describe('TenantReadPort totalliği — bulunamadı durumu tele yansır', () => 
     // solid tur1 M2: port'un fırlattığı `HarnessTenantNotFoundError`'ın
     // KENDİ kodunun tele taşındığını doğrula — `data.code`/`data.httpStatus`
     // yalnızca tRPC sözlüğünü ölçer, domain içeriğinin round-trip'ini ÖLÇMEZ.
+    expect(caught.data?.appError.code).toBe('TENANT_NOT_FOUND')
+  })
+})
+
+describe('storefront.currentTenant (publicTenantProcedure) — başarı yolu', () => {
+  it("anonim kimlik + çözülmüş tenant context'te StorefrontTenantReadPort'un döndürdüğü {name}'i tele TAŞIR (kimlik katmanı YOK, sıfır dallanma — ROADMAP v0.0.8, T-009/S5, ADR-0012)", async () => {
+    const harness = createHarness({
+      auth: { kind: 'anonymous' },
+      tenantSummary: HARNESS_TENANT_SUMMARY,
+    })
+
+    const result = await harness.client.storefront.currentTenant.query()
+
+    expect(result).toEqual({ name: HARNESS_TENANT_SUMMARY.name })
+    // Küme eşitliği — `id`/`slug`/`status`/`primaryDomain`/`planId`/`deletedAt`
+    // hiçbiri tele YAZILMAZ (architect K3, R9 telafisi).
+    expect(Object.keys(result)).toEqual(['name'])
+  })
+})
+
+describe("storefront.currentTenant — publicTenantProcedure'ün KİMLİK katmanı (birinci katman)", () => {
+  it("auth.kind === 'anonymous' olsa da tenant ÇÖZÜLMÜŞSE prosedüre ULAŞIR, 401 ATMAZ (publicTenantProcedure, protectedProcedure DEĞİL)", async () => {
+    const harness = createHarness({
+      auth: { kind: 'anonymous' },
+      tenant: {
+        kind: 'resolved',
+        tenantId: HARNESS_TENANT_SUMMARY.id,
+        slug: HARNESS_TENANT_SUMMARY.slug,
+        status: HARNESS_TENANT_SUMMARY.status,
+      },
+    })
+
+    await expect(harness.client.storefront.currentTenant.query()).resolves.toEqual({
+      name: HARNESS_TENANT_SUMMARY.name,
+    })
+  })
+})
+
+describe("storefront.currentTenant — publicTenantProcedure'ün KİRACI katmanı (ikinci katman, bağlayıcı)", () => {
+  it("auth.kind === 'anonymous' VE tenant.kind === 'absent' → UNAUTHORIZED/401, appError.code === 'TENANT_CONTEXT_REQUIRED' (kimlik katmanı atlanır, kiracı katmanı DURDURUR)", async () => {
+    const harness = createHarness({ auth: { kind: 'anonymous' }, tenant: { kind: 'absent' } })
+
+    let caught: unknown
+    try {
+      await harness.client.storefront.currentTenant.query()
+      throw new Error(
+        "beklenen hata fırlatılmadı — storefront.currentTenant tenant'sız context'te BAŞARILI oldu",
+      )
+    } catch (error) {
+      caught = error
+    }
+
+    if (!isTRPCClientError<AppRouter>(caught)) {
+      throw new Error(`beklenen TRPCClientError değil: ${String(caught)}`)
+    }
+
+    expect(caught.data?.code).toBe('UNAUTHORIZED')
+    expect(caught.data?.httpStatus).toBe(401)
+    expect(caught.data?.appError.code).toBe('TENANT_CONTEXT_REQUIRED')
+  })
+})
+
+describe('StorefrontTenantReadPort totalliği — bulunamadı durumu tele yansır', () => {
+  it('port TenantNotFoundError fırlatınca yanıt NOT_FOUND/404 olur (sıfır null-kontrolü, architect K4)', async () => {
+    const mismatchedSummary = { ...HARNESS_TENANT_SUMMARY, id: 'tenant_does_not_match_context' }
+    const harness = createHarness({
+      auth: { kind: 'anonymous' },
+      storefrontTenantRead: createFakeStorefrontTenantReadPort(mismatchedSummary),
+    })
+
+    let caught: unknown
+    try {
+      await harness.client.storefront.currentTenant.query()
+      throw new Error('beklenen hata fırlatılmadı — port uyumsuzluğa rağmen BAŞARILI oldu')
+    } catch (error) {
+      caught = error
+    }
+
+    if (!isTRPCClientError<AppRouter>(caught)) {
+      throw new Error(`beklenen TRPCClientError değil: ${String(caught)}`)
+    }
+
+    expect(caught.data?.code).toBe('NOT_FOUND')
+    expect(caught.data?.httpStatus).toBe(404)
     expect(caught.data?.appError.code).toBe('TENANT_NOT_FOUND')
   })
 })

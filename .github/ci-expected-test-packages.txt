@@ -40,11 +40,32 @@
 #     `tailwind-custom-property-syntax.qa.test.ts` 4), ikisi de gerçekten
 #     "admin" job'unun test adımında koşuyor. Fonksiyonel boşluk yok.
 #
+# GÜNCELLEME (ROADMAP v0.0.8, T-009/S3 — devops; Orkestratör architect'in
+# "6 → 7" sayımını "6 → 8" olarak DÜZELTTİ): `packages/tenancy` (host→kiracı
+# çözümü, saf) terfi etti ve bir "test" script'i kazandı; `apps/storefront`
+# da kütüphaneden uygulamaya geçerken bir "test" script'i kazandı
+# (`vitest run --passWithNoTests --fsModuleCachePath node_modules/.vitest-cache`).
+# İkisi de hangi CI hattının kapanışında:
+#
+#   - @arkesoft/tenancy → HEM "api" job'unun (`filter: '@arkesoft/api...'`,
+#     ci.yml:917) HEM "storefront" job'unun (`filter:
+#     '@arkesoft/storefront...'`, ci.yml:986) kapanışında — ikisi de ona
+#     `workspace:*` ile bağımlı. İkisinde de "run-test" açıkça 'false'
+#     GEÇİLMİYOR, varsayılan 'true' → test adımı GERÇEKTEN koşuyor.
+#     "shared" job'unun (`filter: './packages/**'`, ci.yml:1025) kapanışında
+#     da GÖRÜNÜR ama o job `run-test: 'false'` taşıyor (ci.yml:1026) — bu
+#     BOŞLUK yaratmıyor, yukarıdaki iki hat zaten gerçek koşumu sağlıyor.
+#   - @arkesoft/storefront → "storefront" job'unun (`filter:
+#     '@arkesoft/storefront...'`, ci.yml:986) kapanışında, "run-test"
+#     açıkça 'false' GEÇİLMİYOR → test adımı GERÇEKTEN koşuyor.
+#
 # Satır başında # olan satırlar ve boş satırlar yorum sayılır, taranmaz.
 
 @arkesoft/admin
 @arkesoft/api
 @arkesoft/db
 @arkesoft/errors
+@arkesoft/storefront
+@arkesoft/tenancy
 @arkesoft/trpc
 @arkesoft/ui

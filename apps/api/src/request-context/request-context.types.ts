@@ -20,7 +20,8 @@ import type { AuthResolution } from '../auth/auth-resolution.types.js'
 
 /**
  * Tenant çözümünün BAŞARISIZ olduğu 11 kesin sebep (architect K-A5/K-A4,
- * bağlayıcı — liste büyütülürse `TenantGuard`/`resolve-host.ts`'in exhaustive
+ * bağlayıcı — liste büyütülürse `TenantGuard`/`@arkesoft/tenancy`'nin
+ * `resolve-host.ts`'indeki exhaustive
  * switch'leri derleme zamanında kırılır, bu KASITLI: yeni bir ret sebebi
  * sessizce geçemez).
  */

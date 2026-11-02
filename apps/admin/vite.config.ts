@@ -22,7 +22,7 @@
 // K1 (tek orijin topolojisi, ADR-0011, CORS AÇILMADI): `/trpc` ve `/auth`
 // Vite dev sunucusunun proxy'si ÜZERİNDEN `apps/api`'ye (`127.0.0.1:3000`)
 // gider. `changeOrigin: false` (AÇIKÇA) — proxy `Host` BAŞLIĞINI
-// DEĞİŞTİRMEZ: `apps/api`'nin `resolveHost` (tenancy/resolve-host.ts) tenant
+// DEĞİŞTİRMEZ: `apps/api`'nin `resolveHost` (`@arkesoft/tenancy`'nin `resolve-host.ts`'i) tenant
 // seçimini YALNIZCA `Host` başlığından yapıyor; `changeOrigin: true` olsaydı
 // `Host` `127.0.0.1:3000`'e dönüşür, panel host'unun `reserved_subdomain`
 // muafiyeti (K2, `tenant-exempt-paths.ts`) TETİKLENMEZ ve istek 404

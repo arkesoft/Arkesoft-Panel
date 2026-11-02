@@ -1,0 +1,5 @@
+/* @arkesoft/storefront — global Tailwind girişi (ROADMAP v0.0.8, T-009/S4).
+   `@tailwindcss/vite` (v4) tek satır `@import` ile çalışır; `tailwind.config.*`
+   dosyası ve `@tailwind base/components/utilities` üç satırı (v3 söz dizimi)
+   KULLANILMAZ. */
+@import 'tailwindcss';

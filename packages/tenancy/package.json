@@ -1,0 +1,33 @@
+{
+  "name": "@arkesoft/tenancy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Host→kiracı seçici çözümlemesinin saf kuralları (hostname normalizasyonu, rezerve alt alan adları)",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json --declaration --declarationMap",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "clean": "rm -rf dist .turbo",
+    "test": "vitest run"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@arkesoft/config": "workspace:*",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -230,3 +230,31 @@ Bu garanti üçüncü yazıcıdan (panel hata katmanının düzeltme turu 2'de `
 kararı korunur); normalize tip o zaman i18n anahtarını da taşımaya başlar ve katalog anahtarı
 koddan anahtara kayar. Üçüncü şekil anahtar taşımadığı için **kod tabanlı eşleme kalıcıdır** —
 sağlayıcı kodları için ikinci bir eşleme tablosu gerekir.
+
+---
+
+## Ek (v0.0.8) — Gözden geçirme koşulu 4'ün cevabı: vitrin de iki zarfı okur, sunucuda değişiklik yok
+
+> **Not:** Bu bölüm append-only eklenmiştir. **Madde 3 ve madde 4'ün metni ve numaralandırması
+> değişmemiştir** (bkz. Ek v0.0.7'nin aynı uyarısı — üretim kodu madde numaralarına on iki yerden
+> atıf yapıyor).
+
+**Gözden geçirme koşulu 4** şöyle diyordu: *"İstemci tarafı iki zarfı normalize etmekte zorlanırsa
+— taşıma reddinin de tRPC zarfına çevrilmesi (ve bunun kimlik/kiracı zorlamasını nereye taşıdığı)
+yeniden tartışılır."* v0.0.8'de ikinci bir istemci (`apps/storefront`) ilk kez madde 4'ün iki
+zarfını **sunucu taraflı** okudu (panelin tarayıcı-içi okumasından ayrı bir yüzey) ve bu koşul
+**tetiklendi** (ölçüm: `docs/adr/0012-vitrin-yuzeyi-anonim-trpc-kiraci-host-ve-onbellek.md` madde
+12; kaynak gate: `solid` T-009 tur 1 madde 7, `security` T-009 parça A/B).
+
+**Cevap: sunucuda hiçbir şey değişmez.** İstemci tarafı normalizasyon **zorlanmadı** — tersine,
+vitrin panelin (beş probe'lu `normalizePanelError`, Ek v0.0.7) yanına **iki probe'lu**
+(`parseTransportRejection`, `parseTrpcErrorEnvelope`) kendi normalizasyonunu sorunsuz ekledi; her
+iki istemci de aynı tel şemalarından (`appErrorBodySchema`, `trpcErrorDataSchema`) okuyor ve
+`instanceof` kullanmadan, fail-closed düşüyor. Taşıma reddini tRPC zarfına çevirmek — kimlik/kiracı
+zorlamasının guard zincirinden sözleşme katmanına taşınması anlamına gelirdi — **gerekmedi**; iki
+zarf **kasıtlı** bir karar olarak kalır (madde 4) ve istemci tarafı normalizasyonu her yeni
+tüketici için **çözülmüş bir problem**dir: panel beş probe, vitrin iki probe (ikisi daha az probe,
+çünkü vitrin hiçbir domain hatası sınıfı ile karşılaşmıyor — ADR-0012 madde 12).
+
+Bu koşul kapanmıştır; üçüncü bir istemci (`apps/superadmin`, v0.0.20) veya dördüncü bir zarf şekli
+doğarsa ADR-0012 madde 12'nin gözden geçirme koşulu 8 devreye girer — bu koşulu **yeniden** değil.
