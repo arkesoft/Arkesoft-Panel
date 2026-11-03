@@ -1,5 +1,13 @@
 # @arkesoft/db
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies
+  - @arkesoft/config@0.1.1
+  - @arkesoft/errors@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes

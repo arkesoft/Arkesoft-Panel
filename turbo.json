@@ -2,6 +2,12 @@
   "$schema": "https://turbo.build/schema.json",
   "ui": "stream",
   "globalDependencies": ["pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc"],
+  // GEREKÇE (T-011/S1, ADR-0014 karar 1) — bu ikisi globalEnv'e BİLİNÇLİ
+  // OLARAK EKLENMEDİ. globalEnv her görevin hash'ine girer; APP_BASE_DOMAIN
+  // ve STOREFRONT_API_BASE_URL yalnızca iki uygulamanın (storefront, api)
+  // derdi, platform genelinin değil. Buraya eklemek lint/typecheck/generate
+  // önbelleklerini gerekçesiz geçersizleştirirdi. İhtiyaçları olan görevlere
+  // (dev, build) ayrı ayrı bildirildi, aşağıya bak.
   "globalEnv": ["NODE_ENV", "CI"],
   "tasks": {
     "generate": {
@@ -10,18 +16,54 @@
     },
     "build": {
       "dependsOn": ["^build", "generate"],
-      "outputs": ["dist/**"]
+      "outputs": ["dist/**"],
+      // GEREKÇE (T-011/S1) — bu bildirimin TEK hash etkisi olan maddesi
+      // burası. Bugün storefront build'i bu iki değişkeni OKUMUYOR (kanıt:
+      // temiz kabukta `build 13/13` yeşil) → çıktı KAZARA env'den bağımsız;
+      // önbellek GİZİL OLARAK yanlış, bir rota `prerender = true` ihraç
+      // ettiği an FİİLEN yanlış hâle gelir. Bildirim hash'i dürüst kılar.
+      // KABUL EDİLEN MALİYET (ÖLÇÜLDÜ, T-011/perf): bu iki değer değişince
+      // tasks.build önbelleği TÜM paketlerde kaçırıyor (13/13 → 1/13, yalnızca
+      // db:generate isabet ediyor) — bildirim AMACINA ULAŞIYOR. Aynı değere
+      // dönünce FULL TURBO (deterministik, geri alınabilir). tasks.lint ve
+      // tasks.typecheck de dependsOn üzerinden bu hash'i DEVRALIYOR (bkz.
+      // ilgili GEREKÇE) — ÖLÇÜLEN toplam maliyet tek seferlik ~15-18s (CI'da
+      // env .env.example'dan sabit kopyalandığı için tekrar doğmaz). Paket
+      // bazlı apps/storefront/turbo.json ile daraltılabilirdi; bildirimleri
+      // tek dosyada tutmak denetlenebilirlik için BİLİNÇLİ TERCİHTİ — daraltma
+      // KULLANICI KARARIYLA v0.0.14 borcu olarak kaydedildi, bu turda
+      // uygulanmadı.
+      "env": ["APP_BASE_DOMAIN", "STOREFRONT_API_BASE_URL"]
     },
     "dev": {
+      // GEREKÇE (T-011/S1) — "kabuktan export işe yaramıyor" semptomunu
+      // (T-011 Halka 1) kapatan madde burası: bildirim olmadan turbo bu
+      // değerleri süzüyor ve astro dev hiç görmüyordu. cache: false olduğu
+      // için bu bildirimin hash etkisi SIFIR, saf geçirgenlik.
+      "env": ["APP_BASE_DOMAIN", "STOREFRONT_API_BASE_URL"],
       "cache": false,
       "persistent": true
     },
+    // GEREKÇE (T-011/S1) — lint ve typecheck'e DOĞRUDAN env bildirimi
+    // EKLENMEDİ: ESLint ve tsc bu iki değişkeni okumuyor (okuyucu yok) →
+    // doğrudan eklemek gereksiz hash churn üretirdi. AMA doğrudan bildirim
+    // yok ≠ env değişikliğinden bağışık: "dependsOn": ["^build", "generate"]
+    // üzerinden tasks.build'in env-duyarlı hash'i DEVRALINIYOR. ÖLÇÜLDÜ
+    // (T-011/perf): env DEĞERİ değişince tasks.lint 17/19, tasks.typecheck
+    // 11/19 paket önbelleğini kaçırıyor (~15-18s tek seferlik; CI'da env
+    // .env.example'dan sabit kopyalandığı için tekrar doğmaz). Daraltma
+    // (paket bazlı turbo.json) KULLANICI KARARIYLA v0.0.14 borcu — bu turda
+    // uygulanmadı.
     "lint": {
       "dependsOn": ["^build", "generate"]
     },
     "typecheck": {
       "dependsOn": ["^build", "generate"]
     },
+    // GEREKÇE (T-011/S1) — test ve test:isolation'a env bildirimi
+    // EKLENMEDİ: her ikisi de cache: false VE env'i dosyadan yüklüyor
+    // (apps/api/vitest.config.ts:19-26 ve kardeşleri; CI'da .env composite
+    // tarafından üretiliyor) — turbo'nun env geçirgenliğine ihtiyaç yok.
     "test": {
       "dependsOn": ["^build", "generate"],
       "outputs": ["coverage/**"],

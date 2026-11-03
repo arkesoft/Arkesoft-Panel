@@ -1,5 +1,13 @@
 # @arkesoft/admin
 
+## 0.1.1
+
+### Patch Changes
+
+- @arkesoft/errors@0.1.1
+  - @arkesoft/trpc@0.1.1
+  - @arkesoft/ui@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes

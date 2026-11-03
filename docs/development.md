@@ -497,6 +497,13 @@ tutması, Docker'ın `*:6379`'u kaybetmesine yol açar. Sayaç okuyan (oran sın
 yanıltır — "neden sıfırlamadığım sayaç hâlâ dolu" gibi sorularda önce `lsof -nP -iTCP:6379
 -sTCP:LISTEN` ile hangi sürecin dinlediğini doğrulayın (`qa` keşfetti, `security` doğruladı).
 
+⚠ **ÇÜRÜTÜLEN ATIF (T-011/`qa` tur 1'de ölçüldü):** daha önce `pnpm test`'in flaky sonuçları bu
+çift Redis'e atfedilmişti. **Ölçüm bunu çürüttü:** çift Redis **canlıyken** `pnpm test` üç
+ardışık koşumda **957/957** geçti. Yakın sebep çift Redis **değildi** — Playwright'ın artık
+bıraktığı `astro dev` süreçlerinin paylaşılan altyapıya (Postgres/Redis/Mailpit) yüklenmesiydi
+(bkz. aşağıdaki "Vitrin Geliştirme" → `CLAUDECODE` tuzağı ve ADR-0014 Karar 3). Bu bölüm hâlâ geçerli bir ortam
+notudur (sayaç okuma kafa karışıklığı gerçek), ama **test flakiness'inin sebebi değildir**.
+
 ### Vite dev sunucusu config tuzağı (v0.0.7+)
 
 > Vite'ın HMR'ı modül kodundaki değişiklikleri yakalar, **`vite.config.ts`'teki değişiklikleri
@@ -811,6 +818,14 @@ inline edilmez.
 **İleride bir `VITE_*` değişkeni eklenirse** `turbo.json`'un `build.env`'ine **eklenmek
 zorundadır** — yoksa turbo, yanlış değerle gömülü bir derlemeyi önbellekten servis edebilir.
 
+⚠ **Bu eklemenin ölçülmüş maliyeti var (T-011/`perf`):** `turbo.json`'un global `build` görevine
+eklenen bir env bildirimi, `lint`/`typecheck`'in `dependsOn: ["^build", "generate"]` zinciri
+üzerinden `build`'in env-duyarlı önbellek hash'ini **devralmasına** yol açar — env değeri
+değişince `lint` 19 paketten **17**'sinde, `typecheck` 19 paketten **11**'inde önbelleği kaçırır
+(yalnızca bağımlılığı olmayan `@arkesoft/config` isabet eder). Bu maliyet bilinçli kabul edildi
+(ADR-0014 Karar 7, kullanıcı kararı); paket-bazlı `apps/storefront/turbo.json` override'ı ile
+daraltılabilir — vade v0.0.14 (bkz. ROADMAP → Teknik Borç → Vadesi v0.0.9.1).
+
 ### E2E operasyonel tavanı ve oran sınırı
 
 Kimlik doğrulama oran sınırları **ayrı** sayaçlardır (`apps/api/src/auth/rate-limit/rate-limit.policy.ts:56`):
@@ -843,23 +858,44 @@ hiçbir şey çalıştırmadan** iki ardışık `pnpm --filter @arkesoft/admin t
 
 Astro 7.4.2'nin bağımlılığı **`am-i-vibing`** bir AI ajanı tarafından çalıştırılıp
 çalıştırılmadığını ortam değişkenlerinden tespit eder. `CLAUDECODE=1` (veya
-`CLAUDE_CODE_ENTRYPOINT`/`AI_AGENT`) ortamda varken `astro dev`'i **otomatik arka plana alır** ve bu,
-Playwright'ın `webServer` yönetimini _"Process exited early"_ ile kırar (ölçüldü: T-009/S9).
+`CLAUDE_CODE_ENTRYPOINT`/`AI_AGENT`) ortamda varken `astro dev`'i **otomatik arka plana alır** ve
+süreç Playwright'ın süreç ağacından **kopar** — öldürülemez hale gelir. Önceki teşhis
+(_"Process exited early"_, T-009/S9, "teardown bozuk") **yanlıştı**: sorun teardown mekanizması
+değil, tetikleyici ortam değişkenleriydi (ölçüldü, T-011/S3).
 
-**Çözüm:** `astro dev`'i (ve dolayısıyla `apps/storefront`'un Playwright koşumunu) bir AI ajanı
-oturumu içinden çalıştırırken üç değişkeni **temizleyin**:
+**✅ v0.0.9.1'den itibaren elle müdahale GEREKMİYOR:** tetikleyici önek
+(`env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u AI_AGENT`) artık `package.json`'ın `dev`
+scriptinde **ve** `playwright.config.ts`'nin `webServer.command`'ında **gömülü**. Aşağıdaki
+komutu elle yazmak artık **zorunlu değil** (çalışmaya devam eder, ama gereksiz):
 
 ```bash
 env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u AI_AGENT \
   pnpm --filter @arkesoft/storefront test:e2e
 ```
 
-### `astro dev`'in `envDir`'i repo kökünü otomatik yüklemez
+Bununla birlikte `playwright.config.ts`'in `reuseExistingServer`'ı artık **koşulsuz** `false`'tur
+(eski `!process.env['CI']` yerelde `true`'ya düşüp bir sonraki koşumun artık süreci **yeniden
+kullanmasına** — yani kalıcılaştırmasına — yol açıyordu). Bkz. ADR-0014 Karar 3.
 
-`apps/storefront`'un `envDir`'i `apps/storefront`'un kendisidir (panel'in `envDir`
-kararıyla aynı gerekçe — kök `.env`'in sırları Astro/Vite'ın görüş alanına hiç girmez).
-Kök `.env`'inizdeki değerler **otomatik yüklenmez**; kabuktan geçirilmesi gerekir
-(`env -u ... VAR=... pnpm ...` veya kabuk `export`'u).
+⚠ **Bu, artık süreçlerin TEK kaynağı değildir** — turbo'nun kendi "run failed" teardown'ı
+(`pnpm dev` yolunda, bu bölümün konusu olan Playwright yolundan **ayrı**) `tsc --watch`/
+`node --watch`/`vite` süreçlerini öksüz bırakabilir; bu yukarıdaki iki katman tarafından
+**kapsanmaz** — bkz. ADR-0014 Karar 3 ve ROADMAP → Teknik Borç → Vadesi v0.0.9.1.
+
+### `astro dev`'in `envDir`'i repo kökünü otomatik yüklemez, ama kök `.env` artık `dev`'de ayrıca yükleniyor
+
+**İki gerçek birlikte doğru — ikisi de yazılmalı, yoksa yanıltır:**
+
+1. `apps/storefront`'un Vite `envDir`'i hâlâ `apps/storefront`'un kendisidir (panel'in `envDir`
+   kararıyla aynı gerekçe — **bilinçli**: Vite'ın `loadEnv`'i kök `.env`'i `PUBLIC_*` için
+   **taramasın**).
+2. v0.0.9.1'den itibaren `createRootEnvIntegration()` adlı bir Astro entegrasyonu **`dev` dalında**
+   (`command === 'dev'`) kök `.env`'i `process.loadEnvFile` ile **yüklüyor** — yani kök
+   `.env`'inizdeki `APP_BASE_DOMAIN`/`STOREFRONT_API_BASE_URL` gibi değerler artık **otomatik
+   vitrine ulaşıyor**, elle `export` etmeniz gerekmiyor.
+
+`build`/`preview`/`sync` komutlarında bu entegrasyon `process.env`'e **hiç dokunmaz** (AC8) —
+yalnızca `dev`'de çalışır. Ayrıntı ve tehlike mekanizması: ADR-0014 Karar 1 ve Karar 4.
 
 ### Yeni ön koşul: `STOREFRONT_API_BASE_URL`
 
@@ -873,6 +909,35 @@ STOREFRONT_API_BASE_URL=http://127.0.0.1:3000
 ```
 
 Eksikse vitrin modül yüklemede açıkça çöker (fail-closed, sessiz bozulma yok).
+
+### Kalıcı regresyon reçetesi: `APP_BASE_DOMAIN` eksikliğini doğrulama
+
+T-011'in kapattığı "vitrin her yolda 500 + API düşüyor" kusurunun **geri gelmediğini** doğrulamak
+için `.env` dosyanızı hiç kirletmeden şu komutu çalıştırın:
+
+```bash
+APP_BASE_DOMAIN= pnpm dev
+```
+
+**İnce taraf — boş dize kullanılması bilinçlidir:** `loadEnvFile`/`--env-file-if-exists` kabukta
+**zaten tanımlı** (boş da olsa) bir değeri **ezmez** (bkz. ADR-0014 Karar 1) — bu yüzden boş değer
+vitrine ulaşır ve `z.string().min(1)` onu reddeder. **Kullanıcının `.env` dosyası hiç değişmez**
+(`git status --short .env` boş kalır). Beklenen davranış: `pnpm dev` **exit 1**, ~2 saniye içinde,
+vitrin **tek seferde** çöker (döngü yok), tek okunur Türkçe teşhis gösterilir; `apps/api` bu
+senaryoda **kendi** `APP_BASE_DOMAIN` zorunluluğu yüzünden bağımsız olarak da çöker (bkz. ADR-0014
+Karar 2 — bu reçete "sağlıklı kardeş görev ayakta kalır mı" sorusunu yanıtlamaz, yalnızca vitrinin
+fail-closed davrandığını doğrular).
+
+### `webServer`/`globalSetup` sıralama tuzağı
+
+Playwright'ın `webServer` hazırlık probu `e2e/global-setup.ts`'ten **ÖNCE** koşar. `apps/api`
+kapalıyken vitrin her isteğe **503** döndüğü için prob bunu "henüz hazır değil" sanıp **30 saniye**
+bekler ve `global-setup.ts`'in yazdığı açıklayıcı Türkçe talimat (_"önce `apps/api`'yi
+çalıştırın"_) **hiç görünmeden** jenerik `Timed out waiting 30000ms from config.webServer.`
+hatasıyla düşer. Bu, katman 1/2'nin (yukarıdaki `CLAUDECODE` tuzağı) çalışmadığı anlamına
+**gelmez** — yalnızca sıralama farklı bir hata mesajı üretir (T-011/`qa` tur 1'de ölçüldü).
+
+**Çözüm:** e2e koşmadan önce `apps/api`'yi başlatıp `/health/ready`'nin 200 döndüğünü doğrulayın.
 
 ### `*.arkesoft.localhost` çözümü
 

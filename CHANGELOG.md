@@ -25,6 +25,13 @@ pnpm changeset
 
 <!-- Changesets bu çizginin altına yazar. Elle girdi eklemeyin. -->
 
+## 0.1.1 — 2026-11-03
+
+- Geliştirme ortamı güvenilirliği düzeltildi: kanonik `pnpm dev` komutu artık mağaza vitrinini
+  hatasız ayağa kaldırıyor ve vitrinin ortam değişkeni hatası API sunucusunu birlikte
+  düşürmüyor. Playwright test koşumlarının arkada bıraktığı takılı kalmış süreçler ve bunun
+  yol açtığı rastgele test başarısızlıkları giderildi. [v0.0.9.1]
+
 ## 0.1.0 — 2026-11-02
 
 - Yönetim paneli (admin) açıldı. Mağaza sahibi artık kendi tarayıcısından e-posta ve şifresiyle

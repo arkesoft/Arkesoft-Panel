@@ -1,5 +1,14 @@
 # @arkesoft/config
 
+## 0.1.1
+
+### Patch Changes
+
+- Geliştirme ortamı güvenilirliği düzeltildi: kanonik `pnpm dev` komutu artık mağaza vitrinini
+  hatasız ayağa kaldırıyor ve vitrinin ortam değişkeni hatası API sunucusunu birlikte
+  düşürmüyor. Playwright test koşumlarının arkada bıraktığı takılı kalmış süreçler ve bunun
+  yol açtığı rastgele test başarısızlıkları giderildi. [v0.0.9.1]
+
 ## 0.1.0
 
 ### Minor Changes

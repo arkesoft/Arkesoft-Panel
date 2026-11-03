@@ -38,11 +38,29 @@ import node from '@astrojs/node'
 import react from '@astrojs/react'
 import tailwindcss from '@tailwindcss/vite'
 
+import { createRootEnvIntegration } from './src/lib/root-env-integration.js'
+
 export default defineConfig({
   output: 'server',
   adapter: node({ mode: 'standalone' }),
-  integrations: [react()],
+  // `createRootEnvIntegration()` ÖNCE: `astro:config:setup` hook'ları
+  // KAYIT SIRASINA göre çalışır — kök `.env`'in (yalnızca `dev` dalında)
+  // yüklenmesi, aynı aşamada `process.env`'i okuyabilecek SONRAKİ hiçbir
+  // entegrasyon/eklentiden ÖNCE tamamlanmış olmalı (T-011/S2).
+  integrations: [createRootEnvIntegration(), react()],
   vite: {
+    // Kök `.env`'i Vite'ın KENDİ (dosya tarayan) `loadEnv`'inin görüş
+    // alanına hiç SOKMAZ — `apps/admin/vite.config.ts:70-79`'un (K5) BİREBİR
+    // İKİZİ, aynı gerekçeyle: `envDir` belirtilmezse Vite'ın varsayılanı
+    // `root`tur ve `root` HANGİ `cwd`'den çağrıldığına bağlı kayabilir; bu
+    // paketin KENDİ mutlak dizini (`import.meta.dirname`) AÇIKÇA yazılır.
+    // Bu dizinde `.env` YOK (yalnızca repo kökünde var) → hiçbir `PUBLIC_*`
+    // anahtarı Vite'ın DOSYA tarama yoluyla bundle'a kök `.env`'den sızamaz
+    // (AC8). Kök `.env`'in `dev`'e GEÇİŞİ yukarıdaki integration'ın
+    // `process.loadEnvFile` çağrısıyla olur — o da ayrı bir kapıdan
+    // (`command === 'dev'`) geçmek zorunda; bu `envDir` o kapıyı BYPASS
+    // edecek ikinci bir yol AÇMAZ.
+    envDir: import.meta.dirname,
     plugins: [tailwindcss()],
   },
   server: {

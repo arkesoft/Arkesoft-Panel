@@ -1,11 +1,11 @@
 {
   "name": "@arkesoft/storefront",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Çok kiracılı vitrin (Astro SSR) — tema runtime",
   "scripts": {
-    "dev": "astro dev",
+    "dev": "env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u AI_AGENT astro dev",
     "build": "astro build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests --fsModuleCachePath node_modules/.vitest-cache",

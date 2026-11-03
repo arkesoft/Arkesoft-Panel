@@ -5,7 +5,13 @@
 //
 // Sır içeren değerler maskelenir; terminale veya CI loguna parola düşmez.
 
-import { EnvValidationError, databaseAdminEnvSchema, infraEnvSchema, parseEnv } from './env.js'
+import {
+  EnvValidationError,
+  databaseAdminEnvSchema,
+  infraEnvSchema,
+  parseEnv,
+  storefrontEnvCheckSchema,
+} from './env.js'
 
 /** Adı bu desenlerden birine uyan değişkenin değeri maskelenir. */
 const SECRET_KEY_PATTERN = /(PASSWORD|SECRET|_KEY|TOKEN)/
@@ -73,6 +79,29 @@ function describeDatabaseAdminGuidance(issues: readonly string[]): string {
   ].join('\n')
 }
 
+/**
+ * Storefront geçirgenlik (turbo `env`) sözleşmesine özgü eyleme dönük hata
+ * metni (ROADMAP T-011/S1, AC7). `describeDatabaseAdminGuidance` emsalinde:
+ * yalnızca değişken adını değil, eksik anahtarı `.env` dosyasıyla adıyla
+ * anıp operatöre tam olarak ne yapması gerektiğini söyler.
+ */
+function describeStorefrontEnvGuidance(issues: readonly string[]): string {
+  return [
+    'Storefront geçirgenlik değişkenleri geçersiz (ROADMAP T-011/S1):',
+    ...issues.map((issue) => `  - ${issue}`),
+    '',
+    "`apps/storefront` bu değişkenleri `turbo.json`'da bildirilen `env`",
+    'listesi üzerinden kabuktan alır; eksikse `astro dev`/`astro build`',
+    'açılışta fail-closed hata verir (tasarlanmış davranış).',
+    '',
+    '`.env` dosyanızda şu satırların VAR ve DOLU olduğunu doğrulayın:',
+    '  - `APP_BASE_DOMAIN`         (`.env.example:14`)',
+    '  - `STOREFRONT_API_BASE_URL` (`.env.example:130`)',
+    "Eksikse `.env.example`'dan kopyalayın; `.env` git'e girmez, yalnızca",
+    'yerel geliştirme kopyanızda olur.',
+  ].join('\n')
+}
+
 function main(): number {
   let exitCode = 0
 
@@ -97,6 +126,23 @@ function main(): number {
       throw error
     }
     process.stderr.write(`${describeDatabaseAdminGuidance(error.issues)}\n`)
+    exitCode = 1
+  }
+
+  write('')
+
+  // Üçüncü blok (ROADMAP T-011/S1, AC7) — storefront'un turbo `env`
+  // geçirgenliğiyle kabuktan aldığı alt küme. Bilinçli olarak AYRI
+  // doğrulanır (bkz. `storefrontEnvCheckSchema` yorumu, env.ts); bu yüzden
+  // `infraEnvSchema`'nın başarısı bu bloğu ATLAMAZ — ikisi bağımsızdır.
+  try {
+    const storefrontEnv = parseEnv(storefrontEnvCheckSchema)
+    printEntries('Storefront geçirgenlik değişkenleri doğrulandı:', Object.entries(storefrontEnv))
+  } catch (error) {
+    if (!(error instanceof EnvValidationError)) {
+      throw error
+    }
+    process.stderr.write(`${describeStorefrontEnvGuidance(error.issues)}\n`)
     exitCode = 1
   }
 

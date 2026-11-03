@@ -131,6 +131,32 @@ export const databaseAdminEnvSchema = z.object({
 
 export type DatabaseAdminEnv = z.infer<typeof databaseAdminEnvSchema>
 
+/**
+ * Storefront'un geçirgenlik (turbo `env`) katmanının `pnpm env:check`
+ * tarafından ayrıca doğrulanan alt kümesi (ROADMAP T-011/S1, ADR-0014).
+ *
+ * BAĞLAYICI SINIR KARARI — bu şema `infraEnvSchema`'ya `.extend()` ile
+ * KATILMAZ, AYRI tutulur. Gerekçe: `apps/api` `infraEnvSchema`'yı
+ * `.extend()` ile tüketiyor; bu iki alanı oraya eklemek API sürecini
+ * storefront'a özgü bir değişkene (`STOREFRONT_API_BASE_URL`) bağımlı
+ * kılardı — API'nin storefront'un derdiyle hiçbir ilgisi yok.
+ * `databaseAdminEnvSchema`'nın (yukarı bak, satır ~115) bilinçli ayrımıyla
+ * AYNI sınıf karar: ayrıcalık/sorumluluk sınırı bir şemayı büyütmekten
+ * daha önemli.
+ *
+ * `APP_BASE_DOMAIN`'in burada VE `infraEnvSchema`'da (satır 68) iki kez
+ * görünmesi BİLİNÇLİ ve `env:check` çıktısında iki kez listelenecek — bu
+ * "yinelenen kod" DEĞİL, iki farklı tüketicinin (api, storefront) kendi
+ * sözleşmesini bağımsız doğrulaması. Birleştirmek, iki ayrı sürecin aynı
+ * şemaya bağımlı kalmasına geri döner (yukarıdaki gerekçeyle aynı sorun).
+ */
+export const storefrontEnvCheckSchema = z.object({
+  APP_BASE_DOMAIN: nonEmptyString,
+  STOREFRONT_API_BASE_URL: z.url('geçerli bir URL olmalı'),
+})
+
+export type StorefrontEnvCheck = z.infer<typeof storefrontEnvCheckSchema>
+
 /** Ortam değişkeni doğrulaması başarısız olduğunda fırlatılır. */
 export class EnvValidationError extends Error {
   readonly issues: readonly string[]
