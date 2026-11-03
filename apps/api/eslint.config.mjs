@@ -10,7 +10,7 @@ import { nodeConfig } from '@arkesoft/config/eslint/node'
 // lint zorlaması `apps/api` için sessizce kaybolur (grep onu yakalar, lint
 // yakalamaz — asıl zarar budur).
 //
-// Çözüm: dört dosya kümesi TAM AYRIK tutulur (`files`/`ignores` ile), her biri
+// Çözüm: BEŞ dosya kümesi TAM AYRIK tutulur (`files`/`ignores` ile), her biri
 // `no-restricted-imports` için KENDİ TAM seçenek kümesini taşır. Bir dosya asla
 // birden fazla bloğa aynı anda düşmez — bu yüzden "sonraki blok öncekini
 // değiştirir" riski hiçbir dosya için gerçekleşmez:
@@ -31,6 +31,21 @@ import { nodeConfig } from '@arkesoft/config/eslint/node'
 //       `prisma-with-tenant.test.ts` — S1 sahipliği dışı); muafiyet onları
 //       KIRMADAN R-1'in ikinci katmanını geri kalan tüm `apps/api/src/**`
 //       yüzeyine uygular.
+//   (5) src/queue/jobs/** (ROADMAP v0.0.11, T-013/S6, architect K5 KATMAN 4):
+//       kuyruk işi handler'ları için EK bir yasak — `PrismaService`,
+//       `@arkesoft/db`'nin `withTenant`'ı ve ham Prisma istemci yüzeyi.
+//       ⚠ BU BLOK EKLENİRKEN BLOK (1)'İN `ignores` LİSTESİNE DE
+//       `'src/queue/jobs/**'` EKLENDİ — yoksa bu dosyalar İKİ bloğa birden
+//       düşer ve yukarıdaki "bir dosya asla birden fazla bloğa düşmez"
+//       kuralı ihlal edilirdi (ihlalin bedeli: iki bloğun `rules` anahtarı
+//       aynı olduğu için biri diğerini TAMAMEN değiştirir ve kaybı LINT
+//       YAKALAMAZ).
+//       ⚠ Bu blok DİĞER BEŞ kısıtlamanın TAMAMINI yeniden beyan eder
+//       (prisma + Body/Query/Param + express + pg + Prisma istemci yüzeyi) —
+//       `prismaClientSurfaceRestriction` DAHİL, çünkü o olmadan bu dizinden
+//       `PrismaDatabase`/`createPrismaClient` import etmek SERBEST kalır ve
+//       R-1 katman 2 tam da kuyruk işlerinin yaşadığı dizinde SESSİZCE
+//       kaybolurdu.
 
 /**
  * R-1 katman 2 (ADR-0008 taslağı, T-006 "MADDE 2 — R-1 KARARI"): tam Prisma
@@ -159,6 +174,51 @@ const pgRestriction = {
   ],
 }
 
+/**
+ * K5 KATMAN 4 (ROADMAP v0.0.11, T-013/S6, architect K5): kuyruk işi
+ * handler'larının (`src/queue/jobs/**`) kiracı bağlamını ATLAYARAK
+ * veritabanına dokunmasını yasaklar.
+ *
+ * NEDEN DÖRDÜNCÜ KATMAN GEREKİYOR (ilk üçü aşılmaya ÇALIŞILABİLİR):
+ *   katman 1 — payload tipi (`P extends JobPayloadBase`) → derleyici
+ *   katman 2 — `AppPrismaDatabase` `job` delegesini TAŞIMAZ → derleyici
+ *   katman 3 — handler'lar Nest provider'ı DEĞİL → DI ile `PRISMA_CLIENT`'a
+ *              erişemezler
+ * Bu üçü de "başka bir yoldan istemci getir" denemesini (ör. `PrismaService`'i
+ * elle import edip `withTenant`'ı KENDİ `tenantId`'siyle çağırmak) engellemez.
+ * Handler'ın kiracıya erişimi SADECE `JobContext.withTenantDb` üzerinden
+ * olmalı — o da kiracı parametresi KABUL ETMEZ.
+ *
+ * ⚠ RELATİF YOLLAR: handler'lar `src/queue/jobs/<iş>/` altında yaşıyor, yani
+ * `PrismaService`'e `../../../prisma/prisma.service.js` ile ulaşırlar.
+ * `no-restricted-imports` `patterns`'ı `ignore` paketiyle (gitignore
+ * semantiği, `allowRelativePaths: true`) eşleştirdiği için "çift yıldız +
+ * dizin adı" kalıbı relatif yolları da yakalar (⚠ kalıbı BU YORUMA
+ * BİTİŞİK YAZMIYORUZ: blok yorumu içinde çift yıldız + eğik çizgi dizisi
+ * yorumu KAPATIR — ölçüldü, `eslint` "Unexpected token 'const'" ile
+ * düştü); yine de GEREKÇELİ FAZLALIK olarak
+ * birkaç kalıp birlikte verildi ve yasağın GERÇEKTEN tetiklendiği
+ * ÖLÇÜLDÜ (T-013/S6 raporu: geçici bir import satırı eklenip `eslint`'in
+ * hata verdiği görüldü, sonra geri alındı).
+ */
+const queueJobTenantScopeRestriction = {
+  paths: [
+    {
+      name: '@arkesoft/db',
+      importNames: ['withTenant'],
+      message:
+        'Kuyruk işi handler’ı kiracı bağlamını KENDİSİ kurmaz; tek yol JobContext.withTenantDb (architect K5 katman 4, ROADMAP v0.0.11).',
+    },
+  ],
+  patterns: [
+    {
+      group: ['**/prisma/*', '**/prisma/**', '../../../prisma/*', '../../prisma/*'],
+      message:
+        'Kuyruk işi handler’ı PrismaService/Prisma istemcisini import etmez; veritabanı erişimi yalnızca JobContext.withTenantDb üzerinden gider (architect K5 katman 4, ROADMAP v0.0.11).',
+    },
+  ],
+}
+
 /** Birden çok kısıtlama nesnesini TEK `no-restricted-imports` seçenek kümesine birleştirir. */
 function mergeRestrictions(...restrictions) {
   return {
@@ -203,6 +263,12 @@ export default [
       'src/prisma/**',
       'src/auth/**',
       'src/__tests__/**',
+      // T-013/S6 EKLEMESİ: blok (5) bu dizini KENDİ tam seçenek kümesiyle
+      // kapsıyor (prisma + Body/Query/Param + express + pg + Prisma istemci
+      // yüzeyi + kuyruk işi yasağı). Burada DIŞLANMAZSA dosya İKİ bloğa
+      // düşer ve "bir dosya asla birden fazla bloğa düşmez" kuralı
+      // (yukarıdaki R-P1 bloğu) ihlal edilir.
+      'src/queue/jobs/**',
     ],
     rules: {
       'no-restricted-imports': [
@@ -264,6 +330,26 @@ export default [
           bodyQueryParamRestriction,
           expressRestriction,
           pgRestriction,
+        ),
+      ],
+    },
+  },
+  // (5) src/queue/jobs/**: K5 KATMAN 4 (T-013/S6). Blok (1)'in BEŞ
+  // kısıtlamasının TAMAMI yeniden beyan edilir (`prismaClientSurfaceRestriction`
+  // DAHİL) + kuyruk işi yasağı EKLENİR. Blok (1) bu dizini `ignores` ile
+  // dışlıyor → kümeler TAM AYRIK.
+  {
+    files: ['src/queue/jobs/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        mergeRestrictions(
+          prismaRestriction,
+          bodyQueryParamRestriction,
+          expressRestriction,
+          pgRestriction,
+          prismaClientSurfaceRestriction,
+          queueJobTenantScopeRestriction,
         ),
       ],
     },

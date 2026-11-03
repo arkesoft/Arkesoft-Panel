@@ -37,10 +37,15 @@ export { PLATFORM_LEVEL_TABLES, TENANT_SCOPED_TABLES } from './tenancy.js'
 export { DEMO_SEED } from './seed-data.js'
 
 // Model satır tipleri — yalnızca tip, çalışma zamanı karşılığı yok.
-export type { Tenant, User, TenantMembership } from '#prisma'
+// `Job` (ROADMAP v0.0.11, T-013/S2) ADDITIVE eklendi.
+export type { Tenant, User, TenantMembership, Job } from '#prisma'
 
 // Çalışma zamanı karşılaştırması + exhaustive switch için değer + tip.
-export { TenantStatus, UserStatus, TenantRole } from '#prisma'
+// `JobStatus` (ROADMAP v0.0.11, T-013/S2): `apps/api` kuyruk kodu durum
+// geçişlerini bu enum DEĞERİ üzerinden yazar (literal dize YAZMAZ) ve
+// `packages/trpc` tel sözleşmesi kendi yerel birleşimini bu dörtlüye karşı
+// pinler — bkz. ADR-0009 md 5 (`@arkesoft/db`'den import ETMEME emsali).
+export { TenantStatus, UserStatus, TenantRole, JobStatus } from '#prisma'
 
 // `Prisma.TenantCreateInput` vb. yardımcı tipler için — yalnızca TİP
 // namespace'i dışa açılır, namespace'in çalışma zamanı değeri sızmaz.

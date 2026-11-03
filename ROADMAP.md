@@ -502,21 +502,114 @@ Görevler/Düzeltme Turları bölümleri boş) bulunamadı — **yazılmadı**, 
 
 ---
 
-## v0.0.11 — BullMQ kuyruk altyapısı
+## v0.0.11 — BullMQ kuyruk altyapısı ✅ (tamamlandı: 2026-11-03)
 
 **Hedef:** Arka plan işleri çalışsın; ilk iş olarak provisioning iskeleti kuyruğa girsin.
 **Kapsam:**
 
-- [ ] `QueueModule`: BullMQ bağlantısı, kuyruk kaydı, tekrar deneme (exponential backoff), DLQ
-- [ ] `apps/api` içinde worker process (ayrı `main.worker.ts` giriş noktası)
-- [ ] `Job` tablosu: tenantId, type, status, progress, payload, error, timestamps
-- [ ] `tenant.provision` işinin iskeleti (adımları loglayan, henüz iş yapmayan pipeline)
-- [ ] İş durumunu okuyan tRPC endpoint'i: `job.get`, `job.list`
+- [x] `QueueModule`: BullMQ bağlantısı, kuyruk kaydı, tekrar deneme (exponential backoff), DLQ
+- [x] `apps/api` içinde worker process (ayrı `main.worker.ts` giriş noktası)
+- [x] `Job` tablosu: tenantId, type, status, progress, payload, error, timestamps
+- [x] `tenant.provision` işinin iskeleti (adımları loglayan, henüz iş yapmayan pipeline)
+- [x] İş durumunu okuyan tRPC endpoint'i: `job.get`, `job.list`
 - [ ] Bull Board yalnızca geliştirme ortamında
       **Dokunulan paketler:** apps/api, packages/db, packages/trpc
       **Kabul kriteri:** Entegrasyon testi işi kuyruğa atıp `completed` durumuna geçtiğini ve `Job` kaydının güncellendiğini doğrular; başarısız iş 3 denemeden sonra DLQ'ya düşer.
       **Bağımlılık:** v0.0.4
       **Tahmini büyüklük:** M
+
+**KAPSAM REVİZE EDİLDİ (K-PM1, kullanıcı onayı 2026-11-03): Bull Board ERTELENDİ.** Kapsam
+maddesi 6 bu sürümde **uygulanmadı**, bu yüzden kutusu **işaretlenmedi**; madde **v0.15.0**'a
+(süper admin sistem sağlığı panosu — kuyruk derinliği, hata oranı, provisioning başarı oranı)
+taşındı. Dört ölçülmüş gerekçe: (1) bu sürümün kabul kriteri Bull Board'dan **hiç söz etmiyor**,
+yani madde düşünce kriter eksilmiyor; (2) `devDependency` **olamaz** — adaptör üretim kaynak
+kodundan import edilip uygulamaya mount edilir, `NODE_ENV` koşuluyla sarılsa bile statik import
+modül yükleme anında çözülür; (3) arayüz kuyruğu **kiracı filtresi olmadan** gösterir (tüm
+kiracıların iş payload'ları tek listede, silme/yeniden deneme yetkisiyle) → CLAUDE.md §7 madde
+11-12 ile çatışır; (4) ihtiyaç `job.get` + `job.list` + yapılandırılmış logla zaten karşılanıyor.
+Ertelemenin ikinci bir işlevi var: [ADR-0015](./docs/adr/0015-kuyruk-topolojisi-dlq-ve-worker-kiraci-baglami.md)
+Karar 1'in dördüncü telafi ayağı **tam olarak bu yüzeyin yokluğudur**.
+
+**KABUL KRİTERİ GENİŞLETİLDİ (K-PM2): v0.0.4'ün AC11'i regresyon koruması olarak eklendi.**
+Kapsam genişlemesi değil, mevcut bir platform garantisinin korunması: ikinci bir uzun soluklu
+süreci (worker) AC11'in kapsamına almadan eklemek _"SIGTERM sonrası exit 0, açık handle yok"_
+garantisini **sessizce** kaybetmek olurdu ve bunu hiçbir mevcut test yakalamazdı. Sürümün
+kriterleri bu kararla 13 maddeye çıktı (AC1-AC13); 13'ünün de karşılığı bir alt görevdedir,
+karşılıksız kriter yok.
+
+**Kabul kriteri çıktısı (düzeltme turu sonrası; `qa` tur 2 ve `backend` BAĞIMSIZ olarak ölçtü,
+hepsi `--force` ve 0 cached — önbellekten oynatılan çıktı kanıt sayılmadı):**
+
+```
+turbo run lint --force            EXIT 0 · 0 cached / 21
+turbo run typecheck --force       EXIT 0 · 0 cached / 21
+turbo run test --force            EXIT 0 · 0 cached / 18 · 1151 test · 0 skipped / 0 todo
+turbo run test:isolation --force  EXIT 0 · 0 cached / 10 ·   34 test (db 21 + api 13)
+turbo run build --force           EXIT 0 · 0 cached / 13
+pnpm format:check                 EXIT 0
+13 kabul kriterinin 13'ü qa'nın KENDİ koşumunda geçti (ölçüm devralınmadı)
+62 + 2 mutasyon fiilen uygulandı, kırmızı görüldü ve birebir geri alındı
+AC1/AC2 ayrıca canlı psql ile: relforcerowsecurity=t, kanonik USING+WITH CHECK,
+         btree (tenant_id, status, created_at DESC)
+AC13 canlı dev:worker koşumuyla: "kuyruk worker hazır", HTTP rotası 0, SIGTERM → temiz zincir
+```
+
+**Gate'ler:** `solid` PASS (2 medium, 8 low) → tur 2 (dar) **PASS**, M-1 **kapandı**, 0 medium,
+artı 1 yeni low · `security` PASS (0 medium, 6 low); tur 2 **koşmadı** — yüzeyi değişmedi (yeni hata/tel
+yüzeyi yok, yalnızca bir `where` yüklemi sıkılaştı), PASS taşındı · `qa` PASS (2 medium, 4 low)
+→ tur 2 (dar) **PASS**, Q-1 **kapandı**, 0 yeni medium. `wcag` ve `perf` **koşmadı** (ölçülerek:
+dokunulan paketler yalnızca `apps/api`/`packages/db`/`packages/trpc`, render eden bileşen yok);
+`perf` **ikameli** — iki iddia (`limit` üst sınırının sözleşmede reddedilmesi ve sorgu şeklinin
+öncü indeksle uyumu) `qa`'nın kapısına test olarak girdi. Bir düzeltme turu koştu (1/3), **açık
+`medium` sayısı 0**. Borç satırları [Teknik Borç → v0.0.11 kaynaklı borçlar](#teknik-borç)
+bölümüne kaydedildi.
+
+**Versiyon etkisi:** platform **minor** (yeni yetenek, geriye uyumlu) · `@arkesoft/trpc`
+**minor** (Public API birimi; `job` namespace'i ve `TrpcPorts`'a zorunlu üye — **yalnızca
+ekleme**, hiçbir prosedür/alan değişmedi, hiçbir satır silinmedi) → **iki ayrı changeset
+zorunlu**: `packages/trpc` `@arkesoft/errors`'u gerçek `dependencies` olarak taşıdığı için
+platform grubu yükselince trpc'ye **patch kaskadı** gelir; açık minor changeset yazılmazsa
+`job.*` eklemesi **patch olarak** yayınlanır (Sürüm Politikası §2 ihlali). `@arkesoft/theme-sdk`
+ve `@arkesoft/themes-modern` **hareket etmemeli** — v0.0.10 tam burada sürpriz ürettiği için
+`release` bunu **ölçmek** zorunda, varsaymamalı. Kırıcı değişiklik yok, yeni ana bağımlılık yok
+(`bullmq` CLAUDE.md §2'nin onaylı yığınında).
+
+**Gerçekleşen sürümler (`release`, 2026-11-03 — `pnpm release:version` sonrası beş birim de
+`package.json`'dan tek tek okunarak ÖLÇÜLDÜ, hiçbiri varsayılmadı):**
+
+| Birim                             | Önceki  | Sonraki | Ölçüm                                                                                             |
+| --------------------------------- | ------- | ------- | ------------------------------------------------------------------------------------------------- |
+| **Platform** (kök `arkesoft`)     | `0.2.0` | `0.3.0` | `--apply` kökü senkronladı; `sync-platform-version.ts --check` exit 0                             |
+| **Fixed grup** (10 paket)         | `0.2.0` | `0.3.0` | onu da `0.3.0`; `apps/api` = kök (manifest testi bunu pinliyor)                                   |
+| **`@arkesoft/trpc`** (Public API) | `0.2.0` | `0.3.0` | ⚠ **minor kazandı** — `@arkesoft/errors@0.3.0` kaskadı yalnızca "Patch Changes" notu olarak düştü |
+| **`@arkesoft/theme-sdk`**         | `0.1.1` | `0.1.1` | **HAREKET ETMEDİ** — `git status packages/theme-sdk` **temiz** (A-PM3 ölçülerek doğrulandı)       |
+| **`@arkesoft/themes-modern`**     | `0.1.0` | `0.1.0` | **HAREKET ETMEDİ** — `git status packages/themes` **temiz**                                       |
+
+İki changeset yazıldı (`bullmq-queue-infrastructure.md` → `@arkesoft/api`+`@arkesoft/db` minor;
+`job-read-api.md` → `@arkesoft/trpc` minor); ikisi de `changeset version` tarafından tüketildi ve
+`.changeset/` yalnızca `config.json` ile kaldı. Kaskat tuzağı **fiilen gerçekleşti ve yenildi**:
+`packages/trpc/CHANGELOG.md` `0.3.0` altında hem "Minor Changes" (bizim özetimiz) hem
+"Patch Changes → @arkesoft/errors@0.3.0" taşıyor; açık minor changeset yazılmasa yayınlanan sürüm
+`0.2.1` olacaktı.
+
+**ADR:** [ADR-0015](./docs/adr/0015-kuyruk-topolojisi-dlq-ve-worker-kiraci-baglami.md) — kuyruk
+topolojisi, DLQ ve worker kiracı bağlamı (dört karar: Redis anahtar önekinin kiracıya göre
+**bölünmemesi** — CLAUDE.md §7 madde 8'den bilinçli sapma + dört ayaklı telafi · DLQ'nun **ayrı
+bir kuyruk** olarak modellenmesi · worker kiracı bağlamının **tip + lint** ile zorlanması ·
+worker kapanış sözleşmesinin v0.0.4 garantisini koruması; artı on ölçülmüş olgu ve yedi gözden
+geçirme koşulu).
+
+**Yeni varsayımlar:** T-013'ün varsayımları [Varsayımlar](#varsayımlar-ve-açık-kararlar)
+bölümünün sonundaki **"T-013 (v0.0.11) varsayımları"** listesine kaydedildi. Etiketler Task
+dosyasının **yerel** numaralandırmasını korur (`A-A*`, `A-PM*`, `A-PO*`, `A-S*`, `A-FIX1-1`) ve
+`(T-013)` ekiyle yazılır — yukarıdaki tablodaki `A-A1`-`A-A6` (T-002) ve `A-PO1` (T-012)
+satırlarıyla **karıştırılmamalıdır**.
+
+**Geliştirici notları:** `docs/development.md` → "Kuyruk worker'ı" (worker'ı `pnpm dev`
+başlatmaz; `dev:worker`'ın ön koşulu ve gerekçesi; kuyruk testlerinin iki ön koşulu ve
+fail-closed Redis kapısının tam mesajı) ve "Ölçüm disiplini" (beş kural: RLS'li tabloda satır
+sayımı, bayat `dist`, FULL TURBO'nun ölçüm olmaması, literal-jeton kuralının beş ölçülmüş
+örneği, üç küçük sözleşme tuzağı).
 
 ---
 
@@ -1648,6 +1741,107 @@ Briefingde belirtilmeyen ve makul varsayımla ilerlenen noktalar. Her biri ilgil
 | A-A19 (T-012)  | **(mimarinin K1/BN-2 ölçüm güncellemesi — iç taslakta ayrı numaralandırılmamıştı, burada A-A19 olarak kayıtlı.) GEREKSİZLEŞTİ, `perf` tur1'in bulgusu sonrası (B) seçildi.** `inlineStylesheets: 'never'` eklemek (yol A) ile ADR metnini ölçülen gerçekliğe göre güncellemek (yol B) arasında karar vermek gerekiyordu; architect (B)'yi seçti — kod değişikliği yapılmadı, ADR-0002 Karar 4'ün metni "önbellek kaybı ≈ sıfır" iddiasından ölçülen 720 bayt/istek bedeline güncellendi. ⚠ Bu satırın iç taslaktaki orijinal numarası/metni hiçbir okunabilir kaynakta (Task dosyası, gate raporları) bulunamadı — içerik bu Task'ın kendi talimat metninden **çıkarsanmıştır**, doğrudan alıntı değildir.                                                     | v0.0.10                 |
 | A-PO1 (T-012)  | **TUTTU, kodla doğrulandı.** Tema paketinin başlık/gövde metninin **prop** olarak alınacağı, sabit Türkçe dize taşımayacağı varsayımı — `packages/themes/modern/src/templates/{home,404}.astro`, `src/components/{PageHeading,BodyText}.astro`'nun dosya başı yorumları bunu `A-PO1` etiketiyle doğrudan uyguluyor; tema paketi `apps/storefront/src/messages/messages.ts`'i import edemiyor (paket→app bağımlılığı CLAUDE.md §3'ü ihlal eder).                                                                                                                                                                                                                                                                                                                | v0.0.10                 |
 
+## T-013 (v0.0.11) varsayımları — BullMQ kuyruk altyapısı
+
+**Etiket notu (önemli):** aşağıdaki kimlikler T-013'ün **Task-yerel** numaralandırmasını korur
+ve bu yüzden `(T-013)` ekiyle yazılır. Yukarıdaki tablodaki `A-A1`-`A-A6` satırları **T-002'ye**,
+`A-PO1` satırı **T-012'ye** aittir — karıştırılmamalıdır. Yerel kimlikler korundu çünkü Task
+dosyası, gate raporları ve bazı kaynak dosya yorumları bu etiketlerle atıf veriyor; yeniden
+numaralandırmak izlenebilirliği koparırdı. Biçim: satırların tamamı tek bir tablo hücresine
+sığmadığı için bu bölüm **liste** olarak yazıldı; her madde kimlik, sonuç ve etkilediği sürümü
+taşır.
+
+- **A-PM1 (T-013) — GEÇERSİZLEŞTİ (tasarım soruyu ortadan kaldırdı).** Varsayım: BullMQ'nun
+  gecikmeli iş zamanlaması Redis tarafında tutulduğu için vitest fake timer'ları backoff'u
+  ilerletmez, dolayısıyla enjekte edilebilir gecikme **tek** yoldur. Seçilen tasarımda (özel
+  backoff stratejisi) gecikmenin **değeri** enjekte ediliyor, **saat** değil → hiç zaman
+  ilerletilmiyor ve varsayımın doğru ya da yanlış olması tasarımı değiştirmiyor. Etki: v0.0.11.
+- **A-PM2 (T-013) — TUTTU, kısmen ölçüldü.** BullMQ `Worker`'ı bloke eden komutlar kullandığı
+  için sağlık profilinin istemcisini paylaşamaz. Ölçüm: sağlık profilinin komut zaman aşımı
+  (1500 ms) bloke eden bir kuyruk komutunu **tanımı gereği** iptal eder → paylaşımın
+  imkânsızlığı için kütüphanenin iç davranışını ölçmek gerekmedi. Etki: v0.0.11.
+- **A-PM3 (T-013) — `release` ÖLÇECEK.** Changesets `devDependency` üzerinden sürüm
+  yükseltmez, dolayısıyla `@arkesoft/theme-sdk` hareket etmemeli. v0.0.10 **tam burada**
+  sürpriz ürettiği için varsayılmayacak, ölçülecek. Etki: v0.0.11.
+- **A-PM4 (T-013) — TUTTU, ölçüldü.** `tenantProcedure` `packages/trpc`'de mevcut ve
+  kullanılabilir (dört builder'lık merdivenin en sıkı basamağı) → kapsam büyümedi.
+  Etki: v0.0.11.
+- **A-PM5 (T-013) — DOĞRULANMADI (ürün iddiası).** Rakiplerde arka plan işinin mağaza sahibi
+  için **opak** olduğu iddiası proje brief'i ve alan bilgisine dayanıyor; canlı kaynakla
+  doğrulanmadı. Etki: v0.0.11.
+- **A-A1 (T-013) — TUTTU, çalışma zamanında ölçüldü.** Yeniden denenmeyecek hatayı taşıyan
+  kütüphane sınıfı ana export'ta ve işi deneme sayacını artırmadan terminal hâle taşıyor
+  (önce tip tanımından, sonra fiilen koşturularak). Etki: v0.0.11.
+- **A-A2 (T-013) — ÖLÇÜLMESİ GEREKMEDİ.** Nest'in yıkım sırası varsayımı taşıyıcı değil:
+  kapanış tasarımı (önce `worker.close()`, sonra `app.close()`) **sıradan bağımsız** doğru.
+  Etki: v0.0.11.
+- **A-A3 (T-013) — TUTTU, ölçüldü.** `worker.close()` devam eden işi **bekliyor** (600 ms'lik
+  handler'da +607 ms), `worker.close(true)` **bırakıyor** (+25 ms). Etki: v0.0.11, v0.15.0.
+- **A-A4 (T-013) — TUTTU, çalıştırılarak doğrulandı.** Özel backoff stratejisi gerçekten bizim
+  saf fonksiyonumuzu çağırıyor: çağrı sayısı 2 (= deneme sayısı − 1), tip birebir `custom`,
+  döndürülen gecikmeye uyuluyor (300 ms → 354 ms, 600 ms → 628 ms). Etki: v0.0.11.
+- **A-A5 (T-013) — TUTTU, ama zarf o olaydan BESLENMİYOR.** `failed` olayı retention
+  temizliğinden **önce** koşuyor (iş hâlâ okunabilir). Yine de DLQ zarfı processor'ın
+  **içinde** yazılıyor, dolayısıyla zarf o olaya bağımlı değil; deneme sayacı processor içinde
+  **0 tabanlı**, zarfa 1 tabana çevrilerek yazılıyor. Etki: v0.0.11.
+- **A-A6 ve A-A9 (T-013) — ÖLÇÜLDÜ, artık varsayım değil.** Homebrew Redis'i `appendonly=no`
+  (eviction politikası uygun), compose Redis'i `appendonly=yes` + `noeviction`. Kuyruk
+  testlerinin kapısı bu iki değeri **çalışma anında** okuyor ve karşılanmıyorsa fail-closed
+  düşüyor. Etki: v0.0.11, v0.18.0.
+- **A-A7 (T-013) — TUTTU, `po` ölçtü.** `PrismaService`'in kiracı kapsamlı erişimcisi işlem
+  istemcisini allowlist tipiyle daraltıyor → worker kiracı bağlamının ikinci katmanı
+  zayıflamadı ve varsayımın bir alt göreve bağlanması gerekmedi. Etki: v0.0.11.
+- **A-A8 (T-013) — TUTTU, ölçüldü; CLAUDE.md §4.5 madde 3 TETİKLENMEDİ.** `bullmq` `ioredis`'i
+  `dependencies`'inde taşımıyor, **opsiyonel peer** olarak istiyor (`>=5.0.0`) → catalog'daki
+  pin tüketiliyor ve `pnpm -r why ioredis` **tek sürüm** gösteriyor. Etki: v0.0.11.
+- **A-PO1 (T-013) — TUTTU, ölçüldü.** i18n kataloğu diye bir dosya **yok** (`packages/i18n`
+  dizini mevcut değil); `errors.*` anahtarları yalnızca hata sınıflarında literal olarak
+  yaşıyor (A-V24 emsali) → yeni bir mekanizma icat edilmedi, yeni anahtar mevcut dördün yanına
+  aynı biçimde eklendi. Etki: v0.0.11, v0.0.18.
+- **A-PO2 (T-013) — KISMEN.** Üç test dosyasından **ikisi** tRPC port nesnesini dolduruyordu
+  (üçüncüsü saf tip dosyası, etkilenmedi) → zorunlu üye eklendiğinde ikisi kırıldı ve
+  düzeltildi. Etki: v0.0.11.
+- **A-PO3 (T-013) — TUTTU, ölçüldü.** `packages/db` izolasyon testi 14 → **21** (1 prob
+  tamlığı + 7×2 senaryo + 6 katalog kuralı). Etki: v0.0.11.
+- **A-PO4 (T-013) — TUTTU.** Yıkıcı veritabanı sıfırlaması gerekmedi: `migrate reset` ve
+  `db push --force-reset` **koşmadı**, onay jetonu **üretilmedi**. Etki: v0.0.11.
+- **A-S3-1 (T-013)** — kuyruk bağlantı profilinde bağlantı zaman aşımı **bilinçli olarak
+  verilmedi** (kütüphane varsayılanı 10 sn): worker'ın "hızlı başarısız olması" istenmiyor.
+  Etki: v0.0.11.
+- **A-S3-2 (T-013)** — kuyruk profili **de** üst sınırlı yeniden deneme stratejisi taşıyor;
+  architect'in dört maddelik tablosunda yoktu, "iki atlanamaz değişmez kütüphane varsayılanına
+  devredilmez" kuralından türetildi. Test, kütüphanenin jitter'ının sızmadığını da pinliyor.
+  Etki: v0.0.11.
+- **A-S5-1 (T-013)** — süit sonrası kalan iki kuyruk meta anahtarı **yapısaldır, artık
+  değil**: kuyruk kurulumu her açılışta meta yazıyor ve bunu `createTestApp()` çağıran her test
+  dosyası yeniden üretiyor. İş listesi anahtarı yok → "askıda iş" riski yok. Etki: v0.0.11.
+- **A-S5-2 (T-013) — DOĞRULANAMADI (bilgi notu).** Oran sınırı sayaçlarının iki ölçüm arasında
+  TTL ile kaybolduğu; süresinin dolduğu **kanıtlanamadı**. Temizlik betiğinin kapsamı o desene
+  yapısal olarak dokunamıyor. Etki: v0.0.11.
+- **A-S5-3 (T-013)** — `tenant.provision` payload'ı şu an **taban şemadır**; ek alan
+  gerektiğinde kayıt defterinde tek satırlık additive değişiklik yeterli. Etki: v0.0.11, v0.2.0.
+- **A-S6-1 (T-013)** — terminal karar, işin **kendi seçeneğindeki** deneme sayısını okuyor
+  (kütüphanenin yükleminin okuduğu kaynak), ki eski bir iş yeni yapılandırmayla karşılaşırsa
+  karar ayrışmasın. İkisi bugün aynı; ayrışma senaryosu **ölçülmedi**. Etki: v0.0.11.
+- **A-S6-2 (T-013)** — iskeletin adım adları ve 20/40/60/80 ilerleme dağılımı, v0.2.0'ın gerçek
+  adımlarının yerleşimini **şimdiden pinliyor**; v0.2.0 bunu değiştirebilir (test adları diziden
+  türetildiği için kırılmaz). Etki: v0.0.11, v0.2.0.
+- **A-S6-3 (T-013)** — kuyruk işleri için eklenen beşinci lint kümesi React kısıtlamalarını
+  yeniden beyan etmiyor; mevcut üç küme de etmiyor (ölçüldü) ve `apps/api`'de React yok →
+  mevcut emsale uyum, yeni boşluk değil. Etki: v0.0.11.
+- **A-S7-1 (T-013)** — çıkış sonrası bağlantı sayımı **ek bekleme olmadan** okunuyor (v0.0.4
+  emsali, gevşetme yok); dayanak, worker'ın iki bağlantısını da düzgün kapatması. Bir mutasyon
+  bunu kırmızıya çevirdiği için varsayım **bugün korumalı**. Etki: v0.0.11.
+- **A-S7-2 (T-013)** — kapanış testinin 20 saniyelik bekleme bütçeleri yük altında yeterli
+  (yerelde hazır olma < 400 ms, iş < 200 ms). **CI'da ölçülmedi.** Etki: v0.0.11, v0.0.12.
+- **A-S7-3 (T-013)** — 600 ms'lik prob handler'ı graceful/force ayrımını güvenle gösteriyor
+  (607 ms ↔ 25 ms marjı); ağır yüklü bir runner'da force yolunun 600 ms'yi aşması teorik olarak
+  mümkün. Etki: v0.0.11.
+- **A-FIX1-1 (T-013) — ÜRÜN KARARI, tel sözleşmesinin beyanına yazıldı.** Terminal kaydı
+  dokunulmaz tutmanın, geç gelen başarıyı `completed` yazmaktan **daha doğru** olduğu kabulü.
+  v0.15.0'ın bayat satır tespiti geldiğinde doğru kurtarma yolu terminal satırın **operatör
+  tarafından yeniden açılması** olacak — kodda sessiz geçiş değil. Etki: v0.0.11, v0.15.0.
+
 ## Sürüm ve kilometre taşı ayrışması (v0.0.12'den başlayarak)
 
 **Karar (v0.0.12):** ROADMAP kilometre taşı numarası ile paket sürümü v0.0.12'den itibaren **ayrışabilir**.
@@ -1909,9 +2103,265 @@ tırnak içinde tire). (`security` T-012'nin üç `low`'unun ortak kökü — bk
 
 ## Vadesi v0.0.11 — BullMQ kuyruk altyapısı
 
-| SEV | Konum                                | Açıklama                                                                                                                                                    | Sorumlu | Vade    | Kaynak gate |
-| --- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------- | ----------- |
-| low | `apps/api/src/redis/redis.module.ts` | `'error'` throttle penceresi (10 sn) sabit kod içi değer; BullMQ aynı istemciyi paylaşacağından hata işleme beklentisiyle uyumu **o sürümde doğrulanmalı**. | devops  | v0.0.11 | ST-6        |
+> **Biçim notu (`release`, 2026-11-03):** bu bölümün tek satırı kapanış gerekçesiyle birlikte tek
+> bir tablo hücresine sığmadığı için aşağıdaki kardeş bölümün (`v0.0.11 kaynaklı borçlar`)
+> emsaline uyularak **liste** olarak yazıldı; alanlar aynı (önem · konum · açıklama · sorumlu ·
+> vade · kaynak).
+
+- **low** · ~~`apps/api/src/redis/redis.module.ts`~~ → `apps/api/src/redis/create-redis-connection.ts:48`
+  — ✅ **KAPANDI (v0.0.11, `release` ölçümü 2026-11-03).** Borcun **dayanağı çürüdü**: _"BullMQ aynı
+  istemciyi paylaşacağından"_ varsayımı fiilen yanlış — kuyruk **kendi** bağlantısını kuruyor
+  (`queue.module.ts:68` → `createRedisConnection({ profile: 'queue' })`) ve `redis.module.ts:14`
+  birebir _"`REDIS_CLIENT` token'ı kuyruğa HİÇ verilmez"_ diyor. Borcun **eylemi** (_"uyumu o
+  sürümde doğrulanmalı"_) de **yerine getirildi**: zorunlu `'error'` dinleyicisi ve throttle artık
+  **tek fabrikada** yaşıyor (`apps/api/src/redis/` içinde `.on('error'` sayımı → **1**,
+  `create-redis-connection.ts:213`) ve **her iki profil** oradan geçiyor;
+  `redis-connection-profiles.test.ts:212` iki profil için de `listenerCount('error') === 1`
+  pinliyor, `:219` throttle penceresinin ikinci olayı yutmasını pinliyor. **Kalıntı yok:** 10 sn'nin
+  modül sabiti olması K-A8'in _"env yüzeyi büyümesin"_ kısıtının **gereği**, kusuru değil.
+  ⚠ Satırın **konumu** da bayatlamıştı — dinleyici artık `redis.module.ts`'te değil.
+  **Sorumlu:** `devops` · **Vade:** ✅ v0.0.11 (kapandı) · **Kaynak:** ST-6
+
+## v0.0.11 kaynaklı borçlar — BullMQ kuyruk altyapısı (T-013 gate sonuçları)
+
+> **Not (docs, 2026-11-03):** Bu bölümün satırları T-013'ün beş gate raporundan
+> (`.claude/workflow/reviews/T-013-{solid-tur1,solid-tur2,security-tur1,qa-tur1,qa-tur2}.md`) ve
+> Task dosyasının üretim loglarından (`.claude/workflow/tasks/T-013.md`) türetildi; her satırın
+> kaynağı yazılıdır. Vadesi satır başına değişir, bu yüzden bölüm başlığı borcun **doğduğu**
+> sürümü taşıyor. Biçim: satır metinleri tek bir tablo hücresine sığmadığı için bu bölüm
+> **liste** olarak yazıldı; her madde aynı beş alanı taşır (önem · konum · açıklama · sorumlu ·
+> vade · kaynak). Düzeltme turunda **kapanan** bulgular (`solid` M-1, `qa` Q-1) bu listeye
+> **girmedi** — kapanış kaydı yukarıdaki v0.0.11 bölümünde ve
+> [ADR-0015](./docs/adr/0015-kuyruk-topolojisi-dlq-ve-worker-kiraci-baglami.md)'in "Ölçülen
+> olgular" bölümündeki _terminal satır dokunulmaz_ maddesindedir.
+
+**Açık `medium` bulgular (ikisi de kapsam dışı olduğu için tur açılmadı):**
+
+- **medium** · `apps/api/src/__tests__/shutdown.test.ts:161-165` — **kapanış ölçümü süreç
+  ölümünü temiz kapanıştan AYIRMIYOR.** `pg_stat_activity`'nin sıfır satır dönmesi, süreç
+  ölünce Postgres backend'inin zaten düşmesiyle de açıklanabilir. `qa` mutasyonla doğruladı:
+  Prisma'nın bağlantı kapatma çağrısı işlevsizleştirildiğinde bu dosya **yeşil kaldı** ve
+  v0.0.11'in worker testindeki çocuk-süreç bloğu da yeşil kaldı; yalnızca sürecin **içine**
+  taşınmış kanca ölçümü kırmızı verdi. T-013 bu boşluğu **AC9 için kapattı**, v0.0.4'ün AC11'i
+  için **kapatamadı** (dosya bu Task'ın kapsamında değildi). Yön: AC11'e de süreç-ölümünden
+  ayrık bir Postgres kapanış ölçümü ekle. **Sorumlu:** `backend` · **Vade:** v0.0.12 ·
+  **Kaynak:** `qa` tur 1 (`security` bilinçli olarak güvenlik bulgusu saymadı: saldırı yüzeyi
+  üretmiyor, veri sızdırmıyor, yetki atlatmıyor)
+- **medium** · `apps/api/src/main.worker.ts:73-77` ve `:175-183` — **gerçek tekrar:** süreç
+  çökme politikası iki giriş noktasında kopya. `main.ts:27-31` ↔ `:73-77` (çökme logger'ı ve
+  hata serileştirici) ve `main.ts:48-56` ↔ `:175-183` (iki süreç kancası, **log mesajı
+  literalleri dahil**) birebir aynı; yorumun kendisi _"`main.ts` ile birebir aynı desen"_ diyor
+  ama senkron tutan **hiçbir mekanizma yok**. Ek kanıt: `queue-worker.module.ts:79`'daki
+  watchdog süresi `main.ts:67`'de **ayrıca** sabit yazılı. Aynı kusur sınıfı
+  `apps/api/src/redis/create-redis-connection.ts:17-23`'te **açıkça reddedilmiş** — proje bu
+  kararı başka bir yerde tersine vermiş. Yön: `installProcessCrashHandlers(logger)` + paylaşılan
+  watchdog sabiti; hata serileştirici yerine mevcut `describeErrorCause()`. **Sorumlu:**
+  `backend` · **Vade:** belirlenmedi — düzeltme `main.ts`'e dokunduğu için **o dosyaya dokunan
+  ilk sürüm** (öneri: v0.0.12) · **Kaynak:** `solid` tur 1 (M-2)
+
+**Davranış ve güvenlik borçları:**
+
+- **low** · `apps/api/src/queue/job-runner.ts:328-331` (`recordTerminalFailure`) +
+  `packages/trpc/src/schemas/job-summary.schema.ts:112` + `job-runner.ts:513,516-517` —
+  **ters yön asimetrisi ve bir yön geniş gerekçe metni.** Düzeltme turu tamamlama yazımına durum
+  yüklemini ekledi; terminal başarısızlık yazımı ise hâlâ **koşulsuz** (`where: { id }`) → bir
+  `completed` satır, teorik bir yeniden teslimde `failed` + dolu hataya **dönebilir**
+  (`completedAt` dolu kalır). **Tel garantisini İHLAL ETMİYOR** — `qa` gerekçeyi güçlendirdi:
+  hata **aynı yazmada** `failed` ile yazılıyor, dolayısıyla `completed` + dolu hata **tüm
+  sıralamalarda ulaşılamaz**. İki açık nüans: (a) ortaya çıkan `failed` + **dolu `completedAt`**
+  durumu **beyan edilmemiş ve hiçbir testle pinlenmemiş**; (b) düzeltmenin gerekçe metni
+  dokunulmazlığı **tek yönlü** anlatıyor, oysa `startedAt` **her iki yönde** korunuyor
+  (`solid` L-9). Yön: aynı yüklemi terminal yazıma da ekle + DLQ testine prob + üç cümleye yönü
+  yaz. **Sorumlu:** `backend` · **Vade:** v0.0.12, **tek düzenlemede** · **Kaynak:** FIX 1
+  (R-FIX1-1) + `solid` tur 2 (L-9) + `qa` tur 2 (f)
+- **low** · `packages/errors/src/app-error.ts` (`AppErrorOptions.context` yorumu ↔
+  `publicDetails` yorumu; gate atfı `:55-56` ↔ `:108-110`, bugünkü satırlar `:53-57` ↔
+  `:104-110`) — **ölçülmüş çelişki:** aynı alan için biri _"PII/sır İÇERMEZ"_, diğeri _"PII
+  içerebilir"_ diyor. T-013'ün tasarımı **fail-closed** tarafı seçti (bu alan veritabanına
+  yazılmaz); çelişkinin kendisi borç. Yön: iki yorumu tek anlamlı hâle getir. **Sorumlu:**
+  `backend` · **Vade:** v0.0.12 · **Kaynak:** architect R-A6
+- **low** · `apps/api/src/queue/queue.service.ts:142-176` (`enqueue`) — **kiracı kapsamı
+  PAYLOAD'DAN türetiliyor**, ortam bağlamından değil; yazıcı kiracı değişkenini o değere
+  kurduğu için RLS'in `WITH CHECK`'i geçiyor → **herhangi bir kiracıya yazabilen ilkel.** Bugün
+  istismar edilemez (üretim çağıranı grep ile **0**, `job.*` salt okunur). v0.2.0 senaryosu
+  gerçek: imza `payload: unknown` olduğu için "Siteyi Kur" mutasyonu `enqueue(def, input)`
+  yazarsa **derlenir** ve A oturumuyla başka kiracının kimliğini gönderen bir çağıran **o kiracı
+  adına** iş kuyruğa alır. Yön: kiracıyı çağrı bağlamından al, payload'dan değil. **Sorumlu:**
+  `backend` · **Vade:** **v0.2.0, ilk gerçek çağırandan ÖNCE** · **Kaynak:** `security` tur 1
+  (low 1)
+- **low** · `apps/api/src/queue/job-runner.ts` (hata logu; gate atfı `:481`, bugünkü satır
+  **`:483`**) + `apps/api/src/queue/queue-worker.module.ts`
+  (yeniden denenebilir hatanın olduğu gibi fırlatılması) — **BullMQ hata metnini ve yığın izini
+  Redis'e yazıyor ve o kayıt kiracıya kapsamlı DEĞİL.** `Job.error` ve DLQ zarfı **redakte**
+  (dört alan, şema kapısıyla), log tam, ama Redis kaydı **kapsam dışı**. Bugün zararsız: tek
+  handler bir iskelet ve dış servise dokunmuyor, Bull Board da ertelendi. v0.2.0 senaryosu:
+  DNS/SSL/SMTP hatasının içinde bir sağlayıcı anahtarı veya **tam alıcı e-postası** geçen mesajı
+  hem loga hem Redis'e **tam** düşer → CLAUDE.md §4'ün _"asla loglanmaz"_ listesinin ihlali.
+  **Sorumlu:** `backend` · **Vade:** **v0.2.0, ilk gerçek dış servis çağrısından ÖNCE** ·
+  **Kaynak:** S6 (R-S6-1) + `security` tur 1 (low 2)
+- **low** · `apps/api/src/queue/queue-worker.module.ts:160-175` +
+  `apps/api/src/queue/queue-constants.ts:40-62` — **DLQ'nun tüketicisi ve retention'ı yok** ve
+  kuyruk Redis'i `noeviction` olmak **zorunda** → sistematik olarak başarısız olan tek bir iş
+  türü DLQ'yu sınırsız büyütür, Redis yazmayı reddeder ve kuyruk **tüm kiracılar için** durur
+  (paylaşılan anahtar alanı, ADR-0015 Karar 1). Tetikleyici bugün yok. Yön: **derinlik alarmı**
+  — silme değil, çünkü "park yeri" kararı korunuyor. **Sorumlu:** `devops` + `architect` ·
+  **Vade:** v0.15.0, **v0.2.0'da yeniden değerlendirilmeli** · **Kaynak:** S6 (R-S6-4) +
+  `security` tur 1 (low 5)
+- **low** · `apps/api/src/queue/job-runner.ts` (zorla kapanış yolu) +
+  `apps/api/src/queue/queue.service.ts` (sıralama kararı) — **bayat `running`/`queued` satır
+  tespiti yok.** Zorla kapanışta iş yarıda kalır ve satır `running` kalır (`failed` yazmak
+  yanlış bilgi olurdu); kuyruğa ekleme reddedilirse satır `queued` kalır. **İlk gerçek örneği bu
+  sürümde ÖLÇÜLDÜ:** `job` tablosunda Redis karşılığı olmayan bir `queued` satır (`id` =
+  `h8vxzdu17sn1fi34xgabemc8`, bir mutasyon koşumunun artığı) — **silinmedi**, bulgunun kanıtı
+  olarak bırakıldı. Yön: bayat satır tespiti + operatörün satırı yeniden açabilmesi (kodda
+  sessiz geçiş değil, A-FIX1-1). **Sorumlu:** `architect` + `backend` · **Vade:** v0.15.0 ·
+  **Kaynak:** architect K1.c/R-A9 + S5 (R-S5-3) + S6 (R-S6-2); satır Orkestratör ve `security`
+  tarafından ölçüldü
+- **low** · `packages/trpc/src/schemas/job-summary.schema.ts` (`jobListInputSchema.status`; gate
+  atfı `:152`, bugünkü satır `:168`) — durum filtresi dizisinde **üst sınır yok** → binlerce
+  yinelenen enum değeriyle çok büyük bir `status IN (...)` kurulabilir (istek gövdesi boyutuyla
+  sınırlı). Kiracı dışına çıkmıyor, sızıntı yok; yalnızca CPU amplifikasyonu. Düzeltme girdi
+  şemasına üst sınır eklemek, **kırıcı değil**. **Sorumlu:** `backend` · **Vade:** v0.0.12 ·
+  **Kaynak:** `security` tur 1 (low 3)
+- **low** · `apps/api/src/auth/rate-limit/rate-limit.policy.ts:36-41` ↔
+  `packages/trpc/src/routers/job.router.ts:39,44` — **hiçbir tRPC prosedürü oran sınırlı değil**;
+  oran sınırı yalnızca iki kimlik doğrulama yolunu kapsıyor, dolayısıyla `job.list` döngüsü her
+  istekte önbelleksiz bir üyelik transaction'ı + keyset sorgusu açar. Gizlilik etkisi yok.
+  **T-013'ün gerilemesi DEĞİL** — platformun v0.0.6'dan beri taşıdığı boşluğa iki uç daha
+  ekliyor. **Sorumlu:** `architect` (politika) + `backend` · **Vade:** v0.1.0 civarı ·
+  **Kaynak:** `security` tur 1 (low 4)
+- **low** · `pnpm-lock.yaml` (**değişmemiş** satırlar) — `multer` (high, DoS) ve `minimatch`
+  (moderate) uyarıları. **İkisini de T-013 getirmedi** (lockfile diff'inde bağlam satırı) ve
+  multer **erişilemez**: repoda multipart/yükleme rotası yok, ilgili kod yolu hiç çalışmıyor;
+  minimatch lint zincirinde. CLAUDE.md §4'ün _"emin değilsen bir alt seviye + gerekçe"_ kuralıyla
+  `low` yazıldı. **Sorumlu:** `devops` · **Vade:** bir sonraki bakım penceresi; **multer ilk
+  dosya yükleme ucundan ÖNCE zorunlu** (v0.0.16) · **Kaynak:** `security` tur 1 (low 6)
+
+**Test kapsamı ve ölçülebilirlik borçları:**
+
+- **low** · `packages/trpc/src/schemas/job-summary.schema.ts` (`jobListInputSchema.limit`; gate
+  atfı `:153`, bugünkü satır `:169`) — `limit`'in **ALT** sınırı hiçbir testte ölçülmüyor (üst
+  sınır iki testle pinli). **Sorumlu:** `backend` · **Vade:** v0.0.12 · **Kaynak:** `qa` tur 1
+- **low** · `apps/api/src/__tests__/shutdown.test.ts` +
+  `apps/api/src/__tests__/worker-shutdown.test.ts` — **kapanış SÜRESİNE üst sınır yok.** `qa`
+  ölçtü: mutasyonlu süreç **yine exit 0** veriyor, sadece ~10 saniye sonra (bağlantı havuzunun
+  boşta kalma zaman aşımı) → **12-16 kat gerileme sessiz geçiyor** (945 ms → 11 034 ms).
+  **Sorumlu:** `backend` · **Vade:** v0.0.12 · **Kaynak:** `qa` tur 1
+- **low** · `apps/api/src/__tests__/assert-queue-capable-redis.test.ts:16` — **literal-jeton
+  kuralının beşinci örneği:** bir denetim kalıbı o yorumda **bitişik** yazılı. Kapı
+  `packages/db` kapsamlı olduğu için **bugün** geçiyor; kapsam genişlerse kalıcı yanlış pozitif
+  olur. **Sorumlu:** `backend` / `docs` · **Vade:** v0.0.12 · **Kaynak:** `qa` tur 1
+- **low** · `packages/db/src/__tests__/migration-sql.test.ts:630` — repodaki **tek** koşullu
+  test atlaması (`it.skipIf(process.platform === 'win32')`). **T-013 getirmedi** ve darwin/linux
+  üzerinde **koşuyor**, ama CLAUDE.md §6 _"`test.skip` ile kalıcı susturma yasak — ROADMAP'te
+  takip kaydı olmadan"_ diyor ve kaydı **yoktu**. **Bu satır o takip kaydıdır.** Yön: ya
+  platformdan bağımsız bir fixture, ya atlamanın ROADMAP'te kalıcı gerekçesi. **Sorumlu:**
+  `devops` · **Vade:** v0.0.16 (CI teknoloji borçlarıyla) · **Kaynak:** `qa` tur 1
+- **low** · `apps/api/src/__tests__/helpers/assert-queue-capable-redis.ts` — **kuyruk Redis
+  yetenek kapısı üretimde koşmuyor** (`NODE_ENV=test` ile sınırlı) ve yönetilen Redis'lerde
+  yapılandırma okuma komutu yasaklı olabilir. Risk gerçek: eviction'lı bir üretim Redis'i BullMQ
+  anahtarlarını **sessizce siler**. **Sorumlu:** `devops` · **Vade:** v0.18.0 · **Kaynak:** S4
+  (R-S4-3)
+- **low** · `apps/api/src/redis/redis.module.ts` (sağlık profili, `commandTimeout: 1500`) —
+  **eşik makine yüküne duyarlı, ölçüldü:** üst üste üç tam süit koşumunda ilgisiz bir test
+  komut zaman aşımıyla kırmızı verdi; **kodun kusuru değil** (v0.0.4 değeri bilinçli olarak
+  birebir korundu) ve kuyrukla ilgisi yok, ama kuyruk modülü API sürecine **ikinci bir Redis
+  bağlantısı** ekleyerek marjı daralttı. Tek başına koşan beş ardışık tam süit temiz çıktı.
+  **Sorumlu:** `devops` · **Vade:** v0.18.0 adayı · **Kaynak:** S5 (R-S5-1)
+- **low** · `packages/db/src/__tests__/tenant-membership.isolation.test.ts` — dosya adı
+  **içeriğinden dar**: artık `TENANT_SCOPED_TABLES`'ın **tamamını** kaydediyor (iki prob).
+  Yeniden adlandırma (`tenant-tables.isolation.test.ts`) bilinçli olarak yapılmadı (üç dosyada
+  atıf var, kapsam dışı); dosya başına not yazıldı. **Sorumlu:** `db` · **Vade:** v0.0.17 ·
+  **Kaynak:** S2 (R-S2-2)
+- **low** · kök `package.json` (`test:contract` script'i **yok**) — public API sözleşme
+  snapshot'ı mekanik olarak denetlenmiyor; v0.0.11'in Public API etkisi (`job` namespace'i +
+  port nesnesine zorunlu üye → **yalnızca ekleme**) **elle analizle** doğrulandı. **Sorumlu:**
+  `devops` · **Vade:** v0.0.22 · **Kaynak:** `pm` kapsam ölçümü + S8 notu
+- **kapsam** (gate bulgusu değil) · Bull Board / kuyruk gözlemlenebilirliği — kapsam maddesi 6
+  kullanıcı onayıyla **v0.15.0**'a taşındı (yukarıdaki v0.0.11 bölümü). ADR-0015 Karar 1'in
+  dördüncü telafi ayağı bu yüzeyin yokluğuna dayandığı için, geldiğinde **ADR yeniden
+  değerlendirilmek zorunda**. **Sorumlu:** `architect` + `devops` · **Vade:** v0.15.0 ·
+  **Kaynak:** K-PM1 (kullanıcı onayı 2026-11-03)
+- **kayıt** · `packages/trpc/src/schemas/job-summary.schema.ts` (girdi doğrulama yolu) —
+  `job.list`'in `limit` üst sınırı aşıldığında yanıt kodu **`VALIDATION_ERROR` değil**,
+  `HTTP_EXCEPTION`/400: Zod **girdi** hatası tRPC sınırında doğuyor ve uygulama hata sınırının
+  `AppError` dalına **hiç girmiyor** (ADR-0010 madde 2). Mevcut mimarinin davranışı, bir kusur
+  değil. Alan bazlı bir doğrulama gövdesi istenirse **ayrı bir sürüm kararı** gerekir.
+  **Sorumlu:** `architect` · **Vade:** karar gerektiğinde (kayıt) · **Kaynak:** S8 (R-S8-2)
+
+**`solid` tur 1'in sekiz `low`'u (hepsi açık, tur açmadı):**
+
+- **low** · `apps/api/src/queue/job-runner.ts` (gate atfı `:73,81,164,174,179`; bugünkü satırlar
+  **`:75,83,166,176,181`** — düzeltme turu dosya başına yorum eklediği için iki satır kaydı) +
+  `apps/api/src/queue/jobs/tenant-provision/index.ts:22-23` — **tüketicisi olmayan yedi
+  export** (`JOB_PROGRESS_MIN`, `UNRECOVERABLE_FALLBACK_REASON`, `resolveAttemptNumber`,
+  `isFinalAttempt`, `clampProgressPercent`, artı barrel'ın iki şema satırı): hiçbiri başka bir
+  dosyadan, test dahil, import edilmiyor. Barrel ayrıca **kendi başlık yorumunun (`:8-12`)
+  yasakladığı yolu** dışa açıyor (şemayı barrel'dan almak). `clampProgressPercent`'in sonlu
+  sayı kontrolü dalı üretimde ulaşılamaz. **Sorumlu:** `backend` · **Vade:** v0.0.12 ·
+  **Kaynak:** `solid` tur 1 (L-1)
+- **low** · `apps/api/src/trpc/ports/job-read.port.adapter.ts:283` — gereksiz kombinatör:
+  dalsız üslup, **hiçbir oracle garantisi taşımadığı** yerde taklit edilmiş. "Sonraki sayfa var
+  mı" sorusunun varlık oracle'ıyla ilgisi yok; `page.at(-1)?.id ?? null` hem eşdeğer hem
+  dallanmasız. Aynı üslup `:245` ve `:265-267`'de **gerekli** (tek `throw` noktası = ayrımın
+  yazılamazlığı). **Sorumlu:** `backend` · **Vade:** v0.0.12 · **Kaynak:** `solid` tur 1 (L-2)
+- **low** · `apps/api/src/queue/job-runner.ts` → `createJobProcessor` (gate atfı `:361-510`;
+  fonksiyon bugün **`:290-533`**) — processor kapanışı **150 satır**
+  (fonksiyon toplam tur 1'de 224, düzeltme turundan sonra **244** — artışın **+20'si yorum**,
+  kod artışı 1 satır). "Tek yer" şartı karşılanıyor ve iş türüne özgü dallanma **sıfır**, ama üç
+  durum geçişi yazımı adlandırılmamış satır içi bloklar hâlinde. Yön: `markRunning`/
+  `markCompleted` benzeri modül-içi fonksiyonlar (adım başına transaction değişmezi korunur).
+  **Sorumlu:** `backend` · **Vade:** v0.0.12 · **Kaynak:** `solid` tur 1 (L-3) + tur 2 ölçümü
+- **low** · `apps/api/src/queue/queue.tokens.ts:20-21` ·
+  `apps/api/src/queue/job-definition.ts:8` · `apps/api/src/queue/queue.service.ts:89` — **üç
+  yanlış veya aşırı beyan:** (1) token yorumu **var olmayan** bir "tanım" üyesine atıf yapıyor
+  (eşleme nesnesinin iki üyesi var); (2) _"ikinci iş türü eklemek bir satırdır"_ gerçekte **dört
+  dosyada altı dokunuş** (doğru ve hâlâ güçlü olan iddia: _"kuyruk ÇEKİRDEĞİNDE sıfır
+  değişiklik"_); (3) _"`QueueService` Prisma'yı HİÇ GÖRMEZ"_ fazla geniş — `:28` tip importu
+  var (özsel garanti geçerli: istemci erişimi yok ⇒ kiracı filtresiz sorgu yazılamaz).
+  **Sorumlu:** `docs` / `backend` · **Vade:** v0.0.12 · **Kaynak:** `solid` tur 1 (L-4)
+- **low** · `apps/api/src/queue/queue-worker.module.ts:71-74` ve `:87-89` — sabit/token
+  yerleşiminin gerekçesi _"o dosya bu alt görevin dosya sahipliği dışında"_, yani bir **ajan iş
+  akışı artefaktı**; beş yıl sonra okunacak bir tasarım ilkesi değil. Sonuç: kuyruk DI
+  token'ları iki dosyaya, kuyruk sabitleri iki dosyaya dağılmış. İkincil gerekçe (_"tüketici
+  kararları tüketici modülüyle okunur"_) tek başına savunulabilir. **Sorumlu:** `backend` ·
+  **Vade:** v0.0.12 · **Kaynak:** `solid` tur 1 (L-5)
+- **low** · `apps/api/src/queue/queue-worker.module.ts:54-55` — aynı modülden **iki ayrı**
+  import satırı; lint yakalamıyor (ilgili kural kapalı). **Sorumlu:** `backend` · **Vade:**
+  fırsat buldukça · **Kaynak:** `solid` tur 1 (L-6)
+- **low** · `apps/api/src/main.worker.ts:112-118` — watchdog logu **satır içi literal** ve
+  `queue-log-events.ts:104`'teki sabitle **neredeyse aynı** metni taşıyor; operatör logda
+  "zaman aşımı" arayınca iki farklı olay görüyor, biri sabit biri değil. Yön: iki olayı ayırt
+  edilir yap veya watchdog'u da sabite al. **Sorumlu:** `backend` · **Vade:** v0.0.12 ·
+  **Kaynak:** `solid` tur 1 (L-7)
+- **low** · `apps/api/src/__tests__/queue-happy-path.test.ts:297-309` ·
+  `apps/api/src/__tests__/trpc-job-read-port-adapter.test.ts:436-442` — **iki test kaynak metni
+  üzerinde assert ediyor.** (a) handler'ın `.ts` dosyasını okuyup dize arıyor → blok yorumu
+  yanlış kırmızı, yeniden adlandırma yanlış **yeşil** verir; üstelik lint'in beşinci kümesi ve
+  tip allowlist'i aynı şeyi **mekanik** olarak zorluyor. (b) indeks iddiası **diskteki tek
+  migration dosyasının** metnine bakıyor → sonraki bir migration indeksi değiştirirse test
+  yeşil kalır. Yön: (a) kaldırılabilir, (b) canlı katalogdan okunmalı. **Sorumlu:** `qa` ·
+  **Vade:** v0.0.12 · **Kaynak:** `solid` tur 1 (L-8)
+
+**Süreç borcu (karar kullanıcıda):**
+
+- **kayıt** · `CLAUDE.md` §6 (test komutları tablosu) — **iki hayalet komut:** `pnpm test:visual`
+  ve `pnpm test:visual:update` **hiçbir `package.json`'da yok** (T-012'de `pm` ölçtü); görsel
+  regresyon altyapısı **v0.0.19**'da geliyor. `CLAUDE.md` **değiştirilmedi** çünkü o dosyaya
+  dokunmak kullanıcı onayı gerektiriyor. Karar iki yoldan biri olabilir: §6'daki iki satırı
+  "v0.0.19'da gelecek" olarak işaretlemek **veya** komutları ROADMAP'in v0.0.19 kapsamına
+  taşıyıp §6'dan çıkarmak. **Sorumlu:** kullanıcı (karar) + `docs` (uygulama) · **Vade:**
+  v0.0.19'dan önce · **Kaynak:** T-012 `pm` ölçümü, T-013'te `docs` tarafından kayda geçirildi
+
+**Bilerek YAZILMAYAN iki satır (gerekçeleriyle, çift sayım olmasın):**
+
+- S7'nin bildirdiği _"Prisma kapanış log mesajı satır içi literal"_ borcu (R-S7-2) **düşürüldü**:
+  `solid` ölçtü, ihlal ettiği bir disiplin **yok** — assert edilmeyen log mesajları bu repoda
+  her yerde satır içi ve ilgili dosya bu Task'ın yüzeyinde değil. Kapatılacak olan **tersidir**
+  (yukarıdaki L-7).
+- S8'in kendi bildirdiği _"test için açılan export yüzeyi"_ borcu (R-S8-3) **bulgu değil**:
+  `solid` üçünün de **aynı dosyada üretim tüketicisi olduğunu** ölçtü; testin hizmetinde olan
+  tek şey `export` sözcüğüydü.
 
 ## Vadesi v0.0.12 (CI geldiğinde)
 

@@ -220,6 +220,23 @@ export function pinAppPrismaDatabaseDropsQueryRaw(db: AppPrismaDatabase): unknow
 }
 
 /**
+ * NEGATİF PİN (ROADMAP v0.0.11, T-013/S2, architect K3/R-A2 — K5 katman 2'nin
+ * MEKANİK KANITI) — `job` delegesi `AppPrismaDatabase` üzerinde ERİŞİLEMEZ
+ * OLMALIDIR.
+ *
+ * `job` kiracıya bağlı bir tablodur; ona erişimin TEK meşru yolu
+ * `withTenant()` → `TenantTransactionClient`'tır (orada allowlist'TEDİR).
+ * `AppPrismaDatabase`'e EKLENMEDİĞİ için `prisma.db.job.update(...)` gibi bir
+ * çağrı `apps/api`'de DERLENMEZ — yani kuyruk işi handler'ının kiracı bağlamı
+ * DIŞINDA `Job` yazması bir "dikkat edin" yorumu değil, bir DERLEME HATASIDIR.
+ * Bu satır derlenirse (hata ÜRETMEZSE) o garanti SESSİZCE kaybolmuş demektir.
+ */
+export function pinAppPrismaDatabaseDropsJob(db: AppPrismaDatabase): unknown {
+  // @ts-expect-error — "job" Pick<> allowlist'inde YOK (BİLEREK), AppPrismaDatabase'de erişilemez; Job'a erişim YALNIZCA withTenant() üzerinden.
+  return db.job
+}
+
+/**
  * NEGATİF PİN (A-G3, `TenantTransactionClient` için) — `account`/`session`/
  * `verification` delegeleri burada da ERİŞİLEMEZ OLMALIDIR.
  */
@@ -242,7 +259,8 @@ export function pinTenantTransactionClientDropsSecretDelegates(tx: TenantTransac
  * NEGATİF PİN (FIX turu 2'nin ÖLÇTÜĞÜ dördüncü kaçış kapısı — iç içe
  * `$transaction`, `Pick<>` altında da GEÇERLİ kalmalı) — `$transaction`
  * `TenantTransactionClient` üzerinde de ERİŞİLEMEZ OLMALIDIR. `Pick<>`
- * listesinde (`'tenantMembership'` TEK üye) `'$transaction'` YOK.
+ * listesinde (`'tenantMembership'` ve v0.0.11'den itibaren `'job'`)
+ * `'$transaction'` YOK.
  */
 export function pinTenantTransactionClientDropsTransaction(tx: TenantTransactionClient): unknown {
   // @ts-expect-error — "$transaction" Pick<> allowlist'inde YOK, TenantTransactionClient'ta erişilemez.
@@ -318,8 +336,21 @@ export function pinAppPrismaDatabaseKeysExactlyMatchAllowlist(): {
   return { noExtraKeys: true, noMissingKeys: true }
 }
 
-/** Beklenen `TenantTransactionClient` anahtar kümesi — `client.ts`'in `Pick<>` literaliyle BİREBİR aynı TEK üye. */
-type ExpectedTenantTransactionClientKeys = 'tenantMembership'
+/**
+ * Beklenen `TenantTransactionClient` anahtar kümesi — `client.ts`'in `Pick<>`
+ * literaliyle BİREBİR aynı İKİ üye.
+ *
+ * GÜNCELLEME (ROADMAP v0.0.11, T-013/S2, architect K3/R-A2): `'job'` EKLENDİ.
+ * ⚠ Bu satırın elle güncellenmesi GEREKMESİ kapının AMACIDIR, kusuru değil:
+ * `client.ts`'in allowlist'ine sessizce üye eklenemez — jenerik kapalı dünya
+ * pini (aşağıda) `typecheck`'i TS2322 ile kırmızıya düşürür ve eklemeyi AÇIK
+ * bir karara zorlar (`client.ts:108-110` BAĞLAYICI KURAL). Bu ekleme o kararın
+ * kaydıdır; gerekçesi `client.ts`'teki `TenantTransactionClient` doc'unda.
+ * ⚠ `ExpectedAppPrismaDatabaseKeys` (yukarıda) BİLEREK ÜÇ ÜYEDE KALDI —
+ * `'job'` oraya eklenirse bu dosya YİNE kırmızıya döner. R-A2'nin üçüncü
+ * savunma katmanı budur.
+ */
+type ExpectedTenantTransactionClientKeys = 'tenantMembership' | 'job'
 
 type TenantTransactionClientExtraKeys = Exclude<
   keyof TenantTransactionClient,

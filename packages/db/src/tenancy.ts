@@ -2,9 +2,10 @@
 //
 // V4 / AC8 gerekçesi: `Tenant` (`tenant`) ve `User` (`app_user`) PLATFORM
 // SEVİYESİ tablolardır — `tenant_id` kolonu taşımazlar, bu tablolar kiracı
-// kimliğinin kaynağıdır. Tenant'a bağlı TEK tablo `TenantMembership`
-// (`tenant_membership`): `tenant_id` kolonu `text`, NOT NULL ve
-// `(tenant_id, user_id)` bileşik benzersizlik kısıtının öncü kolonu.
+// kimliğinin kaynağıdır. Tenant'a bağlı tabloların KANONİK LİSTESİ aşağıdaki
+// `TENANT_SCOPED_TABLES` dizisidir (v0.0.3'te tek üyeliydi: `TenantMembership`;
+// v0.0.11'de `Job` eklendi) — her üyenin `tenant_id` kolonu `text`, NOT NULL ve
+// `tenant_id` öncü bir bileşik benzersizlik kısıtının ilk kolonudur.
 //
 // GÜNCELLEME (ROADMAP v0.0.13, T-005/S3): `tenant_membership` için RLS
 // politikası artık VAR — bkz. `prisma/migrations/<ts>_rls_tenant_isolation/
@@ -44,8 +45,29 @@
 // doğrulama belirteci KULLANICIYA bağlıdır, kiracıya değil ("bir hesap →
 // birden fazla mağaza" vaadi bunu zorunlu kılar); kiracı üyeliği kontrolü
 // istek anında `tenant_membership` üzerinden yapılır (R2). `TENANT_SCOPED_TABLES`
-// bu güncellemeyle DEĞİŞMEDİ (hâlâ tek eleman) — yeni prob gerekmez, prob
-// tamlığı kapısı (`MISSING_TENANT_SCOPED_TABLE`) kırılmaz.
+// O GÜNCELLEMEYLE DEĞİŞMEDİ (üç tablo da platform seviyesi) — yeni prob
+// gerekmedi, prob tamlığı kapısı (`MISSING_TENANT_SCOPED_TABLE`) kırılmadı.
+
+// GENİŞLETME (ROADMAP v0.0.11, T-013/S2, architect K3): `job` EKLENDİ —
+// `TENANT_SCOPED_TABLES`'ın İKİNCİ üyesi, kiracıya bağlı arka plan işi kaydı.
+// Bu tek satırlık değişiklik DÖRT mekanizmayı birden devreye sokar ve hiçbiri
+// bu dosyanın dışındaki linter kaynak kodunu DEĞİŞTİRMEYİ gerektirmez:
+//   1. Canlı katalog linter'ı (`catalog-lint.ts`, 20 kural) — `job` için
+//      `tenant_id` kolonu/tipi/NOT NULL'ı, RLS `ENABLE`+`FORCE`'u, kanonik
+//      `USING`/`WITH CHECK` politikasını ve `arkesoft_app` DML yetkisini arar.
+//   2. Migration kümesi linter'ı (`__tests__/helpers/migration-set.ts`) —
+//      `"tenant_id" TEXT NOT NULL` kolonunu ve `tenant_id` ÖNCÜ kolonlu bir
+//      `CREATE UNIQUE INDEX`'i (`@@unique([tenantId, id])`) arar.
+//   3. Prob tamlığı kapısı (`__tests__/helpers/tenant-isolation-suite.ts`) —
+//      `job` için bir `TenantScopedProbe` yazılmasını ZORLAR (eksikse `skip`
+//      değil, gerçek bir `expect` başarısızlığı).
+//   4. Yedi zorunlu izolasyon senaryosu — prob kaydedildiği an `job` için de
+//      koşar (çapraz okuma + `WITH CHECK` INSERT reddi + "bulunamadı"
+//      semantiği + varlık/yetki oracle'ı + hata gövdesi + havuz sızıntısı).
+// ⚠ Prob KAYDI TEK YERDEDİR: `__tests__/tenant-membership.isolation.test.ts`
+// (repoda `createTenantIsolationSuite`'in TEK çağrı noktası). İkinci bir çağrı
+// noktası açmak İKİ dosyayı da kırar — her çağrı kendi taksonomisini kendi
+// problarıyla karşılaştırır.
 
 /**
  * `tenant_id` kolonu TAŞIMAYAN platform seviyesi tablolar. Kiracı kimliğinin
@@ -65,4 +87,4 @@ export const PLATFORM_LEVEL_TABLES = [
  * `TENANT_CONTEXT_SETTING` sabitinde tanımlı GUC'u okuyan bir `USING`/
  * `WITH CHECK` politikası taşır (bkz. ilgili migration dosyası).
  */
-export const TENANT_SCOPED_TABLES = ['tenant_membership'] as const
+export const TENANT_SCOPED_TABLES = ['tenant_membership', 'job'] as const

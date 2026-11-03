@@ -1,5 +1,21 @@
 # @arkesoft/trpc
 
+## 0.3.0
+
+### Minor Changes
+
+- Public API'ye salt okunur `job` namespace'i eklendi: `job.get` bir işin durumunu, ilerlemesini ve
+  hatasını döndürür, `job.list` mağazanın işlerini sayfalı olarak listeler. İkisi de mağaza
+  bağlamını zorunlu kılar; başka bir mağazanın iş kimliği, var olmayan bir kimlikle **aynı** hatayı
+  alır (bir işin varlığı sızdırılmaz).
+
+  Bu bir **yalnızca ekleme** sürümüdür: var olan hiçbir prosedür, alan veya tip değişmedi,
+  kaldırılmadı. Mevcut istemciler değişiklik yapmadan çalışmaya devam eder. [v0.0.11]
+
+### Patch Changes
+
+- @arkesoft/errors@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

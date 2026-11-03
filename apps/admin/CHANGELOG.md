@@ -1,5 +1,14 @@
 # @arkesoft/admin
 
+## 0.3.0
+
+### Patch Changes
+
+- Updated dependencies
+  - @arkesoft/trpc@0.3.0
+  - @arkesoft/errors@0.3.0
+  - @arkesoft/ui@0.3.0
+
 ## 0.2.0
 
 ### Patch Changes

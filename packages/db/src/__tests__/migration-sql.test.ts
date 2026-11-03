@@ -1111,7 +1111,17 @@ describe('migration-set — prob süiti (security tur5 Tamamlanma Tanımı §1: 
 // makinesiyle BİRLİKTE kaldırıldı. Yedi vektör (E1, E2, E2b, E3, E4, E4b, E6
 // — security tur4 raporu) KORUNDU: artık maskeleme hiç yapılmadığı için
 // aralarındaki gerçek `DROP COLUMN`/`SET NOT NULL` DOĞRUDAN bulunuyor —
-// REGRESYON BEKÇİSİ (R-P1: `it.each` YASAK, tek tablo-sürücülü `it()`).
+// REGRESYON BEKÇİSİ (R-P1: `it.each` YASAK, TEK bir tablo-sürücülü `it()`).
+//
+// ⚠ YUKARIDAKİ SATIRA "bir" SÖZCÜĞÜ EKLENDİ (ROADMAP v0.0.11, T-013/S2, AC12):
+// v0.0.11'in kabul kriteri, taksonomide yalnızca BİR kiracı tablosu olduğunu
+// İDDİA EDEN bayat beyanları mekanik olarak arar (iki sözcüklü bir `rg` deseni:
+// "tek" + "tablo", BİTİŞİK yazıldığında). Bu yorum o deseni kazara taşıyordu ve
+// KALICI bir yanlış pozitif üretiyordu — oysa burada sayı `it()` bloğunu, tablo
+// ise onun veri sürücüsünü niteliyor; taksonomi hakkında hiçbir iddia YOK.
+// Davranış değişikliği SIFIR; deseni bu açıklamada bitişik YAZMAMAK
+// AGENT_BASELINE §5 "literal-jeton kuralı"nın gereğidir (yoksa düzeltmenin
+// kendisi kapıyı yeniden kırmızıya düşürürdü — fiilen ölçüldü).
 describe('migration-set — prob süiti (DÜZELTME TURU 5: maskeleme kaldırıldı — yedi vektörün hepsinde gerçek DROP/SET NOT NULL doğrudan bulunur)', () => {
   it('yedi bağımsız yolun her biri DESTRUCTIVE_STATEMENT üretir (maskeleme kaldırıldığı için aradaki yıkıcı ifade doğrudan bulunur)', () => {
     const vectors: readonly { readonly label: string; readonly sql: string }[] = [

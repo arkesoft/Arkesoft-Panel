@@ -53,6 +53,7 @@ import type { ApiEnv } from '../config/api-env.js'
 import { API_ENV } from '../config/config.tokens.js'
 import type { HttpRequestLike, HttpResponseLike } from '../http/http-request.types.js'
 import { toWebHeaders } from '../http/to-web-headers.js'
+import { JobReadPortAdapter } from './ports/job-read.port.adapter.js'
 import { StorefrontTenantReadPortAdapter } from './ports/storefront-tenant-read.port.adapter.js'
 import { TenantReadPortAdapter } from './ports/tenant-read.port.adapter.js'
 import { createTrpcContext } from './trpc-context.factory.js'
@@ -141,6 +142,7 @@ export class TrpcController {
     @Inject(TenantReadPortAdapter) private readonly tenantRead: TenantReadPortAdapter,
     @Inject(StorefrontTenantReadPortAdapter)
     private readonly storefrontTenantRead: StorefrontTenantReadPortAdapter,
+    @Inject(JobReadPortAdapter) private readonly jobRead: JobReadPortAdapter,
     @Inject(TrpcErrorsPortAdapter) private readonly errorsPort: TrpcErrorsPortAdapter,
   ) {}
 
@@ -148,8 +150,15 @@ export class TrpcController {
   @All('trpc/*path')
   async handle(@Req() req: TrpcHttpRequest, @Res() res: HttpResponseLike): Promise<void> {
     const request = buildTrpcWebRequest(req, this.env.AUTH_BASE_URL)
+    // ⚠ `TrpcPorts` burada ELLE kurulur (üretimdeki TEK yer). `jobRead`
+    // v0.0.11'den itibaren ZORUNLU üyedir — atlanırsa typecheck kırılır
+    // (`context/trpc-context.types.ts`'in gerekçesi, po R-P2).
     const context = createTrpcContext(
-      { tenantRead: this.tenantRead, storefrontTenantRead: this.storefrontTenantRead },
+      {
+        tenantRead: this.tenantRead,
+        storefrontTenantRead: this.storefrontTenantRead,
+        jobRead: this.jobRead,
+      },
       this.errorsPort,
     )
 

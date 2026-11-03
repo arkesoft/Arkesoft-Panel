@@ -28,6 +28,7 @@ import { createTrpcClient, trpcErrorDataSchema } from '@arkesoft/trpc'
 import type { TrpcClient } from '@arkesoft/trpc'
 import { createTrpcRequestHandler } from '@arkesoft/trpc/server'
 import type {
+  JobReadPort,
   StorefrontTenantReadPort,
   TenantReadPort,
   TrpcContext,
@@ -43,7 +44,10 @@ import { PrismaService } from '../prisma/prisma.service.js'
 import { createAuthenticatedSession } from './helpers/auth-fixture.js'
 import { createTestApp } from './helpers/create-test-app.js'
 import { ProbeDetailsError, TrpcProbeController } from './helpers/trpc-probe.controller.js'
-import { tenantStatusWireValuesMatchPrismaAtRuntime } from './type-pins/trpc-wire-contract.pin.js'
+import {
+  jobStatusWireValuesMatchPrismaAtRuntime,
+  tenantStatusWireValuesMatchPrismaAtRuntime,
+} from './type-pins/trpc-wire-contract.pin.js'
 
 function uniqueSlug(prefix: string): string {
   return `${prefix}-${randomUUID().slice(0, 12)}`
@@ -206,12 +210,24 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
     const probeStorefrontTenantRead: StorefrontTenantReadPort = {
       findPublicTenant: () => Promise.reject(new ProbeDetailsError()),
     }
+    // Bu probe `job.*`'ı ÇAĞIRMAZ — stub yalnızca `TrpcPorts`'un
+    // (v0.0.11'den itibaren ZORUNLU) alanını doldurmak için var, hiçbir
+    // assert buna dayanmaz. ⚠ Opsiyonel YAPILMASI YASAK (po R-P2) —
+    // `storefrontTenantRead`'in v0.0.8 emsali.
+    const probeJobRead: JobReadPort = {
+      findJob: () => Promise.reject(new ProbeDetailsError()),
+      listJobs: () => Promise.reject(new ProbeDetailsError()),
+    }
     const context: TrpcContext = {
       requestId,
       logger: { info: () => undefined, warn: () => undefined, error: () => undefined },
       auth: { kind: 'authenticated', userId: 'probe-user', sessionId: 'probe-session' },
       tenant: { kind: 'resolved', tenantId: 'probe-tenant', slug: 'probe', status: 'active' },
-      ports: { tenantRead: probeTenantRead, storefrontTenantRead: probeStorefrontTenantRead },
+      ports: {
+        tenantRead: probeTenantRead,
+        storefrontTenantRead: probeStorefrontTenantRead,
+        jobRead: probeJobRead,
+      },
       errors: {
         unauthenticated: () => new UnauthenticatedError(),
         tenantContextRequired: () => new TenantContextRequiredError(),
@@ -268,6 +284,13 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
 
   it('PİN 1 çalışma zamanı yarısı — tenantStatusSchema.options, Object.values(TenantStatus) ile SIRALANMIŞ eşleşiyor', () => {
     expect(tenantStatusWireValuesMatchPrismaAtRuntime()).toBe(true)
+  })
+
+  it('PİN 5 çalışma zamanı yarısı — jobStatusSchema.options, Object.values(JobStatus) ile SIRALANMIŞ eşleşiyor', () => {
+    // ROADMAP v0.0.11, T-013/S8. Tip pini anahtar KÜMESİNİ denetler; bu
+    // assert DEĞER kümesini denetler (tip pininin yakalayamayacağı sapma:
+    // aynı anahtarlar ama Prisma'nın değer tarafı farklı yazılmış).
+    expect(jobStatusWireValuesMatchPrismaAtRuntime()).toBe(true)
   })
 
   // GÜVENLİK DÜZELTMESİ (security tur 1, medium bulgu — GUARD ATLATMA):

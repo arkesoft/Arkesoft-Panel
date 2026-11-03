@@ -41,6 +41,16 @@ import { LoggingModule } from './logging/logging.module.js'
 // modüllere sağlar. `HealthModule`'den ÖNCE listelenir (architect "Modül
 // grafiği" sırası); `configure()` kancasına DOKUNULMADI (ST-5'in işi, R-P3).
 import { PrismaModule } from './prisma/prisma.module.js'
+// T-013/S5 EKLEMESİ (ROADMAP v0.0.11, architect K4): `QueueModule` —
+// YALNIZCA ÜRETİCİ tarafı (`Queue` + DLQ `Queue` + `QueueService.enqueue` +
+// kapanış sözleşmesi). ⚠ TÜKETİCİ (`Worker`) BU MODÜLDE DE, BU DOSYADA DA
+// YOK: worker AYRI bir süreçtir (`main.worker.ts`, T-013/S6) ve kendi modül
+// grafiğini kurar. HTTP sürecinde `Worker` ayağa kaldırmak bloke eden Redis
+// bağlantıları + stalled-checker zamanlayıcıları açar, yani v0.0.4'ün AC11
+// garantisini (SIGTERM → exit 0, açık handle yok) HTTP tarafında da riske
+// atardı. `imports` dizisine YALNIZCA EKLENDİ — satır SİLİNMEDİ/yeniden
+// DÜZENLENMEDİ (R-P3; kanıt: `git diff --numstat` → silinen satır 0).
+import { QueueModule } from './queue/queue.module.js'
 import { RedisModule } from './redis/redis.module.js'
 import { RequestContextMiddleware } from './request-context/request-context.middleware.js'
 // T-002/ST-5 EKLEMESİ: `TenancyModule` (`TenantResolverService` +
@@ -67,6 +77,11 @@ import { TrpcModule } from './trpc/trpc.module.js'
     AuthModule,
     HealthModule,
     TrpcModule,
+    // T-013/S5 EKLEMESİ: `QueueModule` dizinin SONUNA eklendi (mevcut sıra
+    // DEĞİŞMEDİ). `ConfigModule`/`LoggingModule`/`PrismaModule` `@Global()`
+    // olduğu için bağımlılıkları (`API_ENV`, `ROOT_LOGGER`, `PrismaService`)
+    // sıradan bağımsız çözülür.
+    QueueModule,
   ],
   // T-008/S3 EKLEMESİ (architect K6 madde 7): `HttpHardeningInitializer` —
   // `OnApplicationBootstrap` kancası ile ETag/X-Powered-By'ı kapatır.

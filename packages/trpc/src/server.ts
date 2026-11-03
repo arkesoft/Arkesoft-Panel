@@ -24,6 +24,7 @@ export type {
   TrpcTenantState,
 } from './context/trpc-context.types.js'
 
+export type { JobReadPort } from './ports/job-read.port.js'
 export type { TenantReadPort } from './ports/tenant-read.port.js'
 export type { StorefrontTenantReadPort } from './ports/storefront-tenant-read.port.js'
 export type { TrpcErrorFactoryPort } from './ports/trpc-error-factory.port.js'

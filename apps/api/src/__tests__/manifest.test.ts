@@ -11,6 +11,14 @@
 //      satırları bu yüzden taramadan ÖNCE DIŞLANIR.
 //   3. `apps/api/package.json`'daki `version`, kök `package.json`'daki
 //      `version` ile EŞİT (T-001 precedenti, platform-lockstep).
+//   4. v0.0.11 AC13 (T-013/S1, K-PM3): `dev` script'i worker sürecini
+//      BAŞLATMIYOR; worker AYRI bir script ile (`dev:worker`) ayağa kalkıyor.
+//      ⚠ Buradaki "AC13" v0.0.11'in kriteridir, yukarıdaki (2) numaralı
+//      v0.0.4 AC13'ü ile AYNI NUMARAYI taşır ama AYRI kriterdir — ROADMAP
+//      sürümleri kriter numaralarını yeniden kullanıyor.
+//      Bu testin YAPISAL yarısı (AppModule'ün worker modülünü import etmemesi)
+//      ayrı bir alt görevin (S6) ölçümüdür; burada yalnızca MANİFEST yarısı
+//      denetlenir.
 
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -20,6 +28,7 @@ import { z } from 'zod'
 
 const packageJsonSchema = z.object({
   version: z.string().min(1),
+  scripts: z.record(z.string(), z.string()).optional(),
   dependencies: z.record(z.string(), z.string()).optional(),
   devDependencies: z.record(z.string(), z.string()).optional(),
 })
@@ -81,6 +90,21 @@ function findPrismaClientImportViolations(srcDir: string): string[] {
   return violations
 }
 
+/**
+ * v0.0.11 AC13 — worker giriş noktasının DERLENMİŞ yolu. `dev:worker` ve
+ * `start:worker` ikisi de bunu hedefler. Kaynak dosya (`src/main.worker.ts`)
+ * bu assert yazıldığında henüz YOKTU (S6 yazıyor) — script hedefinin ileriye
+ * dönük olması BEKLENEN durumdur; assert manifesti denetler, dosya varlığını
+ * DEĞİL.
+ */
+const WORKER_ENTRY_PATH = 'dist/main.worker.js'
+
+/**
+ * `dev` script'inde BULUNMAMASI gereken jeton. Sabit olarak tutuluyor ki
+ * aranan dize ile `dev:worker`'ın hedefi tek bir yerden okunsun.
+ */
+const WORKER_SCRIPT_MARKER = 'worker'
+
 const API_PACKAGE_JSON_URL = new URL('../../package.json', import.meta.url)
 const ROOT_PACKAGE_JSON_URL = new URL('../../../../package.json', import.meta.url)
 const SRC_DIR = fileURLToPath(new URL('..', import.meta.url))
@@ -102,6 +126,24 @@ describe('apps/api/package.json', () => {
     const rootPkg = readPackageJson(ROOT_PACKAGE_JSON_URL)
 
     expect(apiPkg.version).toBe(rootPkg.version)
+  })
+
+  it("v0.0.11 AC13: `dev` script'i worker sürecini BAŞLATMIYOR", () => {
+    const pkg = readPackageJson(API_PACKAGE_JSON_URL)
+    const devScript = pkg.scripts?.['dev']
+
+    // `dev` ÖNCE var olmak zorunda: script tamamen silinirse `undefined`
+    // olurdu ve "worker içermiyor" assert'i YANLIŞ POZİTİF yeşil verirdi.
+    expect(devScript).toBeDefined()
+    expect(devScript).not.toContain(WORKER_SCRIPT_MARKER)
+  })
+
+  it('v0.0.11 AC13: `dev:worker` VAR ve worker giriş noktasını hedefliyor', () => {
+    const pkg = readPackageJson(API_PACKAGE_JSON_URL)
+    const devWorkerScript = pkg.scripts?.['dev:worker']
+
+    expect(devWorkerScript).toBeDefined()
+    expect(devWorkerScript).toContain(WORKER_ENTRY_PATH)
   })
 })
 

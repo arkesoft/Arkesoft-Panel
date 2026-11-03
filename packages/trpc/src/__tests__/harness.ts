@@ -36,11 +36,13 @@ import type {
   TrpcLoggerPort,
   TrpcTenantState,
 } from '../context/trpc-context.types.js'
+import type { JobReadPort } from '../ports/job-read.port.js'
 import type { TenantReadPort } from '../ports/tenant-read.port.js'
 import type { StorefrontTenantReadPort } from '../ports/storefront-tenant-read.port.js'
 import type { TrpcErrorFactoryPort } from '../ports/trpc-error-factory.port.js'
 import type { TenantSummary } from '../schemas/tenant-summary.schema.js'
 import type { StorefrontTenant } from '../schemas/storefront-tenant.schema.js'
+import type { JobListPage, JobSummary } from '../schemas/job-summary.schema.js'
 
 // ---------------------------------------------------------------------------
 // Kayıt tutan (recording) sahte logger
@@ -193,6 +195,56 @@ export function createFakeStorefrontTenantReadPort(
   }
 }
 
+/** `apps/api`'nin `JobNotFoundError`'ının test-yerel taklidi (404) — `JobReadPort`'un TOTAL sözleşmesini sınamak için. */
+export class HarnessJobNotFoundError extends AppError {
+  constructor() {
+    super({
+      code: 'JOB_NOT_FOUND',
+      httpStatus: 404,
+      userMessageKey: 'errors.job.notFound',
+    })
+  }
+}
+
+/** Harness'in varsayılan `job.get` çıktısı — PII içermez, kuyruk girdisi TAŞIMAZ. */
+export const HARNESS_JOB_SUMMARY: JobSummary = {
+  id: 'job_harness_01',
+  type: 'tenant.provision',
+  status: 'queued',
+  progress: 0,
+  error: null,
+  createdAt: '2026-11-03T09:00:00.000Z',
+  updatedAt: '2026-11-03T09:00:00.000Z',
+  startedAt: null,
+  completedAt: null,
+}
+
+/**
+ * `JobReadPort`'un sahte uygulaması (ROADMAP v0.0.11, T-013/S8). Port
+ * TOTAL'dır — istenen `jobId` beklenen özetinkiyle eşleşmiyorsa `null`
+ * DÖNMEZ, {@link HarnessJobNotFoundError} fırlatır. ⚠ Sahte port kiracı
+ * kimliğine HİÇ bakmaz: gerçek adaptörde de sahiplik uygulama kodunda
+ * KARŞILAŞTIRILMIYOR (RLS yapıyor) — sahteyi kiracı karşılaştıracak biçimde
+ * yazmak, var olmayan bir uygulama-seviyesi kapıyı test ediyormuş gibi
+ * görünürdü.
+ */
+export function createFakeJobReadPort(summary: JobSummary): JobReadPort {
+  return {
+    findJob(_tenantId, jobId) {
+      return jobId === summary.id
+        ? Promise.resolve(summary)
+        : Promise.reject(new HarnessJobNotFoundError())
+    },
+    listJobs(_tenantId, query): Promise<JobListPage> {
+      const matching = [summary].filter(
+        (item) => query.status === undefined || query.status.includes(item.status),
+      )
+
+      return Promise.resolve({ items: matching.slice(0, query.limit), nextCursor: null })
+    },
+  }
+}
+
 /** `TrpcErrorFactoryPort`'un sahte uygulaması. */
 export function createFakeErrorFactoryPort(): TrpcErrorFactoryPort {
   return {
@@ -330,6 +382,16 @@ export interface CreateHarnessOptions {
   readonly tenantSummary?: TenantSummary
   readonly tenantRead?: TenantReadPort
   readonly storefrontTenantRead?: StorefrontTenantReadPort
+  // ⚠ İŞ OKUMA PORTU İÇİN PORT-DÜZEYİ OVERRIDE BİLEREK YOK (ROADMAP v0.0.11,
+  // T-013/S8): bugün hiçbir test onu geçirmiyor ve KULLANILMAYAN bir override
+  // alanı tutmak, o alanın adının `TrpcPorts`'un ZORUNLU üyesinin adıyla
+  // birebir çakışmasına yol açıyordu — "sözleşmede opsiyonel bir iş okuma
+  // portu var mı" sorusunu grep ile denetleyen kapı (po R-P2) bu çakışma
+  // yüzünden kalıcı yanlış pozitif veriyordu (AGENT_BASELINE.md §5). Testler
+  // özet üzerinden (`jobSummary`) ayarlama yapar; gerçekten farklı bir port
+  // davranışı gerekirse `createFakeJobReadPort` export edilmiş durumda ve
+  // çağıran kendi `TrpcContext`'ini (procedures.test.ts'teki desen) kurar.
+  readonly jobSummary?: JobSummary
   readonly errors?: TrpcErrorFactoryPort
   readonly logger?: RecordingLogger
 }
@@ -374,6 +436,8 @@ export function createHarness(options: CreateHarnessOptions = {}): Harness {
       tenantRead: options.tenantRead ?? createFakeTenantReadPort(tenantSummary),
       storefrontTenantRead:
         options.storefrontTenantRead ?? createFakeStorefrontTenantReadPort(tenantSummary),
+      // ROADMAP v0.0.11, T-013/S8 — ZORUNLU üye (po R-P2).
+      jobRead: createFakeJobReadPort(options.jobSummary ?? HARNESS_JOB_SUMMARY),
     },
     errors: options.errors ?? createFakeErrorFactoryPort(),
   }

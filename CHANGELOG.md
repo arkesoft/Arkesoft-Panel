@@ -25,6 +25,36 @@ pnpm changeset
 
 <!-- Changesets bu çizginin altına yazar. Elle girdi eklemeyin. -->
 
+## 0.3.0 — 2026-11-03
+
+- Arka plan iş altyapısı kuruldu: uzun süren işler artık HTTP isteğinin dışına taşınabiliyor.
+  BullMQ tabanlı bir kuyruk, kendi Redis bağlantısı, üst sınırlı exponential backoff ile tekrar
+  deneme ve başarısız işlerin düştüğü ayrı bir ölü mektup kuyruğu (DLQ) eklendi. İşler ayrı bir
+  worker sürecinde (`pnpm dev:worker`) koşuyor; `pnpm dev` worker'ı bilinçli olarak başlatmaz.
+
+  Her iş artık veritabanında birinci sınıf, mağazaya kapsamlı bir kayıt: durum, ilerleme (0-100),
+  hata ve zaman damgaları saklanıyor. İlk iş türü olarak "mağaza kurulumu" iskeleti eklendi —
+  adımlarını loglayıp ilerlemesini yazıyor, gerçek kurulum işini henüz yapmıyor (o iş v0.2.0'da).
+  `Job` tablosu Postgres RLS ile korunuyor; bir mağazanın işleri başka bir mağazadan ne okunabilir
+  ne yazılabilir, worker her işi işin kendi mağaza bağlamı altında koşturuyor.
+
+  SIGTERM sonrası temiz kapanış garantisi (v0.0.4) yeni worker süreci için de korundu: devam eden
+  iş sınırlı süre beklenir, kuyruk ve Redis bağlantıları kapatılır, açık handle bırakılmaz.
+
+  Operatör notu: kuyruk testleri `pnpm infra:up` ile gelen compose Redis'ini gerektirir. Redis
+  `appendonly yes` ve `noeviction` ile yapılandırılmamışsa kuyruk testleri Türkçe, okunur bir
+  mesajla **başlamadan** durur — 6379 portunda ikinci bir Redis (ör. `brew services start redis`)
+  çalışıyorsa onu durdurmak gerekiyor. Ayrıntı: `docs/development.md` → "Kuyruk worker'ı".
+  [v0.0.11]
+
+- Public API'ye salt okunur `job` namespace'i eklendi: `job.get` bir işin durumunu, ilerlemesini ve
+  hatasını döndürür, `job.list` mağazanın işlerini sayfalı olarak listeler. İkisi de mağaza
+  bağlamını zorunlu kılar; başka bir mağazanın iş kimliği, var olmayan bir kimlikle **aynı** hatayı
+  alır (bir işin varlığı sızdırılmaz).
+
+  Bu bir **yalnızca ekleme** sürümüdür: var olan hiçbir prosedür, alan veya tip değişmedi,
+  kaldırılmadı. Mevcut istemciler değişiklik yapmadan çalışmaya devam eder. [v0.0.11]
+
 ## 0.2.0 — 2026-11-03
 
 - Mağazanın seçtiği tema artık kendi vitrininde gerçekten render ediliyor: ilk tema paketi

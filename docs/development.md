@@ -1000,3 +1000,225 @@ sayfaya `main`'in dışında ek `h1` öğeleri ekler (örn. "Audit", "Settings" 
    bile gerek kalmaz, sorun kendiliğinden doğmaz).
 
 ---
+
+## Kuyruk worker'ı (v0.0.11+)
+
+### `pnpm dev` worker'ı BAŞLATMAZ — ayrı bir `dev:worker` script'i var
+
+Bu **bilinçli bir karardır** (T-013/K-PM3, kabul kriteri AC13 ile pinli), eksiklik değil.
+Günlük geliştirmenin büyük kısmı arka plan işi gerektirmiyor ve `pnpm dev` zaten iki çocuk
+süreç zinciri (`tsc --watch` + `node --watch`) çalıştırıyor; worker'ı oraya bağlamak T-011'de
+ölçülmüş turbo teardown kusurunu (çocuk süreçlerin öksüz kalması) büyütürdü. Ayrım **yapısaldır**,
+yalnızca script düzeyinde değil: `AppModule` yalnızca kuyruğun **üretici** modülünü import eder,
+tüketici modülü yalnızca worker modülünde yaşar — yani **API süreci bir işi tüketemez**,
+script'ler değişse bile.
+
+```bash
+pnpm --filter @arkesoft/api dev:worker   # geliştirmede worker (node --watch)
+pnpm --filter @arkesoft/api start:worker # üretim emsali (node dist/main.worker.js)
+```
+
+İki not:
+
+- **`dev:worker` turbo'dan geçmez.** `turbo.json`'a böyle bir görev **eklenmedi**; komut
+  turbo'yu hiç devreye sokmuyor. Dolayısıyla `pnpm dev`'in paralel görev grafiğiyle etkileşmez.
+- **ÖN KOŞUL: önce `pnpm dev` ya da bir kez `pnpm --filter @arkesoft/api build`.** `dev:worker`
+  **ikinci bir `tsc --watch` başlatmaz**, yani derleyiciyi kendisi koşturmaz — yalnızca
+  `dist/main.worker.js`'i `node --watch` ile çalıştırır. Gerekçe ölçüldü (T-013/S1):
+  `apps/api/tsconfig.build.json:9` `tsBuildInfoFile: "dist/.tsbuildinfo"` ve
+  `packages/config/tsconfig/base.json:34` `incremental: true` → **iki eşzamanlı watcher aynı
+  `tsbuildinfo` dosyasını** yazar ve artımlı derleme durumu bozulur.
+
+**Bu not yazılmazsa tipik yanlış teşhis şu olur:** `dist/main.worker.js` üretilmemişken
+`dev:worker` anında modül bulunamadı hatasıyla düşer ve bu _"dev:worker çalışmıyor"_ diye
+okunur. Çalışmayan şey script değil, eksik olan derleme adımıdır.
+
+**Worker'ın hazır olduğu HTTP ile ölçülemez:** worker bilinçli olarak **port açmaz**
+(`createApplicationContext`, `listen()` yok). Hazır olma sinyali stdout'taki yapılandırılmış log
+satırıdır (`"kuyruk worker hazır"`, içinde `queueNames`, `concurrency`, `pid`). Bu metin
+`apps/api/src/queue/queue-log-events.ts`'te **tek kaynakta** tutulur; bir testin veya aracın onu
+beklemesi gerekiyorsa sabiti **import etmelidir**, metni ikinci kez yazmamalıdır.
+
+### Kuyruk testlerinin iki ön koşulu
+
+1. `pnpm infra:up` koşmuş olmalı (compose Redis'i ayakta).
+2. **Homebrew `redis-server` DURDURULMUŞ olmalı:** `brew services stop redis`. Sebep yukarıdaki
+   "Redis örneği tuzağı" bölümünde: homebrew loopback'i **spesifik** tuttuğu için
+   `localhost:6379` compose yerine host örneğine çözülür. Doğrulama:
+   `lsof -nP -iTCP:6379 -sTCP:LISTEN` **tek** dinleyici göstermeli. Geri alma:
+   `brew services start redis` — ama o durumda kuyruk testleri **kasıtlı olarak** kırmızı döner.
+
+Kuyruk testleri bu ön koşulu tahmin etmez, **ölçer**: `assertQueueCapableRedis` fail-closed bir
+kapıdır ve yalnızca `NODE_ENV=test` altında koşar. Soru _"hangi host?"_ değil, _"bu Redis kuyruk
+olmaya yapılandırılmış mı?"_ — iki ayar zorunludur (`appendonly=yes`, `maxmemory-policy=noeviction`),
+`save` yalnızca teşhis için raporlanır. Kapı tetiklendiğinde gördüğünüz tam metin:
+
+```
+assertQueueCapableRedis: kuyruk testleri KUYRUK OLARAK YAPILANDIRILMIŞ bir Redis gerektirir — fail-closed kapı tetiklendi (AC10).
+
+Karşılanmayan zorunlu ayarlar:
+  - appendonly: beklenen 'yes', ölçülen 'no'
+
+Ölçülen tüm değerler: appendonly='no' · maxmemory-policy='noeviction' · save='60 1'
+Not: 'save' ASSERT EDİLMEZ, yalnızca teşhis için raporlanır.
+
+Olası sebep: REDIS_URL, kuyruk için yapılandırılmamış BAŞKA bir Redis örneğine çözülüyor (homebrew redis-server varsayılanı appendonly=no).
+Çözüm: (1) host örneğini durdur — brew services stop redis · (2) compose Redis'ini ayağa kaldır — pnpm infra:up · (3) 6379'da tek dinleyici kaldığını doğrula — lsof -nP -iTCP:6379 -sTCP:LISTEN
+```
+
+**Bu metni değiştiren, testi de değiştirmek zorundadır:** `assert-queue-capable-redis.test.ts`
+mesajı **birebir** assert ediyor (T-013/`qa` bunu bir `low` olarak kaydetti). Kapı **teşhis eder,
+düzeltmez** — kırmızı, kodun kusuru değil tasarımdır.
+
+### İş durumunu okuyan tRPC uçları: `job.get` ve `job.list`
+
+İkisi de **salt okunurdur** ve ikisi de `tenantProcedure` kullanır (kimlik doğrulaması **ve**
+kiracı bağlamı zorunlu; `publicProcedure` **değil**). Kiracı kimliği **her zaman** oturum
+bağlamından gelir, girdiden **asla** okunmaz (ADR-0009 madde 7). Şemalar:
+`packages/trpc/src/schemas/job-summary.schema.ts`, router:
+`packages/trpc/src/routers/job.router.ts`.
+
+- **`job.get`** — girdi `{ jobId: string }` (en az 1 karakter), çıktı tek iş özeti.
+- **`job.list`** — girdi `{ status?: JobStatus[], limit?: 1-50 (varsayılan 20), cursor?: string }`,
+  çıktı `{ items, nextCursor }`. Keyset sayfalama `(createdAt DESC, id DESC)` üzerinden; `cursor`
+  **önceki sayfanın SON öğesinin** `id`'sidir, `nextCursor` `null` ise sayfa son sayfadır. Boş
+  `status` dizisi geçerlidir ve "hiçbir durum" demektir (sıfır satır).
+
+İş özetinin alanları: `id` · `type` · `status` (`queued` / `running` / `completed` / `failed`) ·
+`progress` (0-100 tamsayı, monoton) · `error` (`{ code, message }` veya `null`) · `createdAt` ·
+`updatedAt` · `startedAt` · `completedAt` (son dördü ISO 8601 dizesi; `startedAt`/`completedAt`
+`null` olabilir).
+
+**Tele ÇIKMAYANLAR (bilinçli):** işin girdi verisi (payload) tel şemasında yok ve
+veritabanı `select`'ine **hiç girmiyor** — derinlemesine savunma _"tele yazmayı unutmadık"_
+değil, _"elimize hiç almadık"_; `error` yalnızca iki alan taşıyor (ayrıntı ve istek kimliği
+yok); `tenantId` tel şemasında **yok**.
+
+**Hata kodları:**
+
+- **`JOB_NOT_FOUND`** → HTTP **404**, i18n anahtarı `errors.job.notFound`. **Üç ayrı olgu bu TEK
+  hatayı üretir:** iş yok · iş **başka kiracıya ait** · imleç çözülemedi. Ayrım **yazılamaz**
+  (sorgu yalnızca kiracı bağlamında koşar, uygulama kodunda kiracı karşılaştırması yoktur,
+  router ve adaptörde dallanma sayısı sıfırdır) → varlık oracle'ı **yapısal olarak** kapalıdır
+  (CLAUDE.md §7 madde 12). Yanıt gövdesi `requestId` dışında üç olguda **bayt düzeyinde aynıdır**.
+- **Girdi doğrulama hatası** (`limit: 51`, boş `jobId`) → **`HTTP_EXCEPTION`/400**,
+  `VALIDATION_ERROR` **değil**. Sebep: Zod **girdi** hatası tRPC sınırında doğuyor ve uygulama
+  hata sınırının `AppError` dalına **hiç girmiyor** (ADR-0010 madde 2). Alan bazlı bir doğrulama
+  gövdesi isteniyorsa bu ayrı bir sürüm kararıdır (ROADMAP → Teknik Borç).
+- Oturum veya kiracı bağlamı yoksa `tenantProcedure`'ün standart hataları.
+
+**Yazma yüzeyi YOK:** `job.cancel` / `job.retry` / `job.delete` ve toplu işlemler bu sürümde
+bilinçli olarak **yazılmadı**; bir işin durumunu değiştiren tek şey kuyruğun kendisidir.
+
+---
+
+## Ölçüm disiplini (v0.0.11+) — beş kural
+
+Bu bölümdeki kuralların hepsi **fiilen yaşanmış** yanlış ölçümlerden türetildi. v0.0.11'de aynı
+kusur sınıfı — _beyan ile gerçeklik arasındaki boşluk_ — **üç farklı aktör** tarafından yeniden
+üretildi: Orkestratör satır sayımını yanlış rolle yapıp "tablo boş" sandı (üç kez), `qa` bayat
+derleme çıktısı üzerinden mutasyon ölçüp "ölçüm boşa çıkıyor" bulgusu yazmaya hazırlandı, ve
+`qa`'nın ilk lint koşumu tamamen önbellekten geldi. **Üçü de `lint`/`typecheck` ile görünmüyordu**
+ve o turun 64 mutasyonunun çoğu statik kapıları yeşil geçti. Reçete
+[ADR-0014](./adr/0014-pnpm-dev-env-yuklemesi-ve-gelistirme-ortami-guvenilirligi.md) Karar 8'de
+yazılı (tek uygulama + tam çıktı assert'i + yakın-kaçırma içeren sentetik veri); v0.0.11 buna
+**bir madde ekledi: bir assert'in boşa çıkmadığı da kanıtlanmalıdır.**
+
+### (a) RLS'li bir tabloda satır sayımı KULLANILAN ROLE bağlıdır
+
+`job` üzerinde `FORCE ROW LEVEL SECURITY` var ve **FORCE, tablonun sahibini de politikaya tabi
+kılar.** `app.tenant_id` ayarlanmamış bir oturumda sonuç, tablonun içeriğinden **bağımsız olarak
+her zaman sıfırdır**:
+
+```bash
+# YANILTICI — sahip rolle, kiracı bağlamı olmadan: her zaman 0 döner
+psql -U arkesoft_migrator -d arkesoft -c "select count(*) from job;"
+
+# DOĞRU (a) — rolbypassrls taşıyan rol (compose'un POSTGRES_USER'ı)
+psql -U arkesoft -d arkesoft -c "select count(*) from job;"
+
+# DOĞRU (b) — kiracı bağlamı kurulmuş oturum
+psql -U arkesoft_app -d arkesoft \
+  -c "select set_config('app.tenant_id', '<tenantId>', false); select count(*) from job;"
+```
+
+T-013'te bu hata **fiilen yapıldı**: ilk ölçüm `0` döndü, "tablo boş" diye raporlandı ve bu
+sonuç **üç kez tekrarlandı**; doğru rolle ölçüldüğünde tabloda **1 satır** vardı (bayat bir
+`queued` kaydı — v0.15.0'ın bayat satır tespiti borcunun ilk gerçek örneği). Rol haritası:
+`arkesoft` (`rolsuper=t`, `rolbypassrls=t`) · `arkesoft_migrator` (ikisi de `f`) · `arkesoft_app`
+(ikisi de `f`).
+
+**Kural:** RLS'li bir tabloda satır sayan her ölçüm, **hangi rolle** koştuğunu yazmak zorundadır.
+`arkesoft_migrator` ile kiracı bağlamsız sayım **hiçbir şey kanıtlamaz**. Bu kural Redis
+ölçümleri için geçerli **değildir** (`DBSIZE`, `--scan` RLS'e tabi değil).
+
+### (b) Bayat derleme çıktısı (`dist`) üzerinden ölçüm yapılmaz
+
+`apps/api`, `@arkesoft/trpc`'yi **derlenmiş `dist` üzerinden** tüketir. Bir `packages/*` dosyasını
+değiştirip (veya mutasyona uğratıp) **build etmeden** `apps/api` testlerini koşturmak **eski
+çıktıyı** ölçer. T-013'te `qa` tam bu tuzağa düştü: bir mutasyon yeşil kaldı ve _"ölçüm boşa
+çıkıyor"_ bulgusu yazılmak üzereydi; yeniden derlemeden sonra test **doğru şekilde** kırmızı
+oldu.
+
+**Kural:** `packages/*`'ta bir değişiklik yaptıktan sonra `apps/*` tarafında ölçüm yapmadan önce
+
+```bash
+pnpm --filter @arkesoft/trpc build   # veya değiştirilen paket
+```
+
+koştur. Aynı sınıf daha önce `packages/db` (guard'ın derlenmiş hâli) ve `packages/theme-sdk`
+(`schema:generate`) için de yaşandı — bkz. yukarıdaki iki bölüm.
+
+### (c) FULL TURBO bir ölçüm DEĞİLDİR
+
+Bir kabul kriteri kapısı **önbellekten oynatılan çıktıyla** doğrulanamaz. T-013'te `qa`'nın ilk
+`pnpm lint` koşumu 21/21 **cached** verdi; bu bir kanıt değil, bir kayıttır.
+
+```bash
+turbo run lint --force
+turbo run typecheck --force
+turbo run test --force
+turbo run test:isolation --force
+turbo run build --force
+pnpm format:check
+```
+
+**Kural:** kabul kriteri kapısı `--force` ile ve **0 cached** olarak doğrulanır; raporda cached
+sayısı yazılır. Önbellekli bir zincir yalnızca _"az önce zaten `--force` ile koştu"_ notuyla
+birlikte anlamlıdır.
+
+### (d) Literal-jeton kuralı — v0.0.11'de BEŞ kez tetiklendi
+
+Kural `AGENT_BASELINE.md` §5'te zaten yazılı; buraya **ölçülmüş örnekleriyle** taşınıyor, çünkü
+bir turda **dört ajan bağımsız olarak** aynı tuzağa düştü:
+
+1. Bir migration/taksonomi beyanını denetleyen grep, aynı sözcük çiftini **yorumunda bitişik**
+   yazdığı için kendi yorumunu buldu → kalıcı yanlış pozitif.
+2. Redis yapılandırmasına **yazma** yapılmadığını denetleyen grep, yasakladığı alt komut çiftini
+   yorumda bitişik gördü → beş yanlış eşleşme.
+3. Bir koşul kalıbının yazılmadığını denetleyen grep, kalıbı kendi açıklama yorumunda buldu.
+4. En pahalısı: `eslint.config.mjs` içinde bir **blok yorumunun içine** yazılan iki yıldız ve
+   eğik çizgi dizisi **yorumu kapattı** ve `eslint` sözdizimi hatasıyla düştü — yani lint
+   **tamamen** çalışamaz hâle geldi.
+5. Beşincisi bugün repoda **duruyor** (`qa` `low` olarak kaydetti,
+   `apps/api/src/__tests__/assert-queue-capable-redis.test.ts:16`): denetim kalıbı o yorumda
+   bitişik yazılı; kapı yalnızca `packages/db` kapsamlı olduğu için **bugün** geçiyor.
+
+**Kural:** grep ile denetlenen bir jetonu, o jetonu yasaklayan dosyanın **yorumunda bitişik
+yazma**. Kalıbı Türkçe tarif et ("şu iki sözcüğün bitişik yazımı") veya jetonu çalışma anında iki
+parçadan birleştir. Aynı disiplin blok yorumlarının **içeriğine** de uygulanır: yorum kapatan
+dizileri tarif et, yazma.
+
+### (e) Üç küçük sözleşme tuzağı (hepsi ölçülerek bulundu)
+
+- **`z.string().datetime()` KULLANILAMAZ.** Zod 4.6.7'de bu yöntem `@deprecated` ve repo
+  tip-bilinçli katı lint ile koştuğu için `@typescript-eslint/no-deprecated` onu **lint hatası**
+  yapıyor. Doğrusu **`z.iso.datetime()`**; çıkarılan tip aynı (`string`), anlamı birebir aynı.
+- **`@arkesoft/db` katman kapısının geçerli biçimi import düzeyidir.** `rg "@arkesoft/db" packages/trpc/src`
+  **zaten yanlış pozitiftir** — iki dosya o paket adını v0.0.6'dan beri **yorumlarında** taşıyor.
+  Geçerli kapı: `rg "from '@arkesoft/db'" packages/trpc/src` → 0 eşleşme beklenir.
+- **`pnpm --filter <paket> lint typecheck build` TEK KOMUT OLARAK ÇALIŞMAZ.** pnpm ikinci ve
+  üçüncü argümanı eslint'e **dosya deseni** olarak geçirir ve komut
+  `No files matching the pattern "typecheck"` ile düşer. Üçü **ayrı ayrı** koşturulmalıdır.
+
+---

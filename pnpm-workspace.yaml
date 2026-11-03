@@ -33,9 +33,26 @@ packages:
 #      çıktısında flag'lendi; CLI'nin generate/migrate çağrıları için gerekli.
 # '@prisma/client' BİLEREK EKLENMEDİ: test edilen kurulumda hiçbir build script
 # uyarısı üretmedi (flag'lenmedi) — ihtiyaç doğmadan izin eklemek R1'i ihlal eder.
+#
+# EK (v0.0.11, T-013/S1 — ÖLÇÜLDÜ): `bullmq` eklenince temiz `pnpm install`
+#   `ERR_PNPM_IGNORED_BUILDS: Ignored build scripts: msgpackr-extract@3.0.6`
+# ile BAŞARISIZ oldu. Zincir: bullmq → msgpackr (dependencies) →
+# msgpackr-extract (msgpackr'ın OPSİYONEL native hızlandırıcısı).
+# Karar: `false` — yani açıkça REDDEDİLDİ, izin verilmedi:
+#   1) R1 disiplini (asgari izin): native derleme script'i çalıştırmak için
+#      gerçek bir ihtiyaç yok — msgpackr native modül bulunamadığında saf JS
+#      yoluna düşer; kuyruk iş payload'ları (küçük JSON nesneleri) için native
+#      hızlandırıcının ölçülebilir bir faydası yok.
+#   2) Değer `false` olduğu için karar KAYITLI sayılıyor ve yukarıdaki hata
+#      artık doğmuyor (kurulum exit 0 — ölçüldü); yani hatayı "izin vererek"
+#      değil "bilinçli reddederek" kapattık.
+#   3) Reddetmenin bedeli yalnızca performans (saf JS serileştirme), doğruluk
+#      değil. Faydası: CI ve geliştirici makinelerinde node-gyp/derleyici
+#      zinciri bağımlılığı yok, tedarik zinciri yüzeyi dar kalıyor.
 allowBuilds:
   '@prisma/engines': true
   prisma: true
+  'msgpackr-extract': false
 
 catalog:
   '@eslint/js': ^10.0.1
@@ -116,10 +133,46 @@ catalog:
   pino: 10.4.0
   # ioredis: `/health/ready` ucunun Redis canlılık kontrolü için (AC3).
   # `npm view ioredis version` ile çözülen en güncel kararlı sürüm ("latest"
-  # dist-tag; "next"/"beta" aday sürümler atlandı). v0.0.11'de BullMQ zaten
-  # ioredis'i peer olarak isteyecek — bu sürümde eklenmesi ikinci bir Redis
-  # istemcisi borcu doğurmuyor, aynı bağımlılık iki sürüm sonra tekrar kullanılıyor.
+  # dist-tag; "next"/"beta" aday sürümler atlandı).
+  #
+  # ⚠ GÜNCELLEME (v0.0.11, T-013/S1 — A-A8 ÖLÇÜLDÜ, beyan DEĞİL):
+  # Bu satırın eski yorumu "v0.0.11'de BullMQ zaten ioredis'i PEER olarak
+  # isteyecek" diyordu; bu bir VARSAYIMDI. Ölçümün sonucu (aşağıdaki `bullmq`
+  # bloğunda ayrıntılı): `bullmq@6.5.0`'ın `dependencies`'inde ioredis YOK
+  # (tslib/semver/msgpackr/cron-parser/node-abort-controller) ve
+  # `peerDependencies.ioredis` = ">=5.0.0" + `peerDependenciesMeta.ioredis` =
+  # { optional: true }. Yani varsayım DOĞRU çıktı, üstelik daha güçlü biçimde:
+  # ioredis yalnızca peer, hem de OPSİYONEL peer. Aralık (">=5.0.0") buradaki
+  # 6.0.0 pinini kapsıyor → ağaçta İKİNCİ bir ioredis sürümü doğMUYOR
+  # (`pnpm why ioredis` ile ölçüldü: tek sürüm, 6.0.0). Redis istemcisini bullmq
+  # DEĞİL biz sağlıyoruz (architect K1.a: `createRedisConnection`), dolayısıyla
+  # bu pin aynı zamanda kuyruğun kullandığı istemcinin TEK kaynağı.
   ioredis: 6.0.0
+  # bullmq: CLAUDE.md §2 yığın tablosunda adıyla yazılı ("Önbellek / kuyruk:
+  # Redis + BullMQ") → yeni ana bağımlılık onayı GEREKMİYOR (§4.5 md 3
+  # tetiklenmedi). ROADMAP v0.0.11, T-013.
+  #
+  # BİLEREK dist-tag "latest" (6.5.4) DEĞİL: `npm view bullmq time --json`
+  # 6.5.4'ün 2026-11-02'de, yani BUGÜNDEN (2026-11-03) 1 gün önce
+  # yayınlandığını gösteriyor — repo disiplini 7 günden yeni sürüm seçmiyor
+  # ve `minimumReleaseAgeExclude` izin kaydı EKLENMİYOR (nodemailer 10.2.1 /
+  # @trpc 11.19.0 / astro 7.4.2 emsalleri). Eşiği karşılayan en güncel sürüm:
+  # 6.5.0 (yayın 2026-10-26, 8 gün). Atlanan sürümler 6.5.1 (10-28, 6 gün),
+  # 6.5.2 (10-30), 6.5.3 (10-31), 6.5.4 (11-02) — hepsi eşik altı.
+  # v6 hattı olgun: 6.0.0 2026-07-30'da yayınlandı (3+ ay, 6.5.x serisinde).
+  #
+  # Exact pin (`^`/`~` DEĞİL): kuyruk, üretici (`apps/api`) ile tüketicinin
+  # (`main.worker.ts`) AYNI Redis anahtar şemasında buluşmasına dayanıyor;
+  # bullmq'nun anahtar düzeni patch sürümlerde bile değişebildiği için iki
+  # süreç arasında sessiz sürüm kayması kabul edilemez (Nest üçlüsü ve
+  # @trpc ikilisindeki aynı gerekçe).
+  #
+  # ⚠ Karşılanmamış peer UYARISI DOĞMUYOR: dört peer'ın (pg, redis, ioredis,
+  # bullmq-otel) tamamı `peerDependenciesMeta`'da `optional: true` →
+  # `strict-peer-dependencies=true` altında `redis`/`bullmq-otel` kurulu
+  # olmamasına rağmen kurulum exit 0 (ölçüldü). `node-redis` (`redis` paketi)
+  # BİLİNÇLİ OLARAK EKLENMEDİ — istemcimiz ioredis (yukarıdaki pin).
+  bullmq: 6.5.0
   # @nestjs/testing + supertest + @types/supertest: HTTP seviyesinde
   # entegrasyon testi aracı — ROADMAP'in bu sürümde "e2e" dediği şey budur
   # (gerçek tarayıcı/Playwright e2e'si v0.0.19'da gelir). Nest paketiyle aynı

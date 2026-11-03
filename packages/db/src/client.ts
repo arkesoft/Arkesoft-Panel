@@ -160,6 +160,19 @@ export type AuthModelName = (typeof AUTH_SECRET_BEARING_MODELS)[number]
  *                            `relrowsecurity=t`), test-only kullanım
  *                            allowlist'in güvenlik garantisini ZAYIFLATMAZ.
  *
+ * **`'job'` BU ALLOWLIST'E BİLEREK EKLENMEDİ (ROADMAP v0.0.11, T-013/S2,
+ * architect K3/R-A2 — AÇIK mimari karar, yukarıdaki BAĞLAYICI KURAL gereği):**
+ * `job` kiracıya bağlı bir tablodur ve RLS'i VAR + ÇALIŞIR, ama ona erişim
+ * YALNIZCA kiracı kapsamlı yolda (`withTenant()` → `TenantTransactionClient`)
+ * gereklidir. Üye EKLENMEDİĞİ için `prisma.db.job.update(...)` gibi bir çağrı
+ * `apps/api`'de DERLENMEZ — yani `withTenant` dışından `Job`'a dokunmak bir
+ * "dikkat edin" yorumu değil, bir DERLEME HATASIDIR. Bu, kuyruk işi
+ * handler'larının kiracı bağlamı dışında `Job` yazmasını engelleyen TİP
+ * SEVİYESİ garantinin (K5 katman 2) yarısıdır; diğer yarısı
+ * `TenantTransactionClient`'ın `'job'`'u İÇERMESİDİR (aşağıda).
+ * ⚠ Bir typecheck hatasını susturmak için bu satıra `'job'` EKLEMEK o garantiyi
+ * SESSİZCE YOK EDER — doğru çözüm çağrıyı `withTenant()` içine taşımaktır.
+ *
  * `$disconnect` BİLEREK Pick'TE YOK (önceki `Omit<>` sürümünde vardı) —
  * ölçüldü: `apps/api`'de `$disconnect()` HER ZAMAN `#client` (TAM tip,
  * `AuthPrismaDatabase`/`PrismaDatabase`) üzerinden çağrılıyor
@@ -195,8 +208,18 @@ export type AppPrismaDatabase = Pick<PrismaDatabase, 'tenant' | 'user' | 'tenant
  * ÖLÇTÜĞÜ dördüncü kaçış kapısı, bkz. T-006 FIX turu 2 kaydı). `Pick<>`
  * allowlist'i BUNU AYRICA listelemeyi GEREKTİRMEZ — Pick'in doğası `account`/
  * `session`/`verification`/`$transaction`'ın TÜMÜNÜ otomatik dışarıda tutar.
+ *
+ * GENİŞLETME (ROADMAP v0.0.11, T-013/S2, architect K3/R-A2 — AÇIK mimari
+ * karar): `'job'` EKLENDİ. `Job` kiracıya bağlı bir tablodur ve kuyruk işi
+ * handler'larının onu okuması/yazması GEREKİR — ama YALNIZCA kiracı kapsamlı
+ * transaction içinde. `apps/api/src/prisma/prisma.service.ts`'in
+ * `withTenant<T>(tenantId, (tx: TenantTransactionClient) => …)` sarmalayıcısı
+ * `tx`'i BU tiple daraltır, dolayısıyla eklemenin etkisi oraya OTOMATİK akar.
+ * ⚠ Simetrik ve BAĞLAYICI karar: `AppPrismaDatabase`'e `'job'` EKLENMEZ
+ * (gerekçesi orada) — ikisi ZIT yönde ilerler ve bu kasıtlıdır: `Job`'a
+ * erişimin TEK derlenebilir yolu `withTenant()`'tır.
  */
-export type TenantTransactionClient = Pick<TransactionClient, 'tenantMembership'>
+export type TenantTransactionClient = Pick<TransactionClient, 'tenantMembership' | 'job'>
 
 /**
  * Tam Prisma istemci yüzeyinin (sır taşıyan üç modeli DE İÇEREN) takma adı.

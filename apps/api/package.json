@@ -1,6 +1,6 @@
 {
   "name": "@arkesoft/api",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "NestJS API — iş mantığı, tRPC router implementasyonu, kuyruk worker’ı",
@@ -23,7 +23,9 @@
     "test": "vitest run",
     "test:isolation": "vitest run --config vitest.isolation.config.ts",
     "start": "node dist/main.js",
-    "dev": "tsc -p tsconfig.build.json --watch & node --watch --env-file-if-exists=../../.env dist/main.js"
+    "start:worker": "node dist/main.worker.js",
+    "dev": "tsc -p tsconfig.build.json --watch & node --watch --env-file-if-exists=../../.env dist/main.js",
+    "dev:worker": "node --watch --env-file-if-exists=../../.env dist/main.worker.js"
   },
   "dependencies": {
     "@arkesoft/config": "workspace:*",
@@ -35,6 +37,7 @@
     "@nestjs/core": "catalog:",
     "@nestjs/platform-express": "catalog:",
     "better-auth": "catalog:",
+    "bullmq": "catalog:",
     "ioredis": "catalog:",
     "nodemailer": "catalog:",
     "pino": "catalog:",

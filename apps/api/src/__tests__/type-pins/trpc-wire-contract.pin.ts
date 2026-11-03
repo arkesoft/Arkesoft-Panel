@@ -13,7 +13,7 @@
 // typecheck` yalnızca onun TİP düzeyindeki ikiz pinini — pin 1'in ilk yarısı —
 // denetler, saf değer karşılaştırmasını çalışma zamanında `pnpm test` yapar).
 //
-// Dört pin:
+// Yedi pin:
 //   1. `TenantStatusWire` ≡ `TenantStatus` (@arkesoft/db) — tip EŞİTLİĞİ +
 //      çalışma zamanı değer eşitliği (sıralanmış).
 //   2. `keyof TenantSummary` ⊂ `keyof Tenant`; `'planId'`/`'deletedAt'` ∉
@@ -21,18 +21,42 @@
 //   3. `keyof SessionIdentity` ≡ `keyof CurrentUserIdentity` ("echo, DB
 //      okuması yok" iddiasının pini).
 //   4. `TenantReadPortAdapter satisfies TenantReadPort`.
+//   5. ⚠ `JobStatusWire` ≡ `JobStatus` (@arkesoft/db) — pin 1'in BİREBİR
+//      ikizi (ROADMAP v0.0.11, T-013/S8). Tel sözleşmesi dörtlüyü KENDİ
+//      YEREL birleşiminde elle yazıyor (ADR-0009 md 5: `packages/trpc`
+//      veritabanı paketini import ETMEZ) — bu pin o yerel birleşimin
+//      Prisma enum'undan SESSİZCE sapmasını engeller.
+//   6. ⚠ `keyof JobSummary` ⊂ `keyof Job`; kuyruk GİRDİSİ kolonu VE
+//      `'tenantId'` ∉ `keyof JobSummary` (architect K7'nin derleyici-zorunlu
+//      hâli — "tele çıkmaz" iddiası bir yorum değil, bir derleme kapısı).
+//   7. `JobReadPortAdapter satisfies JobReadPort`.
 //
 // PİN KANITI (DoD): `TenantSummary`'ye `planId` ekleyerek TEK kasıtlı mutasyon
 // yapılıp `pnpm --filter @arkesoft/api typecheck`'in KIRILDIĞI ölçüldü (çıktı
 // handoff raporunda), mutasyon GERİ ALINDI.
+//
+// PİN 5/6 KANITI (ROADMAP v0.0.11, T-013/S8 — DoD): iki kasıtlı mutasyon
+// FİİLEN uygulandı ve `pnpm --filter @arkesoft/api typecheck`'in KIRILDIĞI
+// ölçüldü, ikisi de md5 ile birebir geri alındı:
+//   M6 — `jobSummarySchema`'ya kuyruk girdisi kolonu eklendi → PİN 6
+//        `TS2322 … '["K7 İHLALİ — … OLMAMALI"]'` verdi.
+//   M7 — tel durum sözlüğüne `'cancelled'` eklendi → PİN 5
+//        `TS2322 … '["FAZLA DURUM — …", "cancelled"]'` verdi.
 
-import type { Tenant } from '@arkesoft/db'
-import { TenantStatus as TenantStatusValue } from '@arkesoft/db'
-import type { SessionIdentity, TenantStatusWire, TenantSummary } from '@arkesoft/trpc'
-import { tenantStatusSchema } from '@arkesoft/trpc'
-import type { TenantReadPort } from '@arkesoft/trpc/server'
+import type { Job, Tenant } from '@arkesoft/db'
+import { JobStatus as JobStatusValue, TenantStatus as TenantStatusValue } from '@arkesoft/db'
+import type {
+  JobStatusWire,
+  JobSummary,
+  SessionIdentity,
+  TenantStatusWire,
+  TenantSummary,
+} from '@arkesoft/trpc'
+import { jobStatusSchema, tenantStatusSchema } from '@arkesoft/trpc'
+import type { JobReadPort, TenantReadPort } from '@arkesoft/trpc/server'
 
 import type { CurrentUserIdentity } from '../../auth/auth-resolution.types.js'
+import type { JobReadPortAdapter } from '../../trpc/ports/job-read.port.adapter.js'
 import type { TenantReadPortAdapter } from '../../trpc/ports/tenant-read.port.adapter.js'
 
 // ---------------------------------------------------------------------------
@@ -179,4 +203,104 @@ export function pinTenantReadPortAdapterSatisfiesPort(
   adapter: TenantReadPortAdapter,
 ): TenantReadPortAdapter {
   return adapter satisfies TenantReadPort
+}
+
+// ---------------------------------------------------------------------------
+// PİN 5 — JobStatusWire ≡ JobStatus (tip) + çalışma zamanı değer eşitliği
+// (ROADMAP v0.0.11, T-013/S8)
+// ---------------------------------------------------------------------------
+
+/** PİN 1'in gerekçesinin AYNISI — karşılaştırma enum'un KENDİ anahtarları üzerinden yapılır. */
+type JobStatusKeys = keyof typeof JobStatusValue
+
+type ExtraWireJobStatuses = Exclude<JobStatusWire, JobStatusKeys>
+type MissingWireJobStatuses = Exclude<JobStatusKeys, JobStatusWire>
+
+type AssertNoExtraWireJobStatuses = ExtraWireJobStatuses extends never
+  ? true
+  : ['FAZLA DURUM — jobStatusSchema içinde olup JobStatus içinde olmayan', ExtraWireJobStatuses]
+
+type AssertNoMissingWireJobStatuses = MissingWireJobStatuses extends never
+  ? true
+  : ['EKSİK DURUM — JobStatus içinde olup jobStatusSchema içinde olmayan', MissingWireJobStatuses]
+
+/**
+ * ⚠ TİP PİNİ 5 — `JobStatusWire` ve `JobStatus`'un anahtar kümesi TAM
+ * eşleşmeli. Migration ile enum'a yeni bir değer eklenirse (ör. `cancelled`)
+ * VEYA tel şeması tek taraflı genişletilirse bu pin `pnpm typecheck`'i KIRAR.
+ * Hiçbir yerden çağrılmaz; varlığının derlenmesi yeterlidir.
+ */
+export function pinJobStatusWireKeysExactlyMatchJobStatus(): {
+  noExtra: AssertNoExtraWireJobStatuses
+  noMissing: AssertNoMissingWireJobStatuses
+} {
+  return { noExtra: true, noMissing: true }
+}
+
+/**
+ * ÇALIŞMA ZAMANI PİNİ 5 — `Object.values(JobStatus)` ile
+ * `jobStatusSchema.options` SIRALANMIŞ karşılaştırma (çalışma zamanı pini
+ * 1'in birebir ikizi). `../trpc-http.test.ts` bu fonksiyonu GERÇEKTEN
+ * ÇAĞIRIR; tip pini anahtar kümesini, bu fonksiyon DEĞER kümesini denetler.
+ */
+export function jobStatusWireValuesMatchPrismaAtRuntime(): boolean {
+  const wireValues = [...jobStatusSchema.options].sort()
+  const prismaValues = Object.values(JobStatusValue).sort()
+
+  return (
+    wireValues.length === prismaValues.length &&
+    wireValues.every((value, index) => value === prismaValues[index])
+  )
+}
+
+// ---------------------------------------------------------------------------
+// PİN 6 — keyof JobSummary ⊂ keyof Job; kuyruk girdisi kolonu ve 'tenantId'
+// JobSummary'de YOK (architect K7)
+// ---------------------------------------------------------------------------
+
+/** `JobSummary`'de olup `Job` Prisma modelinde OLMAYAN alanlar (olmamalı — boş küme). */
+type JobSummaryKeysNotInJob = Exclude<keyof JobSummary, keyof Job>
+
+type AssertJobSummarySubsetOfJob = JobSummaryKeysNotInJob extends never
+  ? true
+  : ['FAZLA ALAN — JobSummary alanı Job modelinde yok', JobSummaryKeysNotInJob]
+
+/**
+ * ⚠ Kuyruk GİRDİSİNİ taşıyan JSONB kolonunun adı BURADA literal olarak
+ * yazılır — bu dosya o yasağı DENETLEYEN taraftır, yasağın ÖZNESİ
+ * (`packages/trpc/src/schemas/job-summary.schema.ts`) değildir. Literal-jeton
+ * kuralı (AGENT_BASELINE.md §5) jetonu ÖZNEDE yasaklar; DENETLEYİCİDE jeton
+ * ZORUNLUDUR, yoksa denetim diye bir şey kalmaz.
+ */
+type AssertQueueInputColumnExcludedFromJobSummary = 'payload' extends keyof JobSummary
+  ? ["K7 İHLALİ — işin kuyruk girdisi kolonu JobSummary'de OLMAMALI"]
+  : true
+
+type AssertTenantIdExcludedFromJobSummary = 'tenantId' extends keyof JobSummary
+  ? ["K7 İHLALİ — 'tenantId' JobSummary'de OLMAMALI"]
+  : true
+
+/**
+ * ⚠ TİP PİNİ 6 — `JobSummary`'nin alan kümesi `Job`'un bir ALT kümesi olmalı
+ * (tele-özgü bir alan icat edilemez) ve iki alan KASITLI olarak dışarıda
+ * kalmalı. Herhangi biri eklenirse bu pin `pnpm typecheck`'i KIRAR — "tele
+ * çıkmaz" iddiası böylece bir yorum değil, bir derleme kapısıdır.
+ */
+export function pinJobSummaryIsSubsetOfJobAndExcludesQueueInputAndTenantId(): {
+  subset: AssertJobSummarySubsetOfJob
+  excludesQueueInput: AssertQueueInputColumnExcludedFromJobSummary
+  excludesTenantId: AssertTenantIdExcludedFromJobSummary
+} {
+  return { subset: true, excludesQueueInput: true, excludesTenantId: true }
+}
+
+// ---------------------------------------------------------------------------
+// PİN 7 — JobReadPortAdapter satisfies JobReadPort
+// ---------------------------------------------------------------------------
+
+/** ⚠ TİP PİNİ 7 — PİN 4'ün birebir ikizi (ROADMAP v0.0.11, T-013/S8). */
+export function pinJobReadPortAdapterSatisfiesPort(
+  adapter: JobReadPortAdapter,
+): JobReadPortAdapter {
+  return adapter satisfies JobReadPort
 }

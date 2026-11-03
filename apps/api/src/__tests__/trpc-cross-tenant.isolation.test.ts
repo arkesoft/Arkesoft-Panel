@@ -355,3 +355,353 @@ describe('/trpc/storefront.currentTenant — çapraz kiracı OKUMA (madde 11, AD
     },
   )
 })
+
+// ROADMAP v0.0.11, T-013/S8, CLAUDE.md §7 madde 11/12 — `/trpc/job.get` ve
+// `/trpc/job.list`'in ÇAPRAZ OKUMA testleri. Bu yüzeyin YAZMA tarafı YOK
+// (iki prosedür de salt okunur `query`) → çapraz YAZMA testi TANIMSIZ;
+// madde 11'in metni BİLEREK çapraz OKUMA ile karşılanır (yukarıdaki
+// `storefront.currentTenant` süitinin AYNI gerekçesi).
+//
+// ⚠⚠ AC8'İN TAM METNİ BURADA ÖLÇÜLÜR: kiracı A, B'nin `jobId`'siyle 404
+// sınıfı alır VE var olmayan bir `jobId` ile BİREBİR AYNI hata gövdesini
+// alır (kod + mesaj + `details` KARŞILAŞTIRMALI). Gövde `requestId` dışında
+// bayt-birebir aynı olmak ZORUNDA — aksi hâlde istemci iki olguyu ayırt eder
+// ve başka kiracının bir işinin VARLIĞINI öğrenir.
+//
+// ⚠ İddianın VACUOUS OLMADIĞI ayrıca ölçülür: (a) aynı yol KENDİ işi için
+// 200 + doğru gövde döner (yani 404 "rota yok"/"yüzey bozuk" değil, gerçek
+// bir domain kararı), (b) iki gövde de BOŞ/undefined DEĞİL — `JOB_NOT_FOUND`
+// kodunu ve `errors.job.notFound` anahtarını GERÇEKTEN taşıyor.
+//
+// AYRI `describe` — yukarıdaki iki süit kiracı tablosu DEĞİL platform
+// tablosunu (`tenant`) ölçüyor; bu süit KİRACIYA BAĞLI bir tabloyu (`job`)
+// HTTP yüzeyinden ölçüyor.
+describe('/trpc/job.* — çapraz kiracı OKUMA + varlık oracle kapanışı (AC8, ROADMAP v0.0.11/T-013/S8)', () => {
+  let app: INestApplication<Server> | undefined
+  let prismaService: PrismaService
+
+  beforeAll(async () => {
+    const testApp = await createTestApp()
+    app = testApp.app
+    prismaService = app.get(PrismaService)
+  })
+
+  afterAll(async () => {
+    if (app !== undefined) {
+      await app.close()
+    }
+  })
+
+  function httpServer(): Server {
+    if (app === undefined) {
+      throw new Error('test uygulaması henüz kurulmadı')
+    }
+    return app.getHttpServer()
+  }
+
+  /** `/trpc/<yol>?input=<json>` — tRPC'nin GET sözleşmesi (batching KAPALI). */
+  function trpcQueryPath(procedure: string, input: Record<string, unknown>): string {
+    return `/trpc/${procedure}?input=${encodeURIComponent(JSON.stringify(input))}`
+  }
+
+  const trpcErrorEnvelopeSchema = z.object({
+    error: z.object({
+      data: z.object({
+        code: z.string(),
+        httpStatus: z.number(),
+        appError: appErrorBodySchema,
+      }),
+    }),
+  })
+
+  it(
+    "kiracı A, B'nin jobId'siyle 404 alır; var olmayan jobId ile BİREBİR AYNI gövdeyi alır " +
+      '(requestId hariç bayt-birebir) — ve aynı yol KENDİ işi için 200 döner (vacuous değil)',
+    async () => {
+      const slugA = uniqueSlug('job-cross-a')
+      const slugB = uniqueSlug('job-cross-b')
+
+      const tenantA = await prismaService.db.tenant.create({
+        data: { slug: slugA, name: 'İş Çapraz Kiracı A', status: TenantStatus.active },
+      })
+      const tenantB = await prismaService.db.tenant.create({
+        data: { slug: slugB, name: 'İş Çapraz Kiracı B', status: TenantStatus.active },
+      })
+
+      try {
+        const session = await createAuthenticatedSession(httpServer())
+
+        // Kullanıcı YALNIZCA kiracı A'ya üye — B bağlamında istek atmayı
+        // `AuthGuard` zaten 403 ile kesiyor (yukarıdaki AC6 süiti bunu
+        // ölçüyor). Buradaki soru DAHA İNCE: A bağlamında, A'nın geçerli
+        // oturumuyla, B'nin bir kaynağının KİMLİĞİNİ sormak.
+        await prismaService.withTenant(tenantA.id, (tx) =>
+          tx.tenantMembership.create({
+            data: { tenantId: tenantA.id, userId: session.userId, role: TenantRole.owner },
+          }),
+        )
+
+        const jobIdA = await prismaService.withTenant(tenantA.id, async (tx) => {
+          const row = await tx.job.create({
+            data: {
+              tenantId: tenantA.id,
+              type: 'tenant.provision',
+              payload: { tenantId: tenantA.id },
+            },
+            select: { id: true },
+          })
+
+          return row.id
+        })
+
+        const jobIdB = await prismaService.withTenant(tenantB.id, async (tx) => {
+          const row = await tx.job.create({
+            data: {
+              tenantId: tenantB.id,
+              type: 'tenant.provision',
+              payload: { tenantId: tenantB.id },
+            },
+            select: { id: true },
+          })
+
+          return row.id
+        })
+
+        const absentJobId = `job${randomUUID().replaceAll('-', '')}`
+
+        function getJob(jobId: string, requestId: string): Promise<request.Response> {
+          return request(httpServer())
+            .get(trpcQueryPath('job.get', { jobId }))
+            .set('Cookie', session.cookieHeader)
+            .set('x-arkesoft-tenant', slugA)
+            .set('x-request-id', requestId)
+        }
+
+        const foreignRequestId = uniqueRequestId('job-foreign')
+        const absentRequestId = uniqueRequestId('job-absent')
+        const ownRequestId = uniqueRequestId('job-own')
+
+        const foreignResponse = await getJob(jobIdB, foreignRequestId)
+        const absentResponse = await getJob(absentJobId, absentRequestId)
+        const ownResponse = await getJob(jobIdA, ownRequestId)
+
+        // --- (a) VACUOUS DEĞİL: aynı yol KENDİ işi için ÇALIŞIYOR. ---------
+        expect(ownResponse.status).toBe(200)
+        const ownBody = z
+          .object({ result: z.object({ data: z.object({ id: z.string(), type: z.string() }) }) })
+          .parse(ownResponse.body)
+        expect(ownBody.result.data.id).toBe(jobIdA)
+        expect(ownBody.result.data.type).toBe('tenant.provision')
+
+        // --- (b) 404 SINIFI: yabancı VE var olmayan kimlik. ----------------
+        expect(foreignResponse.status).toBe(404)
+        expect(absentResponse.status).toBe(404)
+
+        const foreignEnvelope = trpcErrorEnvelopeSchema.parse(foreignResponse.body)
+        const absentEnvelope = trpcErrorEnvelopeSchema.parse(absentResponse.body)
+
+        // --- (c) VACUOUS DEĞİL: iki gövde de GERÇEKTEN dolu. --------------
+        expect(foreignEnvelope.error.data.appError.code).toBe('JOB_NOT_FOUND')
+        expect(absentEnvelope.error.data.appError.code).toBe('JOB_NOT_FOUND')
+        expect(foreignEnvelope.error.data.appError.message).toBe('errors.job.notFound')
+        expect(absentEnvelope.error.data.appError.message).toBe('errors.job.notFound')
+        expect(foreignEnvelope.error.data.code).toBe('NOT_FOUND')
+        expect(foreignEnvelope.error.data.httpStatus).toBe(404)
+
+        // --- (d) BİREBİR AYNI GÖVDE — `requestId` HARİÇ (her çağrı kendi
+        // değerini gönderdi), diğer ÜÇ alan KARŞILAŞTIRMALI olarak aynı. ---
+        expect(foreignEnvelope.error.data.appError.requestId).toBe(foreignRequestId)
+        expect(absentEnvelope.error.data.appError.requestId).toBe(absentRequestId)
+        expect({ ...foreignEnvelope.error.data.appError, requestId: '' }).toEqual({
+          ...absentEnvelope.error.data.appError,
+          requestId: '',
+        })
+        expect({ ...foreignEnvelope.error.data, appError: null }).toEqual({
+          ...absentEnvelope.error.data,
+          appError: null,
+        })
+
+        // --- (e) B'nin HİÇBİR kimliği gövdede/başlıkta GEÇMEZ. ------------
+        const rawForeignBody = JSON.stringify(foreignResponse.body)
+        expect(rawForeignBody).not.toContain(tenantB.id)
+        expect(rawForeignBody).not.toContain(tenantB.slug)
+        expect(rawForeignBody).not.toContain(tenantB.name)
+        expect(rawForeignBody).not.toContain(jobIdB)
+
+        const rawForeignHeaders = JSON.stringify(foreignResponse.headers)
+        expect(rawForeignHeaders).not.toContain(tenantB.id)
+        expect(rawForeignHeaders).not.toContain(jobIdB)
+      } finally {
+        // `job` satırları `onDelete: Cascade` ile kiracı silinince temizlenir
+        // (ADR-0003 madde 3) — bu dosyanın üyelik temizliğiyle AYNI gerekçe.
+        await prismaService.db.tenant.delete({ where: { id: tenantA.id } })
+        await prismaService.db.tenant.delete({ where: { id: tenantB.id } })
+      }
+    },
+    20_000,
+  )
+
+  it(
+    'job.list YALNIZCA kendi kiracısının satırlarını döner — ' +
+      "B'nin işi A'nın listesinde ne öğe ne de bayt olarak yok",
+    async () => {
+      const slugA = uniqueSlug('job-list-a')
+      const slugB = uniqueSlug('job-list-b')
+
+      const tenantA = await prismaService.db.tenant.create({
+        data: { slug: slugA, name: 'İş Liste Kiracı A', status: TenantStatus.active },
+      })
+      const tenantB = await prismaService.db.tenant.create({
+        data: { slug: slugB, name: 'İş Liste Kiracı B', status: TenantStatus.active },
+      })
+
+      try {
+        const session = await createAuthenticatedSession(httpServer())
+
+        await prismaService.withTenant(tenantA.id, (tx) =>
+          tx.tenantMembership.create({
+            data: { tenantId: tenantA.id, userId: session.userId, role: TenantRole.owner },
+          }),
+        )
+
+        const jobIdsA = await prismaService.withTenant(tenantA.id, async (tx) => {
+          const ids: string[] = []
+          for (const index of [0, 1]) {
+            const row = await tx.job.create({
+              data: {
+                tenantId: tenantA.id,
+                type: `tenant.provision`,
+                payload: { tenantId: tenantA.id },
+                createdAt: new Date(Date.parse('2026-11-03T12:00:00.000Z') + index * 1000),
+              },
+              select: { id: true },
+            })
+            ids.push(row.id)
+          }
+          return ids
+        })
+
+        const jobIdsB = await prismaService.withTenant(tenantB.id, async (tx) => {
+          const ids: string[] = []
+          for (const index of [0, 1, 2]) {
+            const row = await tx.job.create({
+              data: {
+                tenantId: tenantB.id,
+                type: 'tenant.provision',
+                payload: { tenantId: tenantB.id },
+                createdAt: new Date(Date.parse('2026-11-03T13:00:00.000Z') + index * 1000),
+              },
+              select: { id: true },
+            })
+            ids.push(row.id)
+          }
+          return ids
+        })
+
+        const response = await request(httpServer())
+          .get(trpcQueryPath('job.list', { limit: 50 }))
+          .set('Cookie', session.cookieHeader)
+          .set('x-arkesoft-tenant', slugA)
+          .set('x-request-id', uniqueRequestId('job-list'))
+
+        expect(response.status).toBe(200)
+
+        const body = z
+          .object({
+            result: z.object({
+              data: z.object({
+                items: z.array(z.object({ id: z.string() })),
+                nextCursor: z.string().nullable(),
+              }),
+            }),
+          })
+          .parse(response.body)
+
+        // VACUOUS DEĞİL: A'nın İKİ işi GERÇEKTEN dönüyor (boş liste değil).
+        expect(body.result.data.items.map((item) => item.id).sort()).toEqual([...jobIdsA].sort())
+        expect(body.result.data.nextCursor).toBeNull()
+
+        // B'nin üç işinin HİÇBİRİ ne öğe ne de bayt olarak yok.
+        const rawBody = JSON.stringify(response.body)
+        for (const jobIdB of jobIdsB) {
+          expect(body.result.data.items.map((item) => item.id)).not.toContain(jobIdB)
+          expect(rawBody).not.toContain(jobIdB)
+        }
+        expect(rawBody).not.toContain(tenantB.id)
+        expect(rawBody).not.toContain(tenantB.slug)
+        // Kiracı A'nın kendi kimliği de tele ÇIKMAZ (K7 — `tenantId` tel
+        // şemasında YOK).
+        expect(rawBody).not.toContain(tenantA.id)
+      } finally {
+        await prismaService.db.tenant.delete({ where: { id: tenantA.id } })
+        await prismaService.db.tenant.delete({ where: { id: tenantB.id } })
+      }
+    },
+    20_000,
+  )
+
+  it("yabancı kiracının jobId'si İMLEÇ olarak verilse de AYNI 404 — imleç bir varlık oracle'ı DEĞİL", async () => {
+    const slugA = uniqueSlug('job-cursor-a')
+    const slugB = uniqueSlug('job-cursor-b')
+
+    const tenantA = await prismaService.db.tenant.create({
+      data: { slug: slugA, name: 'İş İmleç Kiracı A', status: TenantStatus.active },
+    })
+    const tenantB = await prismaService.db.tenant.create({
+      data: { slug: slugB, name: 'İş İmleç Kiracı B', status: TenantStatus.active },
+    })
+
+    try {
+      const session = await createAuthenticatedSession(httpServer())
+
+      await prismaService.withTenant(tenantA.id, (tx) =>
+        tx.tenantMembership.create({
+          data: { tenantId: tenantA.id, userId: session.userId, role: TenantRole.owner },
+        }),
+      )
+
+      const jobIdB = await prismaService.withTenant(tenantB.id, async (tx) => {
+        const row = await tx.job.create({
+          data: {
+            tenantId: tenantB.id,
+            type: 'tenant.provision',
+            payload: { tenantId: tenantB.id },
+          },
+          select: { id: true },
+        })
+
+        return row.id
+      })
+
+      const absentCursor = `job${randomUUID().replaceAll('-', '')}`
+
+      function listWithCursor(cursor: string, requestId: string): Promise<request.Response> {
+        return request(httpServer())
+          .get(trpcQueryPath('job.list', { limit: 5, cursor }))
+          .set('Cookie', session.cookieHeader)
+          .set('x-arkesoft-tenant', slugA)
+          .set('x-request-id', requestId)
+      }
+
+      const foreignResponse = await listWithCursor(jobIdB, uniqueRequestId('cursor-foreign'))
+      const absentResponse = await listWithCursor(absentCursor, uniqueRequestId('cursor-absent'))
+
+      expect(foreignResponse.status).toBe(404)
+      expect(absentResponse.status).toBe(404)
+
+      const foreignEnvelope = trpcErrorEnvelopeSchema.parse(foreignResponse.body)
+      const absentEnvelope = trpcErrorEnvelopeSchema.parse(absentResponse.body)
+
+      expect(foreignEnvelope.error.data.appError.code).toBe('JOB_NOT_FOUND')
+      expect(absentEnvelope.error.data.appError.code).toBe('JOB_NOT_FOUND')
+      expect({ ...foreignEnvelope.error.data.appError, requestId: '' }).toEqual({
+        ...absentEnvelope.error.data.appError,
+        requestId: '',
+      })
+      expect(JSON.stringify(foreignResponse.body)).not.toContain(jobIdB)
+    } finally {
+      await prismaService.db.tenant.delete({ where: { id: tenantA.id } })
+      await prismaService.db.tenant.delete({ where: { id: tenantB.id } })
+    }
+  }, 20_000)
+})

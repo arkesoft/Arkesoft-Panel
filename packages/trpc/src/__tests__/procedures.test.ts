@@ -21,8 +21,10 @@ import { isTRPCClientError } from '@trpc/client'
 import { describe, expect, it } from 'vitest'
 
 import {
+  HARNESS_JOB_SUMMARY,
   HARNESS_TENANT_SUMMARY,
   createFakeErrorFactoryPort,
+  createFakeJobReadPort,
   createFakeStorefrontTenantReadPort,
   createFakeTenantReadPort,
   createHarness,
@@ -74,6 +76,9 @@ describe('publicProcedure — hermetik semantik (architect K4)', () => {
       ports: {
         tenantRead: createFakeTenantReadPort(HARNESS_TENANT_SUMMARY),
         storefrontTenantRead: createFakeStorefrontTenantReadPort(HARNESS_TENANT_SUMMARY),
+        // ROADMAP v0.0.11, T-013/S8 — ZORUNLU üye (po R-P2); bu test
+        // `job.*` ÇAĞIRMAZ, stub yalnızca sözleşmeyi doldurur.
+        jobRead: createFakeJobReadPort(HARNESS_JOB_SUMMARY),
       },
       errors: createFakeErrorFactoryPort(),
     }
@@ -289,5 +294,132 @@ describe("requireTenant'ın hata dalı — kimlikli kullanıcı + tenant'sız co
     expect(caught.data?.code).toBe('UNAUTHORIZED')
     expect(caught.data?.httpStatus).toBe(401)
     expect(caught.data?.appError.code).toBe('TENANT_CONTEXT_REQUIRED')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// `job.get` / `job.list` — ROADMAP v0.0.11, T-013/S8
+// ---------------------------------------------------------------------------
+
+describe('job.get (tenantProcedure) — ROADMAP v0.0.11, T-013/S8', () => {
+  it("port'un döndürdüğü JobSummary'yi tele TAŞIR (sıfır dallanma, tek ifade)", async () => {
+    const harness = createHarness()
+
+    const result = await harness.client.job.get.query({ jobId: HARNESS_JOB_SUMMARY.id })
+
+    expect(result).toEqual(HARNESS_JOB_SUMMARY)
+    // ⚠ K7 — tel şekli TAM OLARAK dokuz alan; işin kuyruk girdisi ve kiracı
+    // kimliği YOK. Bu dosya yasağın DENETLEYİCİSİ, öznesi değil
+    // (AGENT_BASELINE.md §5) → jeton burada ZORUNLU.
+    expect(Object.keys(result).sort()).toEqual([
+      'completedAt',
+      'createdAt',
+      'error',
+      'id',
+      'progress',
+      'startedAt',
+      'status',
+      'type',
+      'updatedAt',
+    ])
+    expect(Object.keys(result)).not.toContain('payload')
+    expect(Object.keys(result)).not.toContain('tenantId')
+  })
+
+  it('port AppError fırlatınca 404 + JOB_NOT_FOUND (port TOTAL — resolver null kontrolü YAPMAZ)', async () => {
+    const harness = createHarness()
+
+    let caught: unknown
+    try {
+      await harness.client.job.get.query({ jobId: 'job_baska_kiracinin_isi' })
+      throw new Error('beklenen hata fırlatılmadı — job.get bilinmeyen jobId için BAŞARILI oldu')
+    } catch (error) {
+      caught = error
+    }
+
+    if (!isTRPCClientError<AppRouter>(caught)) {
+      throw new Error(`beklenen TRPCClientError değil: ${String(caught)}`)
+    }
+
+    expect(caught.data?.code).toBe('NOT_FOUND')
+    expect(caught.data?.httpStatus).toBe(404)
+    expect(caught.data?.appError.code).toBe('JOB_NOT_FOUND')
+    expect(caught.data?.appError.message).toBe('errors.job.notFound')
+    expect(caught.data?.appError.details).toEqual({})
+  })
+
+  it("anonim context'te 401 UNAUTHORIZED (tenantProcedure — anonim yüzey DEĞİL)", async () => {
+    const harness = createHarness({ auth: { kind: 'anonymous' }, tenant: { kind: 'absent' } })
+
+    let caught: unknown
+    try {
+      await harness.client.job.get.query({ jobId: HARNESS_JOB_SUMMARY.id })
+      throw new Error("beklenen hata fırlatılmadı — job.get anonim context'te BAŞARILI oldu")
+    } catch (error) {
+      caught = error
+    }
+
+    if (!isTRPCClientError<AppRouter>(caught)) {
+      throw new Error(`beklenen TRPCClientError değil: ${String(caught)}`)
+    }
+
+    expect(caught.data?.code).toBe('UNAUTHORIZED')
+    expect(caught.data?.httpStatus).toBe(401)
+    expect(caught.data?.appError.code).toBe('UNAUTHENTICATED')
+  })
+
+  it("boş jobId girdi doğrulamasında REDDEDİLİR (resolver'a ulaşmaz)", async () => {
+    const harness = createHarness()
+
+    await expect(harness.client.job.get.query({ jobId: '' })).rejects.toThrow()
+  })
+})
+
+describe('job.list (tenantProcedure) — ROADMAP v0.0.11, T-013/S8', () => {
+  it('girdisiz çağrı varsayılan sayfa boyutuyla sayfa döner', async () => {
+    const harness = createHarness()
+
+    const result = await harness.client.job.list.query({})
+
+    expect(result).toEqual({ items: [HARNESS_JOB_SUMMARY], nextCursor: null })
+  })
+
+  it('durum filtresi porta OLDUĞU GİBİ geçirilir (resolver filtreyi YORUMLAMAZ)', async () => {
+    const harness = createHarness()
+
+    const matching = await harness.client.job.list.query({ status: ['queued'] })
+    const notMatching = await harness.client.job.list.query({ status: ['failed'] })
+
+    expect(matching.items).toEqual([HARNESS_JOB_SUMMARY])
+    expect(notMatching.items).toEqual([])
+  })
+
+  it('⚠ perf ikamesi (sözleşme tarafı) — limit: 51 REDDEDİLİR, limit: 50 KABUL edilir (vacuous değil)', async () => {
+    const harness = createHarness()
+
+    await expect(harness.client.job.list.query({ limit: 51 })).rejects.toThrow()
+    await expect(harness.client.job.list.query({ limit: 50 })).resolves.toEqual({
+      items: [HARNESS_JOB_SUMMARY],
+      nextCursor: null,
+    })
+  })
+
+  it("anonim context'te 401 UNAUTHORIZED", async () => {
+    const harness = createHarness({ auth: { kind: 'anonymous' }, tenant: { kind: 'absent' } })
+
+    let caught: unknown
+    try {
+      await harness.client.job.list.query({})
+      throw new Error("beklenen hata fırlatılmadı — job.list anonim context'te BAŞARILI oldu")
+    } catch (error) {
+      caught = error
+    }
+
+    if (!isTRPCClientError<AppRouter>(caught)) {
+      throw new Error(`beklenen TRPCClientError değil: ${String(caught)}`)
+    }
+
+    expect(caught.data?.code).toBe('UNAUTHORIZED')
+    expect(caught.data?.httpStatus).toBe(401)
   })
 })

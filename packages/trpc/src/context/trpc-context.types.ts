@@ -10,6 +10,7 @@
 // optionality'yi TİP DÜZEYİNDE ortadan kaldırmaz.
 
 import type { TenantStatusWire } from '../schemas/tenant-summary.schema.js'
+import type { JobReadPort } from '../ports/job-read.port.js'
 import type { TenantReadPort } from '../ports/tenant-read.port.js'
 import type { StorefrontTenantReadPort } from '../ports/storefront-tenant-read.port.js'
 import type { TrpcErrorFactoryPort } from '../ports/trpc-error-factory.port.js'
@@ -60,10 +61,21 @@ export interface TrpcLoggerPort {
  * `storefrontTenantRead` (ROADMAP v0.0.8, T-009/S5, ADR-0012) BİLEREK
  * `tenantRead`'den AYRI bir port — ikisinin dönüş tipi farklıdır
  * (`StorefrontTenant` vs. `TenantSummary`); sızdırmazlık bu ayrıma dayanır.
+ *
+ * ⚠⚠ `jobRead` (ROADMAP v0.0.11, T-013/S8) ZORUNLU bir üyedir — opsiyonel
+ * (`?`) YAPILMASI YASAKTIR (po R-P2, bağlayıcı). Emsal: `storefrontTenantRead`
+ * v0.0.8'de AYNI biçimde zorunlu eklendi ve `apps/api`'nin
+ * `trpc-http.test.ts`'i bunu "v0.0.8'den itibaren ZORUNLU" diye YAZIYOR.
+ * Opsiyonel bir port, bu nesneyi ELLE kuran her yerin (bugün üretimde BİR,
+ * testlerde ÜÇ yer) portu doldurmayı sessizce ATLAMASINA izin verirdi —
+ * prosedür çalışma zamanında `undefined` üzerinde patlardı. Zorunluluk bu
+ * sapmayı DERLEME HATASINA çevirir; bu üyeyi `?` ile gevşetmek bir typecheck
+ * hatasını susturmak için YAPILMAZ, doğru çözüm portu DOLDURMAKTIR.
  */
 export interface TrpcPorts {
   readonly tenantRead: TenantReadPort
   readonly storefrontTenantRead: StorefrontTenantReadPort
+  readonly jobRead: JobReadPort
 }
 
 /**

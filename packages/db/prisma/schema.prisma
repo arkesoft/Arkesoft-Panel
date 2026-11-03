@@ -15,8 +15,11 @@
 //   - Soft delete yalnızca VARLIK tablolarında (`Tenant`, `User`); saf ilişki tablosu
 //     `TenantMembership`'te yoktur — kaldırma hard delete'tir (bkz. ADR-0003 madde 3).
 //   - `Tenant` ve `User` PLATFORM SEVİYESİDİR, `tenant_id` TAŞIMAZLAR (V4). Tenant'a
-//     bağlı tek tablo `TenantMembership`; RLS politikaları v0.0.13'te elle SQL olarak
-//     eklenecek (bu şema dosyası RLS üretmez — AC6 sapma riskine girmesin).
+//     bağlı tabloların KANONİK LİSTESİ bu dosyada DEĞİL, `src/tenancy.ts` →
+//     `TENANT_SCOPED_TABLES` dizisindedir (makine okunur taksonomi; linter'lar o
+//     diziyi tüketir). RLS politikaları v0.0.13'ten itibaren elle SQL olarak
+//     migration'lara yazılır (bu şema dosyası RLS ÜRETMEZ — AC6 sapma riskine
+//     girmesin).
 //
 // GÜNCELLEME (ROADMAP v0.0.5, T-006/S2 — Better Auth): `Session`/`Account`/
 // `Verification` EKLENDİ, üçü de PLATFORM SEVİYESİ (`tenant_id` TAŞIMAZ) —
@@ -78,6 +81,11 @@ model Tenant {
   deletedAt     DateTime?    @map("deleted_at") @db.Timestamptz(3)
 
   memberships TenantMembership[]
+  // ROADMAP v0.0.11 (T-013/S2): `Job.tenant` ilişkisinin ZORUNLU karşı tarafı.
+  // Prisma ilişkileri iki taraflıdır — bu satır olmadan `prisma generate`
+  // doğrulama hatasıyla durur (emsal: yukarıdaki `memberships`). DDL ÜRETMEZ
+  // (FK kolonu `job` tarafındadır).
+  jobs        Job[]
 
   @@map("tenant")
 }
@@ -202,8 +210,10 @@ model Verification {
   @@map("verification")
 }
 
-/// Tenant'a bağlı TEK tablo. RLS hazırlığı: `tenant_id` kolonu tam olarak bu adla,
-/// `text`, NOT NULL ve en az bir bileşik indeksin öncü kolonu (v0.0.13 politika zemini).
+/// Tenant'a bağlı tablo (`TENANT_SCOPED_TABLES` üyesi; ikincisi `Job`, v0.0.11).
+/// RLS zemini: `tenant_id` kolonu tam olarak bu adla, `text`, NOT NULL ve
+/// `(tenant_id, user_id)` bileşik benzersizlik kısıtının öncü kolonu; politika
+/// `<ts>_rls_tenant_isolation/migration.sql`'de.
 /// Soft delete YOK — üyelik kaldırma hard delete'tir (ADR-0003 madde 3).
 model TenantMembership {
   id        String     @id @default(cuid(2))
@@ -219,6 +229,56 @@ model TenantMembership {
   @@unique([tenantId, userId])
   @@index([userId])
   @@map("tenant_membership")
+}
+
+/// Kiracıya bağlı arka plan işi kaydı (ROADMAP v0.0.11, T-013/S2, architect K3
+/// birebir). `TENANT_SCOPED_TABLES`'ın İKİNCİ üyesi — `tenant_membership`'in
+/// taşıdığı tüm değişmezleri (CLAUDE.md §7 md 1-3) taşır: `tenant_id` `text`
+/// NOT NULL, RLS `ENABLE`+`FORCE`, kanonik `USING`/`WITH CHECK` politikası
+/// (bkz. `<ts>_job_table/migration.sql`) ve `tenant_id` öncü bileşik indeksler.
+///
+/// `@@unique([tenantId, id])` DEKORATİF DEĞİL, ZORUNLU (architect R-A1):
+/// `Job`'un doğal bileşik benzersizliği YOKTUR (`tenant_membership` bunu
+/// `(tenant_id, user_id)` ile doğal olarak karşılıyordu), ama CLAUDE.md §7 md 3
+/// her kiracı tablosundan `tenant_id` öncü BİLEŞİK indeks istiyor ve migration
+/// linter'ı (`__tests__/helpers/migration-set.ts`,
+/// `MISSING_TENANT_ID_LEADING_UNIQUE_INDEX`) bunu mekanik olarak zorluyor.
+/// Fonksiyonel gerekçe: RLS her sorguya `tenant_id = current_setting(...)`
+/// yüklemini EKLER → `job.get`'in fiili yüklemi zaten `(tenant_id, id)`'dir,
+/// yani bu o sorgunun İDEAL indeksidir.
+///
+/// `status` Prisma `enum`'u (String + Zod union DEĞİL): geçersiz durum DB
+/// seviyesinde mekanik olarak imkânsız; Prisma'nın ürettiği enum tam literal
+/// union verdiği için §4'ün "exhaustive switch + assertNever" şartıyla
+/// ÇATIŞMAZ. `cancelled` YOK (`job.cancel` v0.0.11 kapsamı dışında) —
+/// sonradan eklenmesi `ALTER TYPE … ADD VALUE` ile additive'dir.
+///
+/// `payload`/`error` → `Json` (Prisma+PG varsayılanı `jsonb`; `@db.Json`
+/// YAZILMAZ). İkisi de okunurken Zod ile parse edilir (§4) — şemaları
+/// `apps/api` tarafında yaşar, `payload` tele HİÇ ÇIKMAZ. `error`
+/// `@arkesoft/errors` → `toErrorBody()`'nin birebir çıktısıdır; `AppError.context`
+/// o gövdeye ASLA girmez, dolayısıyla bu kolon sır/PII TAŞIMAZ.
+///
+/// Soft delete YOK — iş kaydı olgusal bir denetim izidir; silme/retention
+/// politikası v0.0.17 kapsamındadır.
+model Job {
+  id          String    @id @default(cuid(2))
+  tenantId    String    @map("tenant_id")
+  type        String
+  status      JobStatus @default(queued)
+  progress    Int       @default(0)
+  payload     Json
+  error       Json?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  startedAt   DateTime? @map("started_at") @db.Timestamptz(3)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, status, createdAt(sort: Desc)])
+  @@map("job")
 }
 
 /// Kiracı durumu. `deleted` değeri YOKTUR (A-V8) — silinmişliğin tek doğruluk
@@ -249,4 +309,18 @@ enum TenantRole {
   readonly
 
   @@map("tenant_role")
+}
+
+/// Arka plan işi durumu (ROADMAP v0.0.11, T-013/S2). Dört terminal olmayan/
+/// terminal durum: `queued` (kuyrukta) → `running` (bir worker aldı) →
+/// `completed` | `failed`. `cancelled` BİLEREK YOK — `job.cancel` bu sürümün
+/// kapsamı dışında; değer EKLEMEK additive bir migration'dır, ÇIKARMAK
+/// kolon silmekle aynı iki-sürüm kuralına tabidir.
+enum JobStatus {
+  queued
+  running
+  completed
+  failed
+
+  @@map("job_status")
 }

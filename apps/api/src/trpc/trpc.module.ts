@@ -8,8 +8,16 @@
 // `/trpc/*` için zaten KOŞAR (K4 gerekçe 3) — tRPC katmanı üyelik/kimlik
 // kontrolünü KOPYALAMAZ.
 
+// GÜNCELLEME (ROADMAP v0.0.11, T-013/S8): `JobReadPortAdapter` sağlayıcı
+// olarak EKLENDİ. ⚠ Bu modül `QueueModule`'ü import ETMEZ ve etmemelidir —
+// `job.get`/`job.list` SALT OKUNUR bir yüzeydir, iş kaydı tablosunu okur,
+// kuyruğa dokunmaz. Buraya `QueueModule` bağlamak API sürecine üretici
+// yeteneğinden FAZLASINI vermek olurdu (AC13'ün yapısal ayrımı:
+// `QueueWorkerModule` yalnızca `WorkerModule`'de).
+
 import { Module } from '@nestjs/common'
 
+import { JobReadPortAdapter } from './ports/job-read.port.adapter.js'
 import { StorefrontTenantReadPortAdapter } from './ports/storefront-tenant-read.port.adapter.js'
 import { TenantReadPortAdapter } from './ports/tenant-read.port.adapter.js'
 import { TrpcController } from './trpc.controller.js'
@@ -17,6 +25,11 @@ import { TrpcErrorsPortAdapter } from './trpc-errors.port.adapter.js'
 
 @Module({
   controllers: [TrpcController],
-  providers: [TenantReadPortAdapter, StorefrontTenantReadPortAdapter, TrpcErrorsPortAdapter],
+  providers: [
+    TenantReadPortAdapter,
+    StorefrontTenantReadPortAdapter,
+    JobReadPortAdapter,
+    TrpcErrorsPortAdapter,
+  ],
 })
 export class TrpcModule {}

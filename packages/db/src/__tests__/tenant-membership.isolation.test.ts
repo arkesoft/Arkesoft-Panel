@@ -1,5 +1,22 @@
-// @arkesoft/db — `tenant_membership` için `createTenantIsolationSuite()` kurulumu
-// (ROADMAP v0.0.13, T-005/S4, architect K-E10)
+// @arkesoft/db — `createTenantIsolationSuite()`'in TEK çağrı/kayıt noktası
+// (ROADMAP v0.0.13, T-005/S4, architect K-E10; ROADMAP v0.0.11, T-013/S2'de
+// ikinci prob eklendi)
+//
+// ⚠ DOSYA ADI TARİHSELDİR (`tenant-membership.…`): v0.0.3'te taksonomide tek
+// tablo vardı. v0.0.11'den itibaren bu dosya `TENANT_SCOPED_TABLES`'ın TAMAMINI
+// kaydeder (`tenant_membership` + `job`) — yani adından DAHA GENİŞ bir
+// sorumluluk taşır. Yeniden adlandırma BİLİNÇLİ OLARAK yapılmadı (T-013/S2
+// kapsamı dışı, üç dosyada atıf var); yeni bir kiracı tablosu eklendiğinde
+// probu BURAYA kaydedilir.
+//
+// ⚠ NEDEN TEK ÇAĞRI NOKTASI (po R-P1, BAĞLAYICI): prob tamlığı kapısı
+// (`tenant-isolation-suite.ts`) ÇAĞRI BAŞINA kendi taksonomisini kendi
+// problarıyla karşılaştırır. Tablo başına ayrı bir test dosyası açmak İKİ
+// dosyayı da kırar (her biri diğerinin probunu "eksik" sayar) ve taksonomiyi
+// çağrı başına elle daraltmak kapının TÜM amacını yok eder (§10 md 6).
+// BAĞLAYICI KISIT: tek çağrı · TAM `TENANT_SCOPED_TABLES` · her tablo için bir
+// prob. Tabloya özel bilgi ayrı yardımcı dosyalarda yaşayabilir
+// (`helpers/job.probe.ts`), KAYIT burada kalır.
 //
 // Bu dosya `*.isolation.test.ts` deseniyle eşleşir — `vitest.isolation.config.ts`
 // tarafından toplanır, `vitest.config.ts`'in `exclude`'u tarafından
@@ -18,6 +35,7 @@ import { randomUUID } from 'node:crypto'
 import { TenantRole, UserStatus, withTenant } from '../index.js'
 import type { PrismaDatabase, TransactionClient } from '../index.js'
 import { TENANT_SCOPED_TABLES } from '../tenancy.js'
+import { jobProbe } from './helpers/job.probe.js'
 import { testAppPrisma } from './helpers/test-client.js'
 import {
   createTenantIsolationSuite,
@@ -86,8 +104,11 @@ const tenantMembershipProbe: TenantScopedProbe = {
   },
 }
 
+// ⚠ `taxonomy` TAM `TENANT_SCOPED_TABLES`'tır (elle daraltma YASAK) ve `probes`
+// o dizinin HER üyesi için bir giriş taşır — ikisi arasındaki eşleşmeyi prob
+// tamlığı kapısı mekanik olarak doğrular.
 createTenantIsolationSuite({
   client: testAppPrisma,
   taxonomy: { tenantScopedTables: TENANT_SCOPED_TABLES },
-  probes: [tenantMembershipProbe],
+  probes: [tenantMembershipProbe, jobProbe],
 })

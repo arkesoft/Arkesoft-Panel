@@ -22,9 +22,10 @@
 
 import { expectTypeOf, test } from 'vitest'
 
-import type { RouterOutputs } from '../index.js'
+import type { RouterInputs, RouterOutputs } from '../index.js'
 import type { TenantSummary } from '../schemas/tenant-summary.schema.js'
 import type { StorefrontTenant } from '../schemas/storefront-tenant.schema.js'
+import type { JobListPage, JobSummary } from '../schemas/job-summary.schema.js'
 import type { SessionIdentity } from '../schemas/session-identity.schema.js'
 
 // `test()` sarmalayıcıları ÇALIŞMA ZAMANINDA YÜRÜMEZ (bu dosya
@@ -112,4 +113,69 @@ test('storefront.currentTenant çıktısında id/slug/status/primaryDomain/planI
   expectTypeOf<CurrentTenantOutput>().not.toHaveProperty('primaryDomain')
   expectTypeOf<CurrentTenantOutput>().not.toHaveProperty('planId')
   expectTypeOf<CurrentTenantOutput>().not.toHaveProperty('deletedAt')
+})
+
+// ---------------------------------------------------------------------------
+// `job.get` / `job.list` — ROADMAP v0.0.11, T-013/S8
+// ---------------------------------------------------------------------------
+
+test('job.get çıktısı literal tel şekliyle TAM eşleşir (totoloji karşıtı — şemadan TÜRETİLMEDİ)', () => {
+  // POZİTİF/JENERİK PİN — beklenen şekil LİTERAL. ⚠ Zaman alanları `string`
+  // (ISO-8601), `Date` DEĞİL (`trpc.ts`'in "transformer YOK" değişmezi);
+  // `error` DÖRT alanlı hata gövdesinin İKİ alanına İNDİRİLMİŞ hâli.
+  expectTypeOf<RouterOutputs['job']['get']>().toEqualTypeOf<{
+    id: string
+    type: string
+    status: 'queued' | 'running' | 'completed' | 'failed'
+    progress: number
+    error: { code: string; message: string } | null
+    createdAt: string
+    updatedAt: string
+    startedAt: string | null
+    completedAt: string | null
+  }>()
+})
+
+test('job.get çıktısı export edilen JobSummary tipiyle de eşleşir (export belgesi)', () => {
+  expectTypeOf<RouterOutputs['job']['get']>().toEqualTypeOf<JobSummary>()
+})
+
+test('job.get çıktısında kuyruk girdisi kolonu, tenant_id ve hata gövdesinin iki alanı YOK (NEGATİF PİN, architect K7)', () => {
+  // ⚠ Bu dosya yasağın DENETLEYİCİSİ, öznesi değil (AGENT_BASELINE.md §5) →
+  // jetonlar burada ZORUNLU. `storefront.currentTenant`'ın negatif pininin
+  // AYNI mekanizması: alan BAŞINA bağımsız satır.
+  type JobGetOutput = RouterOutputs['job']['get']
+
+  expectTypeOf<JobGetOutput>().not.toHaveProperty('payload')
+  expectTypeOf<JobGetOutput>().not.toHaveProperty('tenantId')
+  expectTypeOf<NonNullable<JobGetOutput['error']>>().not.toHaveProperty('details')
+  expectTypeOf<NonNullable<JobGetOutput['error']>>().not.toHaveProperty('requestId')
+})
+
+test('job.list çıktısı literal tel şekliyle TAM eşleşir (keyset sayfa zarfı)', () => {
+  expectTypeOf<RouterOutputs['job']['list']>().toEqualTypeOf<{
+    items: {
+      id: string
+      type: string
+      status: 'queued' | 'running' | 'completed' | 'failed'
+      progress: number
+      error: { code: string; message: string } | null
+      createdAt: string
+      updatedAt: string
+      startedAt: string | null
+      completedAt: string | null
+    }[]
+    nextCursor: string | null
+  }>()
+})
+
+test('job.list çıktısı export edilen JobListPage tipiyle de eşleşir (export belgesi)', () => {
+  expectTypeOf<RouterOutputs['job']['list']>().toEqualTypeOf<JobListPage>()
+})
+
+test('job.list girdisinde kiracı alanı YOK (ADR-0009 madde 7 — kiracı ASLA girdiden okunmaz)', () => {
+  // ⚠ Bu, ADR-0009 madde 7'nin TİP DÜZEYİNDE karşılığı: birisi
+  // `jobListInputSchema`'ya bir kiracı alanı eklerse bu satır KIRILIR.
+  expectTypeOf<RouterInputs['job']['list']>().not.toHaveProperty('tenantId')
+  expectTypeOf<RouterInputs['job']['get']>().not.toHaveProperty('tenantId')
 })
