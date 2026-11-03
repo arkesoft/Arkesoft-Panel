@@ -1,0 +1,13 @@
+{
+  // Tip kontrolü kapsamı: src/**/* (`.astro` dosyaları tsc tarafından
+  // DERLENMEZ — repo genelindeki durumla AYNI, bkz. README "Bilinen
+  // sınır") + kök düzeyindeki yapılandırma dosyaları (vitest.config.ts).
+  // `@arkesoft/theme-sdk/tsconfig.json`'ın emsali.
+  "extends": "@arkesoft/config/tsconfig/node.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*", "*.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}

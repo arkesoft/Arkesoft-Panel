@@ -54,12 +54,27 @@
 // `isTraversalSegment`) yakalanır — izin listesi TEK BAŞINA bunu
 // AYIRT EDEMEZ (`..` karakterce `a..b`'nin bir ALT KÜMESİDİR).
 //
+// ⚠ SEC-5a DÜZELTMESİ (ROADMAP SEC-5a, T-012/S3) — eski desen
+// (`^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9._-]+)*$`) yalnızca İLK
+// segmentin harf/rakamla BAŞLAMASINI zorluyordu; `/` sonrası HER segment
+// `[A-Za-z0-9._-]+` ile eşleşiyordu — bu, `.` İLE BAŞLAYAN bir segmenti
+// (gizli dosya adı, ör. `x/.env`, `assets/.hidden`) KABUL ediyordu (kökteki
+// `.env` zaten RED'di, ama ikinci veya sonraki segmentte aynı kural
+// UYGULANMIYORDU). Düzeltme: HER segment (ilk VE sonraki) harf/rakamla
+// BAŞLAMAK zorunda (`[A-Za-z0-9][A-Za-z0-9._-]*`, segment başına). Bu,
+// `a..b/c.jpg` ve `v1.2.3/x.jpg`'yi BOZMAZ — her iki örnekte de HER segment
+// (`a..b`, `c.jpg`, `v1.2.3`, `x.jpg`) harf/rakamla BAŞLAR; yalnızca "`.`
+// ile başlayan segment" yüzeyi kapanır, "segment içinde `.`/`..` ALT DİZESİ"
+// yüzeyi (yukarıdaki BİLİNÇLİ KARAR) AÇIK kalır.
+//
 // `path` REDDEDER (→ `THEME_ASSET_REF_INVALID`):
 //   - boş dize VEYA `MAX_ASSET_PATH_LENGTH`'i aşan bir uzunluk
-//   - izin verilen biçimin (harf/rakam ile BAŞLAR, harf/rakam/nokta/tire/
-//     alt çizgi/`/` ile SÜRER) DIŞINDAKİ HER ŞEY — bu TEK madde eski kara
-//     listenin dört maddesinin TAMAMINI (mutlak URL/şema öneki, baştaki
-//     `/`, `\`) VE yukarıdaki 22 atlatmanın 21'ini YAPISAL olarak kapsar
+//   - izin verilen biçimin (HER segment harf/rakam ile BAŞLAR, harf/rakam/
+//     nokta/tire/alt çizgi ile SÜRER, segmentler `/` ile ayrılır) DIŞINDAKİ
+//     HER ŞEY — bu TEK madde eski kara listenin dört maddesinin TAMAMINI
+//     (mutlak URL/şema öneki, baştaki `/`, `\`) VE yukarıdaki 22 atlatmanın
+//     21'ini YAPISAL olarak kapsar, SEC-5a'nın gizli dosya adı yüzeyini de
+//     (segment başına zorlanan kural) kapatır
 //   - bir `..` SEGMENTİ (yol geçişi — yukarıdaki "BİLİNÇLİ KARAR" notu;
 //     `a..b` gibi bir ALT DİZE DEĞİL, TAM segment eşleşmesi)
 
@@ -71,11 +86,18 @@ import { THEME_CONTRACT_MESSAGES } from '../messages.js'
 const THEME_ASSET_REF_INVALID_CODE: ThemeContractErrorCode = 'THEME_ASSET_REF_INVALID'
 
 /**
- * İzin verilen `path` biçimi — ilk karakter harf/rakam, sonraki karakterler
- * harf/rakam/nokta/tire/alt çizgi, segmentler `/` ile ayrılır (dosya başı
- * yorumu, H1). Bu desenin DIŞINDA kalan HER ŞEY (boşluk, `%`, ters eğik
+ * İzin verilen `path` biçimi — HER segment harf/rakam ile BAŞLAR, sonraki
+ * karakterler harf/rakam/nokta/tire/alt çizgi, segmentler `/` ile ayrılır
+ * (dosya başı yorumu, H1 + SEC-5a). ⚠ SEC-5a (T-012/S3): eski desen bu
+ * kuralı yalnızca İLK segmente uyguluyordu — `/` sonrası segmentler
+ * `[A-Za-z0-9._-]+` ile eşleşiyordu ve `.` ile BAŞLAYAN bir segmenti (gizli
+ * dosya adı, `x/.env`, `assets/.hidden`) KABUL ediyordu. Artık her
+ * `(?:\/segment)` tekrarı AYNI `[A-Za-z0-9][A-Za-z0-9._-]*` biçimini taşır —
+ * `a..b/c.jpg` ve `v1.2.3/x.jpg` BOZULMAZ (her segment harf/rakamla
+ * BAŞLIYOR). Bu desenin DIŞINDA kalan HER ŞEY (boşluk, `%`, ters eğik
  * çizgi, `:`, kontrol karakteri, Unicode taklit karakteri, sondaki `/`
- * ile biten boş segment) yapısal olarak REDDEDİLİR.
+ * ile biten boş segment, `.`/`-`/`_` ile BAŞLAYAN segment) yapısal olarak
+ * REDDEDİLİR.
  *
  * `export` — B5 düzeltmesi (T-010 düzeltme turu 1/3 · parti B, GÖRÜNÜRLÜK
  * DEĞİŞİKLİĞİ, MANTIK AYNI): `../json-schema.ts`'in `override` mekanizması
@@ -83,8 +105,12 @@ const THEME_ASSET_REF_INVALID_CODE: ThemeContractErrorCode = 'THEME_ASSET_REF_IN
  * TAŞIMAK için yeniden kullanır — B4'ün semver dersi BİREBİR: ikinci bir
  * kopya tanımlamak (`json-schema.ts` içinde) iki kaynağın SAPMASI riskini
  * yeniden doğururdu, bu yüzden TEK kaynak burada kalır, sadece dışa açılır.
+ * ⚠ SEC-5a bu deseni DEĞİŞTİRDİĞİ için yayınlanan JSON Schema'nın `pattern`
+ * dizesi de DEĞİŞİR — `docs/theme-contract.schema.json` yeniden üretilmek
+ * ZORUNDADIR (`pnpm --filter @arkesoft/theme-sdk schema:generate`).
  */
-export const ASSET_PATH_FORMAT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9._-]+)*$/
+export const ASSET_PATH_FORMAT_PATTERN =
+  /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/
 
 /**
  * `path` için üst uzunluk sınırı — 8 KB'lık bir girdiyi yapısal olarak

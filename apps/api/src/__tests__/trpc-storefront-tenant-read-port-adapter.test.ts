@@ -3,9 +3,15 @@
 //
 // `trpc-tenant-read-port-adapter.test.ts`'in (T-007) AYNI deseni — gerçek
 // DI-kurulu adaptörü, gerçek Postgres üzerinde DOĞRUDAN çağırır (tam HTTP
-// turu olmadan): (1) aktif kiracı için `{name}` döner, (2) soft-delete
-// edilmiş kiracı için `null` DÖNMEZ, `TenantNotFoundError` FIRLATIR (port
-// TOTAL'dır — `storefront-tenant-read.port.ts`'in bağlayıcı kararı).
+// turu olmadan): (1) aktif kiracı için `{name, themeId, themeVersion}`
+// döner, (2) soft-delete edilmiş kiracı için `null` DÖNMEZ, `TenantNotFoundError`
+// FIRLATIR (port TOTAL'dır — `storefront-tenant-read.port.ts`'in bağlayıcı
+// kararı).
+//
+// GÜNCELLEME (ROADMAP v0.0.10, T-012/S4): `themeId`/`themeVersion` EKLENDİ.
+// Test kiracıları bu alanları AÇIKÇA VERMEDEN oluşturulur (DB seviyesinde
+// `DEFAULT` yok, ADR-0002 Karar 5) → beklenen değer `null`'dur; adaptör
+// coalesce ETMEZ (varsayılanı uygulayan VİTRİN).
 
 import { randomUUID } from 'node:crypto'
 import type { Server } from 'node:http'
@@ -41,7 +47,7 @@ describe('StorefrontTenantReadPortAdapter.findPublicTenant() (ROADMAP v0.0.8, T-
     }
   })
 
-  it('aktif kiracı için YALNIZCA {name} döner (tel sözleşmesinin alan kısıtı)', async () => {
+  it('aktif kiracı için YALNIZCA {name, themeId, themeVersion} döner (tel sözleşmesinin alan kısıtı)', async () => {
     const slug = uniqueSlug('storefront-sanity')
     const tenant = await prismaService.db.tenant.create({
       data: { slug, name: 'Vitrin Sanity Kiracısı', status: TenantStatus.active },
@@ -49,7 +55,7 @@ describe('StorefrontTenantReadPortAdapter.findPublicTenant() (ROADMAP v0.0.8, T-
 
     try {
       const result = await adapter.findPublicTenant(tenant.id)
-      expect(result).toEqual({ name: 'Vitrin Sanity Kiracısı' })
+      expect(result).toEqual({ name: 'Vitrin Sanity Kiracısı', themeId: null, themeVersion: null })
     } finally {
       await prismaService.db.tenant.delete({ where: { id: tenant.id } })
     }

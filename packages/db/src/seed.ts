@@ -89,11 +89,17 @@ async function main(): Promise<void> {
           name: DEMO_SEED.tenant.name,
           status: TenantStatus.active,
           primaryDomain: null,
+          // ROADMAP v0.0.10, T-012/S2 (AC9): tema seçimi AÇIKÇA yazılır —
+          // backfill'e güvenilmez, bu fixture doğruluk kaynağının kendisidir.
+          themeId: DEMO_SEED.tenant.themeId,
+          themeVersion: DEMO_SEED.tenant.themeVersion,
         },
         update: {
           name: DEMO_SEED.tenant.name,
           status: TenantStatus.active,
           primaryDomain: null,
+          themeId: DEMO_SEED.tenant.themeId,
+          themeVersion: DEMO_SEED.tenant.themeVersion,
         },
       })
 

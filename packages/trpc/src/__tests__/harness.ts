@@ -40,6 +40,7 @@ import type { TenantReadPort } from '../ports/tenant-read.port.js'
 import type { StorefrontTenantReadPort } from '../ports/storefront-tenant-read.port.js'
 import type { TrpcErrorFactoryPort } from '../ports/trpc-error-factory.port.js'
 import type { TenantSummary } from '../schemas/tenant-summary.schema.js'
+import type { StorefrontTenant } from '../schemas/storefront-tenant.schema.js'
 
 // ---------------------------------------------------------------------------
 // Kayıt tutan (recording) sahte logger
@@ -162,11 +163,20 @@ export function createFakeTenantReadPort(summary: TenantSummary): TenantReadPort
  * `StorefrontTenantReadPort`'un sahte uygulaması (ROADMAP v0.0.8, T-009/S5,
  * ADR-0012). Port TOTAL'dır (architect K4) — `tenantId` beklenen özetinkiyle
  * eşleşmiyorsa `null` DÖNMEZ, {@link HarnessTenantNotFoundError} fırlatır.
- * Dönüş değeri BİLEREK `summary`'nin TAMAMI değil, tek alanı (`name`) —
- * `StorefrontTenant`'ın sözleşmesiyle aynı sızdırmazlık burada da korunur.
+ * Dönüş değeri BİLEREK `summary`'nin TAMAMI değil, `StorefrontTenant`
+ * sözleşmesinin üç alanı (`name`/`themeId`/`themeVersion`) — `id`/`slug`/
+ * `status`/`primaryDomain` hiçbiri tele TAŞINMAZ, aynı sızdırmazlık burada
+ * da korunur. GÜNCELLEME (ROADMAP v0.0.10, T-012/S4, solid tur1 M4 düzeltmesi):
+ * `themeId`/`themeVersion` varsayılan olarak `null` döner (`TenantSummary`'de
+ * bu alanlar yok, sahte port gerçek veri İCAT ETMEZ) — ama ikinci, OPSİYONEL
+ * `themeSelection` parametresi ile ÇAĞIRAN null-OLMAYAN bir seçimi GEÇERSİZ
+ * KILABİLİR (mevcut override deseni: `CreateHarnessOptions`'daki `options.x ??
+ * default` idiomunun aynısı). Yeni port İCAT edilmedi; tek fabrika iki yolu da
+ * (null ve null-olmayan) üretir.
  */
 export function createFakeStorefrontTenantReadPort(
   summary: TenantSummary,
+  themeSelection?: Pick<StorefrontTenant, 'themeId' | 'themeVersion'>,
 ): StorefrontTenantReadPort {
   return {
     findPublicTenant(tenantId) {
@@ -174,7 +184,11 @@ export function createFakeStorefrontTenantReadPort(
         return Promise.reject(new HarnessTenantNotFoundError(tenantId))
       }
 
-      return Promise.resolve({ name: summary.name })
+      return Promise.resolve({
+        name: summary.name,
+        themeId: themeSelection?.themeId ?? null,
+        themeVersion: themeSelection?.themeVersion ?? null,
+      })
     },
   }
 }

@@ -25,6 +25,17 @@ pnpm changeset
 
 <!-- Changesets bu çizginin altına yazar. Elle girdi eklemeyin. -->
 
+## 0.2.0 — 2026-11-03
+
+- Mağazanın seçtiği tema artık kendi vitrininde gerçekten render ediliyor: ilk tema paketi
+  (`modern`) ana sayfa ve "sayfa bulunamadı" şablonlarıyla storefront'a bağlandı, tema rengi ve
+  yazı tipi ayarları sayfaya otomatik uygulanıyor. Mağaza sahibi bu sürümde henüz bir yüzey
+  görmüyor (tema seçimi her mağaza için şimdilik sabit) — bu, "tema seç, siteyi kur" vaadinin
+  temel alt yapısını kuruyor. [v0.0.10]
+- Tema sözleşmesindeki varlık yolu doğrulaması sıkılaştırıldı: gizli dosyalara (`.env` gibi)
+  işaret eden tema varlık yolları artık reddediliyor. İlk tema paketi (`modern`) bu sürümle
+  ilk kez yayınlanıyor. [v0.0.10]
+
 ## 0.1.1 — 2026-11-03
 
 - Geliştirme ortamı güvenilirliği düzeltildi: kanonik `pnpm dev` komutu artık mağaza vitrinini

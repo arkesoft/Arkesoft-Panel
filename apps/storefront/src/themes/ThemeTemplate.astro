@@ -1,0 +1,119 @@
+---
+// @arkesoft/storefront — tek `.astro` ithal noktası: tema seçimi → şablon
+// (ROADMAP v0.0.10, T-012/S7, architect K5)
+//
+// ⚠ A-A1 (ölçüldü, handoff'ta ham çıktı var): repoda hiçbir `.ts` dosyası
+// `.astro` ithal etmiyor; bu yol SINANMAMIŞ ve ambient `declare module
+// '*.astro'` ya `any` (YASAK) ya elle uydurulmuş bir bileşen tipi
+// gerektirirdi. Garantili yol: TÜM `@arkesoft/themes-modern/templates/*`
+// ithalleri BU dosyada toplanır — `./registry.ts` (tipli kayıt defteri) ve
+// `./theme-css.ts` (saf üreteç) hiçbir `.astro` İTHAL ETMEZ, SAF `.ts`
+// kalırlar.
+//
+// ⚠ Bu dosya `pnpm typecheck`in GÖRMEDİĞİ bir yüzeydir (`tsc` `.astro`
+// dosyalarını derlemez — repo genelindeki mevcut durum, bu PR'ın
+// GERİLEMESİ DEĞİL, architect risk 9). Tutarlılık bu yüzden MEKANİK bir
+// testle pinlenir: `__tests__/theme-template-dispatch.test.ts`,
+// `@arkesoft/theme-sdk/src/manifest/__tests__/no-service-url-fields.
+// test.ts`'in grep tabanlı drift-pin DESENİNİ aynen kullanır — aşağıdaki
+// `resolveTemplateComponent`'in `themeKey === '...'` dal LİTERALLERİ,
+// `./registry.ts`'in `THEME_REGISTRY` anahtarlarıyla (`'modern@0.1.0'`)
+// TAM EŞLEŞMEK ZORUNDADIR; biri değişip diğeri unutulursa test KIRMIZI
+// döner.
+//
+// ⚠ A-A2/A-A3 (bu dispatcher'ın KENDİSİ taşımaz): CSS metninin (`registry.
+// ts`'in `styleText`'i) `<head>`'e HANGİ idiomla (`is:inline` vb.)
+// yazılacağı ve `head-extra` slotunun birden çok eleman kabul edip
+// etmediği bu dosyanın İŞİ DEĞİL — bu alt görev `index.astro`/
+// `BaseLayout.astro`'ya DOKUNMAZ (S8'in dosyaları, po'nun ataması). Bu
+// dosya SADECE tema İÇERİK şablonunu (`home`/`404`) seçer.
+//
+// ⚠ Şablon metni (`heading`/`body`) burada ÜRETİLMEZ, PROP olarak alınır —
+// bu paket `apps/storefront/src/messages/messages.ts`'i ithal EDEMEZ
+// (A-PO1, `@arkesoft/themes-modern`'in kendi dosya başı yorumlarıyla AYNI
+// kısıt, CLAUDE.md §3). Hangi mesaj anahtarının hangi `kind`'e gideceği
+// çağıranın (S8) kararı.
+// ⚠⚠ DÜZELTME (T-012/S8, A-A1'in ÖLÇÜLDÜĞÜ an — bağlayıcı kanıt, handoff'ta
+// tekrarlanıyor): `@arkesoft/themes-modern`'in `package.json` `exports`
+// alanındaki `"./templates/*": "./src/templates/*.astro"` kalıbı Node'un
+// alt-yol (subpath) joker eşleştirme kuralına göre eşleştirilen `*`'ı,
+// HEDEF kalıbına OLDUĞU GİBİ yerleştirir. İthal ifadesi `.astro` UZANTISINI
+// İÇERİRSE (`.../templates/home.astro`), eşleşen `*` DE o uzantıyı taşır ve
+// sonuç `./src/templates/home.astro.astro` (ÇİFT uzantı, VAR OLMAYAN dosya)
+// olur — `pnpm --filter @arkesoft/storefront build` bunu ÖLÇÜLEREK
+// doğruladı (Rolldown "failed to resolve import" hatası) ve `node
+// --input-type=module -e "import.meta.resolve(...)"` ile BAĞIMSIZ olarak
+// DOĞRULANDI (ikisi de AYNI çift-uzantılı, var olmayan yolu üretti). Doğru
+// ithal biçimi UZANTISIZDIR — `*` o zaman SADECE `home`/`404` olur, hedef
+// `./src/templates/home.astro`'ya (TEK uzantı, VAR OLAN dosya) çözülür.
+// Bu satır bu dosyanın TEK fonksiyonel değişikliğidir (iki ithal ifadesi,
+// sıfır mantık değişikliği) — A-A1'in "ölçülemedi" bıraktığı riskin
+// GERÇEKLEŞTİĞİ ve BURADA ÖLÇÜLEREK DÜZELTİLDİĞİ nokta.
+import ModernHomeTemplate from '@arkesoft/themes-modern/templates/home'
+import ModernNotFoundTemplate from '@arkesoft/themes-modern/templates/404'
+
+import type { ThemeRegistryKey } from './registry.js'
+
+/**
+ * Bu dispatcher'ın bugün bildiği şablon TÜRLERİ — `@arkesoft/theme-sdk`'nın
+ * tam 7'lik `ThemeTemplateType` birleşiminin ALT KÜMESİ (yalnızca GERÇEKTEN
+ * var olan iki Astro modülü, `product`/`collection`/`cart`/`page`/`blog`
+ * BU SÜRÜMDE YOK — `packages/themes/modern`'de dosya YOK). Kümeyi
+ * büyütmek additive'dir.
+ */
+export type ThemeTemplateDispatchKind = 'home' | '404'
+
+interface Props {
+  /** `./registry.ts`'in `resolveTheme()`'inden gelen, ZATEN doğrulanmış tema anahtarı. */
+  readonly themeKey: ThemeRegistryKey
+  readonly kind: ThemeTemplateDispatchKind
+  readonly heading: string
+  readonly body: string
+}
+
+const { themeKey, kind, heading, body } = Astro.props
+
+/**
+ * Bu dispatcher'ın adlandırılmış hatası (T-012, düzeltme turu 1, "yolu
+ * üstündeyse kapat" — aynı dosya/aynı düzenleme, AGENT_BASELINE §4
+ * istisnası, `low`). DÜZELTME: önceki tur bu sınıfın yorumunda "adlandırılmış
+ * bir hata FIRLATIR" diyordu ama fiilen ÇIPLAK `Error` fırlatıyordu —
+ * beyan/gerçeklik boşluğu (bu projenin yinelenen sınıfı). `name` açıkça
+ * set edilir, `registry.ts`'in `ThemeRegistryIntegrityError`/`theme-css.ts`'in
+ * `ThemeCssGenerationError`'ıyla AYNI yerel desen.
+ */
+class ThemeTemplateDispatchError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = 'ThemeTemplateDispatchError'
+	}
+}
+
+/**
+ * `(themeKey, kind)` çiftini GERÇEK Astro bileşenine çözer. Bilinmeyen bir
+ * kombinasyon TEORİK OLARAK ulaşılamaz (çağıran `themeKey`'i `resolveTheme()`
+ * üzerinden zaten doğrulamış OLMAK ZORUNDADIR) — ama bu fonksiyon CLAUDE.md
+ * §4'ün "beklenmeyen hatayı sessizce yutma" ilkesine uyarak sessizce hiçbir
+ * şey RENDER ETMEK yerine adlandırılmış bir hata FIRLATIR.
+ */
+function resolveTemplateComponent(
+	currentThemeKey: ThemeRegistryKey,
+	currentKind: ThemeTemplateDispatchKind,
+) {
+	if (currentThemeKey === 'modern@0.1.0' && currentKind === 'home') {
+		return ModernHomeTemplate
+	}
+
+	if (currentThemeKey === 'modern@0.1.0' && currentKind === '404') {
+		return ModernNotFoundTemplate
+	}
+
+	throw new ThemeTemplateDispatchError(
+		`ThemeTemplate.astro: bilinmeyen tema/şablon kombinasyonu — "${currentThemeKey}"/"${currentKind}".`,
+	)
+}
+
+const TemplateComponent = resolveTemplateComponent(themeKey, kind)
+---
+
+<TemplateComponent heading={heading} body={body} />

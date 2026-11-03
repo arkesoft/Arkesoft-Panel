@@ -54,6 +54,16 @@ datasource db {
 
 /// Platform seviyesi kiracı (mağaza) kaydı. `tenant_id` taşımaz — bu tablonun
 /// kendisi tenant kimliğinin kaynağıdır (V4).
+///
+/// GÜNCELLEME (ROADMAP v0.0.10, T-012/S2, architect VERİ MODELİ): `themeId`/
+/// `themeVersion` EKLENDİ — ikisi de `String?`, uzunluk sınırı YOK (`@db.VarChar`
+/// yasak, dosya başı R2). `NOT NULL` BU SÜRÜMDE YOK (CLAUDE.md §10 md 10,
+/// expand/contract); promosyon en erken v0.3.0, ayrı PR. DB seviyesinde
+/// `DEFAULT` YOK — platform varsayılan teması tek kaynakta, vitrinin kayıt
+/// defterinde yaşar (ADR-0002 Karar 5). Eşleşme değişmezi
+/// `(theme_id IS NULL) = (theme_version IS NULL)` migration'da ham SQL CHECK
+/// kısıtıyla (veya A-A4 ölçümü drift raporluyorsa tek kod yolunda) sağlanır —
+/// bkz. `prisma/migrations/<ts>_tenant_theme_selection/migration.sql`.
 model Tenant {
   id            String       @id @default(cuid(2))
   slug          String       @unique
@@ -61,6 +71,8 @@ model Tenant {
   status        TenantStatus @default(pending)
   planId        String?      @map("plan_id")
   primaryDomain String?      @unique @map("primary_domain")
+  themeId       String?      @map("theme_id")
+  themeVersion  String?      @map("theme_version")
   createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   deletedAt     DateTime?    @map("deleted_at") @db.Timestamptz(3)

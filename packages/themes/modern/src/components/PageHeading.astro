@@ -1,0 +1,26 @@
+---
+// @arkesoft/themes-modern — PageHeading (ROADMAP v0.0.10, T-012/S5,
+// docs/ui/T-012.md "PageHeading.astro")
+//
+// Tek `h1`. Metin PROP olarak alınır (A-PO1 — sabit Türkçe dize YOK, bu
+// paket `apps/storefront/src/messages/messages.ts`'i ithal EDEMEZ,
+// CLAUDE.md §3). Renk `--color-primary`, yazı tipi `--font-heading` —
+// token tüketim kararı `PageSection.astro`'nun dosya başı yorumunda.
+// Kontrast: `#FFFFFF` üzerine `#2563EB` = 5.17:1 (docs/ui/T-012.md
+// "Kontrast tablosu", AA büyük metin eşiği 3.0, AA normal eşiği 4.5 —
+// ikisi de geçiyor).
+interface Props {
+	readonly text: string
+}
+
+const { text } = Astro.props
+---
+
+<h1 class="theme-modern-heading text-2xl font-semibold md:text-3xl lg:text-4xl">{text}</h1>
+
+<style>
+	.theme-modern-heading {
+		color: var(--color-primary);
+		font-family: var(--font-heading);
+	}
+</style>

@@ -28,6 +28,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { buildThemeContractJsonSchema } from '../json-schema.js'
+import { ASSET_PATH_FORMAT_PATTERN } from '../manifest/asset-ref.js'
 import { THEME_SDK_RANGE_FORMAT_PATTERN } from '../manifest/manifest.js'
 import { MAX_SETTING_KEY_LENGTH, SETTING_KEY_FORMAT_PATTERN } from '../settings/keys.js'
 import { serializeThemeContractJsonSchema } from '../../scripts/serialize-schema.js'
@@ -247,7 +248,14 @@ describe('docs/theme-contract.schema.json bayatlık (AC12)', () => {
     }
 
     expect(pathSchema.type).toBe('string')
-    expect(typeof pathSchema.pattern).toBe('string')
+    // ⚠ DEĞER PİNİ (T-012/S3, `po`'nun bulduğu fırsat) — ÖNCEDEN bu test
+    // yalnızca `pattern`'ın VAR OLDUĞUNU (`typeof === 'string'`) kontrol
+    // ediyordu, DEĞERİNİ DEĞİL — komşu `sdkRange` testiyle (F6 zorunlu kanıt,
+    // yukarıda) ASİMETRİKTİ: desen SEC-5a ile yanlış üretilse bile bu test
+    // YEŞİL kalırdı (mutasyon kanıtı: handoff'ta `shasum`/`cmp` ile
+    // belgelendi). Artık değer `asset-ref.ts`'in EXPORT ettiği TEK kaynakla
+    // (`ASSET_PATH_FORMAT_PATTERN`) BİREBİR karşılaştırılır.
+    expect(pathSchema.pattern).toBe(ASSET_PATH_FORMAT_PATTERN.source)
     expect(pathSchema.maxLength).toBe(512)
     // Zayıf izdüşüm notu — ".." SEGMENT reddi bu JSON Schema'da TAM ifade
     // edilemez (dosya başı yorumu, json-schema.ts) — bu, SESSİZCE

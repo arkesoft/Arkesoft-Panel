@@ -1,0 +1,47 @@
+---
+// @arkesoft/themes-modern — PageSection (ROADMAP v0.0.10, T-012/S5,
+// docs/ui/T-012.md "PageSection.astro")
+//
+// Sayfa zemin/kapsayıcısı. Zemin rengi `--color-surface` — `BaseLayout`'un
+// `bg-white`'ıyla KASITLI OLARAK aynı hex (docs/ui/T-012.md "Mevcut tabanla
+// çakışma analizi": çakışma eşitlikle çözülüyor, `BaseLayout.astro`
+// DEĞİŞMİYOR).
+//
+// ⚠ TOKEN TÜKETİM KARARI (bu paketin üç bileşeni de) — Orkestratör'ün
+// T-012 görev talimatındaki üç yoldan ("style" özniteliği / Tailwind'in
+// `(--x)` kısayolu / temanın kendi CSS sınıfı) seçilen: Astro'nun
+// bileşen-kapsamlı (scoped) `<style>` ELEMENTİ + sıradan bir CSS sınıfı.
+// Gerekçe tam metin S5 handoff'unun "KARARLAR" bölümünde; özet: (1)
+// architect K1'in CSP değişmezi `<style>` ELEMENTİ'nin nonce/hash
+// alabildiğini, `style` ÖZNİTELİĞİ'nin ALAMADIĞINI söylüyor — üçü de
+// `style` özniteliği kullansaydı v0.20.0'da `style-src-attr
+// 'unsafe-inline'` borcu geri gelirdi; (2) bu sınıfların İÇERİĞİ
+// (`color: var(--x)`) her kiracı için AYNI metin — DEĞER kiracıya bağlıdır
+// → yalnızca middleware'in ulaştığı yanıtta, `private, no-store`. KURAL
+// kiracıdan bağımsızdır → derleme çıktısında donar; hangi kanalda
+// taşındığı (satır-içi veya `/_astro/*`) önbellek politikasını ETKİLEMEZ
+// (K1, apps/storefront'un işi; T-012/`perf`+`architect` DÜZELTMESİ —
+// Astro `build.inlineStylesheets: "auto"` + Vite `assetsInlineLimit`
+// (4096 bayt): eşiğin ALTINDAKİ kural satır-içi yazılır, ÜSTÜNDEKİ
+// `/_astro/*.css`'e gider; bugün bu üç bileşenin kuralı 304 bayt —
+// eşik aşılırsa Astro davranışı KOD DEĞİŞİKLİĞİ OLMADAN döner, izolasyon
+// değişmezi korunur); (3)
+// `ui`'nin asıl endişesi (Tailwind'in `(--x)` kısayolunun `font-*`
+// namespace'inde belirsizliği) burada da karşılanıyor — Tailwind kısayolu
+// HİÇ kullanılmıyor, düz CSS.
+// ⚠ ÖLÇÜLEN GERÇEK SAPMA: bu seçim AC3'ün "`color-primary` repoda TAM 1
+// kez geçer" ölçümünü bu bileşenlerde İHLAL EDER (`var(--color-surface)`
+// literal metni "color-surface" alt dizesini TAŞIR) — S5 handoff'unun
+// RİSKLER bölümünde ham `rg` çıktısıyla BİLDİRİLDİ, gizlenmedi.
+interface Props {}
+---
+
+<div class="theme-modern-section" data-arkesoft-theme="modern">
+	<slot />
+</div>
+
+<style>
+	.theme-modern-section {
+		background-color: var(--color-surface);
+	}
+</style>

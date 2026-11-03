@@ -86,11 +86,16 @@ import { defineMiddleware } from 'astro/middleware'
 
 import { normalizeHostname, resolveHost } from '@arkesoft/tenancy'
 
-import { createStorefrontTrpcClient } from './lib/api-client.js'
+import { isAppError } from '@arkesoft/errors'
+
+import { createStorefrontTrpcClient, parseStorefrontTenantResponse } from './lib/api-client.js'
 import { applyStorefrontCachePolicy } from './lib/cache-policy.js'
+import { assertNever } from './lib/assert-never.js'
 import { mapApiError } from './lib/map-api-error.js'
 import { resolveRequestOrigin } from './lib/request-origin.js'
 import { storefrontEnv } from './lib/storefront-env.js'
+import { DEFAULT_THEME_SELECTION, resolveTheme } from './themes/registry.js'
+import type { ThemeSelection } from './themes/registry.js'
 
 /** `APP_BASE_DOMAIN` açılışta AYNI normalizasyondan geçer (K21 adım 2, `tenant-resolver.service.ts:115-126`'nın BİREBİR deseni). */
 function resolveNormalizedBaseDomain(rawBaseDomain: string): string {
@@ -106,14 +111,11 @@ function resolveNormalizedBaseDomain(rawBaseDomain: string): string {
 /** Modül yüklenirken BİR KEZ hesaplanır; normalize edilemezse süreç AÇILIŞTA fırlar. */
 const NORMALIZED_BASE_DOMAIN = resolveNormalizedBaseDomain(storefrontEnv.APP_BASE_DOMAIN)
 
-/**
- * `StorefrontApiFailure.kind`'ın EXHAUSTIVE `switch`'inde `default` dalında
- * çağrılır (CLAUDE.md §4) — `apps/admin/src/errors/assert-never.ts`'in AYNI
- * deseni, YEREL kopya (`apps/*` → `apps/*` import YASAK, CLAUDE.md §3).
- */
-function assertNever(value: never, context: string): never {
-  throw new Error(`${context}: beklenmeyen değer — ${JSON.stringify(value)}`)
-}
+// `assertNever` artık `./lib/assert-never.ts`'ten İTHAL EDİLİR (T-012/S7'nin
+// bu modülü uygulama-içi bir dosyaya ÇIKARDIĞI dosya başı yorumunun
+// bıraktığı not — "S8 kendi dosyasını bu modülü import edecek şekilde
+// güncelleyecek"). Önceki YEREL kopya (`apps/admin/src/errors/assert-
+// never.ts`'in aynı deseni) KALDIRILDI; davranış BİREBİR aynı.
 
 /** `response`'un GÖVDE/BAŞLIKLARINI koruyarak yeni bir durum koduyla sarar — `Response.status` salt okunur olduğu için YENİ bir nesne gerekir. */
 function withStatus(response: Response, status: number): Response {
@@ -185,13 +187,27 @@ export const onRequest = defineMiddleware(async (context, next) => {
   }
 
   let tenantName: string
+  let themeId: string | null
+  let themeVersion: string | null
   try {
     const client = createStorefrontTrpcClient(normalizedHost)
     const result = await client.storefront.currentTenant.query()
-    tenantName = result.name
+    // R5 TELAFİSİ (T-012/S8, architect "DAĞITIM KAYMASI", bağlayıcı,
+    // `src/lib/api-client.ts`'in dosya başı yorumu): `result` `unknown` gibi
+    // ele alınır, tRPC istemcisinin derleme-zamanı tipine GÜVENİLMEZ — eski
+    // `apps/api` + yeni vitrin kombinasyonunda `themeId`/`themeVersion`
+    // yanıtta HİÇ BULUNMAYABİLİR. `parseStorefrontTenantResponse` eksik/
+    // `null` alanı AYNI dalda `null`'a indirger.
+    const tenant = parseStorefrontTenantResponse(result)
+    tenantName = tenant.name
+    themeId = tenant.themeId
+    themeVersion = tenant.themeVersion
   } catch (error) {
     // Adım 5 — hata eşlemesi (bağlayıcı, dosya başı yorumu);
-    // `mapApiError`'ın döndürdüğü `kind` üzerinde EXHAUSTIVE `switch`.
+    // `mapApiError`'ın döndürdüğü `kind` üzerinde EXHAUSTIVE `switch`. Zod
+    // doğrulamasının (R5) fırlattığı bir hata da BURAYA düşer — hiçbir probe
+    // eşleşmez, `mapApiError` fail-closed olarak `unavailable`'a (503) iner
+    // (`map-api-error.ts`'in dosya başı yorumu, madde 3); SESSİZCE YUTULMAZ.
     const failure = mapApiError(error)
 
     let failureResponse: Response
@@ -210,9 +226,51 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return failureResponse
   }
 
+  // Adım 5.5 — tema seçimi + çözümü (T-012/S8, İŞ 3, ADR-0002 Karar 2/5).
+  // "Seçim YOK" (`themeId`/`themeVersion` normalize edilip `null`) ile
+  // "seçim VAR ama kayıt defterinde BULUNAMADI" AYRI davranışlardır (pm
+  // iş kuralı md 8): ilki sessizce `DEFAULT_THEME_SELECTION`'a düşer (404/503
+  // ÜRETMEZ), ikincisi `ThemeResolutionError`'ı (`resolveTheme()`, `null`
+  // DÖNMEZ) 503'e eşler — gövdede tema/kiracı kimliği YOK (ADR-0012 §8).
+  const themeSelection: ThemeSelection =
+    themeId !== null && themeVersion !== null ? { themeId, themeVersion } : DEFAULT_THEME_SELECTION
+
+  // DÜZELTME (T-012, düzeltme turu 1, `solid` gate M1/M2 — bağlayıcı):
+  // `ThemeResolutionError` artık `AppError`'dan türüyor (`registry.ts`), bu
+  // yüzden `instanceof ThemeResolutionError` ELLE kontrolü YERİNE jenerik
+  // `isAppError` + `error.httpStatus` kullanılır — "bu hata 503'tür" bilgisi
+  // hatanın KENDİSİNDE durur, burada İKİNCİ kez kodlanmaz. `resolveTheme()`
+  // artık çözülmüş kayıt defteri anahtarını da döndürür (`ResolvedTheme.key`)
+  // — bu dosya `"{themeId}@{themeVersion}"`'ı İKİNCİ bir yerde YENİDEN İNŞA
+  // ETMEZ, dolayısıyla doğrulanmamış bir `as ThemeRegistryKey` ZORLAMASI
+  // GEREKMEZ (önceki turun riski KAPANDI).
+  let resolvedTheme: ReturnType<typeof resolveTheme>
+  try {
+    resolvedTheme = resolveTheme(themeSelection)
+  } catch (error) {
+    if (!isAppError(error)) {
+      // Beklenmeyen hata — sessizce yutulmaz, yukarı iletilir (CLAUDE.md §4).
+      throw error
+    }
+
+    // `toFailureFromStatus` (map-api-error.ts) ile AYNI desen: `httpStatus`
+    // TABANLI eşleme, hata KODU (`THEME_RESOLUTION_FAILED`) OKUNMAZ.
+    const themeFailureResponse =
+      error.httpStatus === 404 ? await renderNotFound() : await renderUnavailable()
+    applyStorefrontCachePolicy(themeFailureResponse.headers)
+    return themeFailureResponse
+  }
+
+  const themeStyleText = resolvedTheme.entry.styleText
+  const themeKey = resolvedTheme.key
+
   // Adım 6 — `locals.tenant` yazılır, `next()` çağrılır.
   const origin = resolveRequestOrigin(context.url, normalizedHost)
-  context.locals.tenant = { kind: 'resolved', tenant: { name: tenantName }, origin }
+  context.locals.tenant = {
+    kind: 'resolved',
+    tenant: { name: tenantName, theme: { key: themeKey, styleText: themeStyleText } },
+    origin,
+  }
 
   const response = await next()
 

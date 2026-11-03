@@ -118,3 +118,32 @@ describe('THEME_ASSET_REF_SCHEMA — H1: doğru red senaryoları KORUNUYOR', () 
     expect(parsePath(path)).toBe(false)
   })
 })
+
+// ⚠ SEC-5a ZORUNLU KANIT (ROADMAP SEC-5a, T-012/S3, architect K4) — eski
+// desen (`^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9._-]+)*$`) yalnızca İLK
+// segmentin harf/rakamla BAŞLAMASINI zorluyordu; `/` SONRASI segmentler
+// `[A-Za-z0-9._-]+` ile eşleşiyordu — bu, `.` İLE BAŞLAYAN bir segmenti
+// (gizli dosya adı) KABUL ediyordu (kökteki `.env` zaten RED'di, ama
+// `x/.env` KABUL ediliyordu). Düzeltme: HER segment harf/rakamla BAŞLAMAK
+// zorunda. `a..b/c.jpg` ve `v1.2.3/x.jpg` — BİLİNÇLİ kabuller
+// (asset-ref.ts:46-55, ADR-0013 Karar 7) — BOZULMADAN kalır: `a..b` ve
+// `v1.2.3` segmentleri harf/rakamla BAŞLIYOR, içlerinde `..`/nokta taşımaları
+// onları reddetmiyor (yol geçişi reddi SADECE TAM `..` segmentine uygulanır).
+describe('THEME_ASSET_REF_SCHEMA — SEC-5a: HER segment harf/rakamla başlamalı (gizli dosya adı reddi)', () => {
+  it.each([
+    ['ikinci segment "." ile başlıyor (gizli dosya)', 'x/.env'],
+    ['ikinci segment "." ile başlıyor (gizli alt dizin)', 'assets/.hidden'],
+  ])('"%s" artık reddediliyor (path: %j)', (_label, path) => {
+    expect(parsePath(path)).toBe(false)
+  })
+
+  it.each([
+    [
+      '".." ALT DİZE taşıyan ama segment TAM OLARAK ".." olmayan ad (BİLİNÇLİ kabul, ADR-0013 Karar 7)',
+      'a..b/c.jpg',
+    ],
+    ['sürüm numaralı dizin adı (BİLİNÇLİ kabul)', 'v1.2.3/x.jpg'],
+  ])('"%s" kabul edilmeye DEVAM EDER — gerileme YOK (path: %j)', (_label, path) => {
+    expect(parsePath(path)).toBe(true)
+  })
+})

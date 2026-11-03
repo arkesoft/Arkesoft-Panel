@@ -1,0 +1,28 @@
+{
+  "name": "@arkesoft/themes-modern",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Modern teması — ilk sürüm (home+404), kaynak-dağıtımlı tema paketi (ADR-0002 Karar 1)",
+  "exports": {
+    ".": "./src/theme.config.ts",
+    "./templates/*": "./src/templates/*.astro"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "clean": "rm -rf .turbo",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@arkesoft/theme-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@arkesoft/config": "workspace:*",
+    "@types/node": "catalog:",
+    "astro": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -1,0 +1,31 @@
+---
+// @arkesoft/themes-modern — `404` şablonu (ROADMAP v0.0.10, T-012/S5,
+// AC1 + docs/ui/T-012.md bileşen eşlemesi)
+//
+// ⚠⚠ BU ŞABLON BU SÜRÜMDE ROTAYA BAĞLANMAZ (architect risk 6, po İş 3) —
+// yalnızca manifestin `templates` beyanını (AC1, `home`+`404` ikisi birden
+// zorunlu, `theme-sdk/src/manifest/templates.ts:53`) karşılamak için var.
+// Gerekçe: `apps/storefront/src/pages/404.astro` çözülemeyen HOST için de
+// render edilmek zorunda (`middleware.ts:142-156,169-173` —
+// `locals.tenant = { kind: 'unresolved' }`, kiracı çözümü HİÇ ÇALIŞMADAN);
+// bu şablonu rotaya bağlamak AC5'i (host/404/503 regresyonu) KIRAR. Kiracı
+// kapsamlı 404 v0.1.x'in işi — bu "eksik iş" DEĞİL, bilinçli bir sınır.
+//
+// A-PO1 + K5 — `home.astro` ile AYNI kısıtlar: metin PROP, `BaseLayout`
+// ithal edilmez.
+import PageSection from '../components/PageSection.astro'
+import PageHeading from '../components/PageHeading.astro'
+import BodyText from '../components/BodyText.astro'
+
+interface Props {
+	readonly heading: string
+	readonly body: string
+}
+
+const { heading, body } = Astro.props
+---
+
+<PageSection>
+	<PageHeading text={heading} />
+	<BodyText text={body} />
+</PageSection>

@@ -947,4 +947,56 @@ Playwright/Chromium ve `curl`/`ping` test edilen tüm host kalıpları
 `.arkesoft.localhost` sonekiyle bitmeyen bir host (`<suffix>.localhost`) seçilirse
 `resolveHost` doğru şekilde `custom-domain` dalına düşer ve yine `/etc/hosts` gerekmez.
 
+### Tema sistemi (v0.0.10+) — üç ölçülmüş tuzak
+
+#### (a) `dist/client` ile `dist/server` AYRI taranmalı — "`dist`'te var" ifadesi yetersizdir
+
+Build çıktısında bir dizeyi bulmak, onun **o kanaldan servis edildiğini kanıtlamaz.** T-012'de
+**dört ayrı ajan** (`frontend`/S8, `security`, `qa` ve Orkestratör) tema CSS kuralının
+`dist/client/_astro/*.css`'te bundle edildiğini **iddia etti** — hiçbiri `dist/client` ve
+`dist/server`'ı ayrı taramadan bu sonuca vardı. `perf` gerçek HTTP yanıtını, `architect` diski
+ayrı ayrı ölçtü: tema kuralı **yalnızca `dist/server/**`'da** yaşıyor (satır-içi `<style>`
+olarak her SSR yanıtına giriyor), `dist/client/` içinde **0 eşleşme** — harici bir tema CSS
+dosyası **hiç üretilmiyor** (bkz. `docs/adr/0002-*.md` Karar 4). Dört kez tekrarlanan bu
+yanlış iddia doğrulanmadan kopyalanmıştı.
+
+**Kural:** build çıktısında bir değer/kural arayan her ajan (`perf`, `security`, `qa`,
+Orkestratör) `dist/client/**` ve `dist/server/**`'ı **ayrı ayrı** taramak zorundadır.
+_"`dist`'te var"_ tek başına yetersiz bir kanıttır — hangi alt dizinde olduğu, o değerin
+hangi `Cache-Control` davranışına tabi olacağını belirler.
+
+#### (b) `schema:generate` derlenmiş `dist/`'ten okur — önce `theme-sdk` build edilmeli
+
+`packages/theme-sdk/scripts/generate-contract-schema.ts` (`schema:generate` script'i),
+`src/json-schema.ts`'in **derlenmiş** hâlini (`../dist/json-schema.js`) hesaplanmış bir
+`import()` yoluyla okur — `src/`'teki kaynağı **doğrudan** okumaz (gerekçe: `src/`'in iç
+ithal zinciri `.js` uzantılı belirteçler taşıyor ve derlenmemiş hâlde Node'un çözümleyicisi
+bunları gerçek dosyayla eşleyemiyor, `ERR_MODULE_NOT_FOUND`).
+
+**Sonuç:** `src/`'te bir şema/manifest değişikliği yaptıktan sonra önce
+
+```bash
+pnpm --filter @arkesoft/theme-sdk build
+```
+
+koşturulmadan `pnpm --filter @arkesoft/theme-sdk run schema:generate` çalıştırılırsa, script
+**eski derlenmiş `dist/`'i** okur ve `docs/theme-contract.schema.json`'ı **sessizce eski
+içerikle yeniden yazar** — exit kodu 0 döner, görünürde hata yoktur. T-012'de `backend`/S3 bunu
+tam bu şekilde **ölçerek** buldu: ilk denemede `git diff` **boş** çıktı ve generator "çalışmış
+gibi" göründü; `build` adımı atlandığı için aslında hiçbir şey değişmemişti.
+
+#### (c) `astro dev`'in geliştirme araç çubuğu `<body>`'ye `main`'in dışında bir `h1` enjekte eder
+
+Astro'nun geliştirme araç çubuğu (yalnızca `astro dev`'de, üretim build'inde **yok**)
+sayfaya `main`'in dışında ek `h1` öğeleri ekler (örn. "Audit", "Settings" panelleri). Çıplak
+`page.locator('h1')` bu yüzden Playwright'ta **strict-mode ihlaline** düşer (birden fazla eşleşme).
+
+İki telafi yolu vardır:
+
+1. Locator'ı `main` kapsamına daraltmak: `page.locator('main h1')` (T-012/`S9`'un yaptığı).
+2. Üretim çıktısını ölçmek: `pnpm --filter @arkesoft/storefront build` + `node dist/server/entry.mjs`
+   ile gerçek üretim sunucusunu başlatıp onu ölçmek (T-012/`wcag`'ın yaptığı) — bu yol araç
+   çubuğunu **yapısal olarak hiç içermez**, dolayısıyla **daha güçlü kanıt** sayılır (telafiye
+   bile gerek kalmaz, sorun kendiliğinden doğmaz).
+
 ---

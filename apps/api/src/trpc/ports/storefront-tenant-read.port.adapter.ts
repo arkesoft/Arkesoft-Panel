@@ -46,7 +46,7 @@ export class StorefrontTenantReadPortAdapter implements StorefrontTenantReadPort
     //     Adapter`'dan (kimlikli yüzey) AYRIKA burada açıkça yazılıdır.
     const row = await this.prisma.db.tenant.findFirst({
       where: { id: tenantId, deletedAt: null },
-      select: { name: true },
+      select: { name: true, themeId: true, themeVersion: true },
     })
 
     if (row === null) {

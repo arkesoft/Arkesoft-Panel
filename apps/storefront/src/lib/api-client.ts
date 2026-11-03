@@ -12,6 +12,8 @@
 // `target` (API'nin iç ağ bağlantı adresi) `STOREFRONT_API_BASE_URL`'den BİR
 // KEZ, modül yüklenirken ayrıştırılır — istek başına YENİDEN ayrıştırılmaz.
 
+import { z } from 'zod'
+
 import { createTrpcClient } from '@arkesoft/trpc'
 import type { TrpcClient } from '@arkesoft/trpc'
 
@@ -56,4 +58,63 @@ export function createStorefrontTrpcClient(tenantHost: string): TrpcClient {
     url: `http://${tenantHost}/trpc`,
     fetch: createStorefrontServerFetch(API_CONNECTION_TARGET),
   })
+}
+
+// ⚠⚠ R5 TELAFİSİ (architect, ROADMAP v0.0.10/T-012, BAĞLAYICI — "DAĞITIM
+// KAYMASI"): `apps/api` ve `apps/storefront` AYRI dağıtılabilir
+// (`ROADMAP.md:1402-1407` kademeli açılış) → tek taraflı rollback GERÇEK bir
+// senaryo. Eski `apps/api` + yeni `apps/storefront` kombinasyonunda
+// `storefront.currentTenant`'ın yanıtında `themeId`/`themeVersion` alanları
+// HİÇ BULUNMAZ — `@arkesoft/trpc`'nin derleme-zamanı tipi (`string | null`)
+// bu durumda çalışma zamanında GERÇEKTE `undefined` döner ve HİÇBİR DAL bunu
+// YAKALAMAZ (tanımsız davranış). CLAUDE.md §4: "dış dünyadan gelen her veri
+// (HTTP gövdesi...) Zod ile parse edilir" — `apps/api`'nin yanıtı bu paket
+// için vitrinin GÜVEN SINIRININ DIŞINDADIR (aynı monorepo'da derlenmiş
+// olması bunu DEĞİŞTİRMEZ, ayrı dağıtılabilir oldukları için). Bu yüzden
+// yanıt BURADA, istemcinin KENDİSİNDE, `unknown` olarak ele alınıp yerel bir
+// Zod şemasıyla YENİDEN doğrulanır — `@arkesoft/trpc`'nin
+// `storefrontTenantSchema`'sı KASITLI OLARAK yeniden KULLANILMAZ (o şema
+// API'NİN kendi çıktısını tanımlar; burada doğrulanan ŞEY API'nin TAAHHÜT
+// ETTİĞİ şekil DEĞİL, tele GERÇEKTE GELEN bayt).
+//
+// `.nullish()` (DEĞİL `.nullable()`) — eksik alanı (`undefined`) VE `null`
+// alanı AYNI dalda `?? null`'a indirger: "seçim YOK" gibi davranır, hata
+// FIRLAMAZ (`src/middleware.ts` bu normalize edilmiş `null`'ı
+// `DEFAULT_THEME_SELECTION`'a yönlendirir — İŞ 3). Düz `result.themeId ??
+// null` (bir Zod ADIMI OLMADAN) tek başına denenirse `@typescript-eslint/
+// no-unnecessary-condition` kuralı takılabilir — çünkü `@arkesoft/trpc`'nin
+// DERLEME-ZAMANI tipi ZATEN `string | null`dır (asla `undefined` değil), bu
+// yüzden `?? null` o tip üzerinden "gereksiz" GÖRÜNÜR. Zod'un `.nullish()`
+// çıkışı (`string | null | undefined`) `?? null`'ı GERÇEKTEN gerekli kılar —
+// bu üç değerli tip BURADA, bu şemanın çıkışında, İLK KEZ doğar.
+const storefrontTenantResponseSchema = z.object({
+  name: z.string(),
+  themeId: z.string().nullish(),
+  themeVersion: z.string().nullish(),
+})
+
+/** {@link storefrontTenantResponseSchema}'nın normalize edilmiş (eksik/`null` ayrımı KALDIRILMIŞ) çıkış şekli. */
+export interface StorefrontTenantApiResponse {
+  readonly name: string
+  readonly themeId: string | null
+  readonly themeVersion: string | null
+}
+
+/**
+ * `storefront.currentTenant` yanıtını (tipi `unknown` KABUL EDİLİR — tRPC
+ * istemcisinin derleme-zamanı tipine GÜVENİLMEZ, R5 dosya başı yorumu)
+ * yerel Zod şemasıyla doğrular ve eksik/`null` alan ayrımını `null`'a
+ * indirger. Şema reddederse (ör. `name` de yoksa — API'nin TAMAMEN
+ * uyumsuz bir sürümü) adlandırılmış bir `ZodError` FIRLAR; bu durum "seçim
+ * yok" DEĞİLDİR, çağıranın (middleware) KENDİ hata eşlemesine (503)
+ * düşmesi GEREKİR — burada SESSİZCE yutulmaz.
+ */
+export function parseStorefrontTenantResponse(raw: unknown): StorefrontTenantApiResponse {
+  const parsed = storefrontTenantResponseSchema.parse(raw)
+
+  return {
+    name: parsed.name,
+    themeId: parsed.themeId ?? null,
+    themeVersion: parsed.themeVersion ?? null,
+  }
 }

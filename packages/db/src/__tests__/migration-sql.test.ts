@@ -1510,3 +1510,108 @@ describe('migration-sql — nokta atışı pin (PO riski 6): "email_verified" NO
     ).toBe(true)
   })
 })
+
+// --- ROADMAP v0.0.10, T-012/S2 — NOKTA ATIŞI PİN (bilinçli sapma, yalnızca
+// EKLEME, `better_auth_tables` pin bloğu emsali) ---
+//
+// Gerekçe: architect VERİ MODELİ bu migration için üç bağlayıcı özellik
+// istiyor — (1) yıkıcı adım YOK (DROP/RENAME/SET NOT NULL), (2) idempotent
+// backfill `WHERE theme_id IS NULL` taşıyor, (3) eşleşme değişmezini
+// (`(theme_id IS NULL) = (theme_version IS NULL)`) koruyan CHECK kısıtı
+// beklenen biçimde. Genel tarayıcıya (`migration-set.ts`) yeni bir sezgisel
+// yama EKLENMEDİ (R-D1 yasağı emsali) — bu, yalnızca
+// `20261103070156_tenant_theme_selection` migration dizinine ÖZGÜ bir
+// assertion'dır.
+//
+// MUTASYON KANITI (db agent, T-012/S2 — elle doğrulandı, Task raporunda ham
+// çıktı birebir aktarılmıştır): bu pin, `migration.sql`'deki
+// `WHERE "theme_id" IS NULL` dizesi geçici olarak kaldırılıp test koşturularak
+// (KIRMIZI), ardından `git diff`/`shasum` ile dosyanın BİREBİR aynı olduğu
+// doğrulanana dek geri eklenip yeniden koşturularak (YEŞİL) elle doğrulandı —
+// geçici değişiklik koda GİRMEDİ, yalnızca yerel doğrulama adımıydı.
+describe('migration-sql — nokta atışı pin (T-012/S2): "tenant_theme_selection" expand migration\'ı', () => {
+  const TENANT_THEME_SELECTION_MIGRATION_DIRECTORY = '20261103070156_tenant_theme_selection'
+
+  /** Migration bulunamazsa boş dize döner — çağıran `it()` kendi `toBeDefined()` kontrolünü ayrıca yapar. */
+  function findTenantThemeSelectionMigrationSql(): string {
+    const migrations = readMigrationSet(MIGRATIONS_DIR)
+    const migration = migrations.find(
+      (candidate) => candidate.directoryName === TENANT_THEME_SELECTION_MIGRATION_DIRECTORY,
+    )
+    return migration?.sql ?? ''
+  }
+
+  /**
+   * Bu migration'ın başlık yorumları (`-- ...`) gerekçe metninde `DROP`/`RENAME`/
+   * `SET NOT NULL` SÖZCÜKLERİNİ anar (yasaklı ifadelerin BULUNMADIĞINI belgelemek
+   * için) — yıkıcı ifade pini bu yüzden tam satır yorumlarını eler, aksi hâlde
+   * belgeleyici metnin KENDİSİ yanlış pozitif üretir. Yalnızca BU dosyaya özgü,
+   * tek amaçlı bir filtre — `migration-set.ts`'in genel tarayıcısına (R-D1
+   * yasağı) hiçbir yama EKLENMEZ.
+   */
+  function stripFullLineSqlComments(sql: string): string {
+    return sql
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('--'))
+      .join('\n')
+  }
+
+  it(`"${TENANT_THEME_SELECTION_MIGRATION_DIRECTORY}" migration kümesinde gerçekten var`, () => {
+    const migrations = readMigrationSet(MIGRATIONS_DIR)
+    expect(
+      migrations.some(
+        (migration) => migration.directoryName === TENANT_THEME_SELECTION_MIGRATION_DIRECTORY,
+      ),
+    ).toBe(true)
+  })
+
+  it('migration hiçbir yıkıcı ifade taşımıyor (DROP / RENAME / SET NOT NULL yok — CLAUDE.md §10 md 10)', () => {
+    // Yalnızca GERÇEK SQL ifadeleri taranır — tam satır yorumları (`-- ...`)
+    // elenir, aksi hâlde bu yasakları ANAN gerekçe metni kendisi yanlış
+    // pozitif üretir (yukarıdaki `stripFullLineSqlComments` yorumu).
+    const sql = stripFullLineSqlComments(findTenantThemeSelectionMigrationSql())
+    expect(sql.includes('DROP ')).toBe(false)
+    expect(sql.toUpperCase().includes('RENAME')).toBe(false)
+    expect(sql.toUpperCase().includes('SET NOT NULL')).toBe(false)
+  })
+
+  it('"theme_id"/"theme_version" NULLABLE eklendi — ikisi de kolon tanımında "NOT NULL" TAŞIMIYOR', () => {
+    const sql = findTenantThemeSelectionMigrationSql()
+    const themeIdDefinitionPattern = /"theme_id"\s+[^,;\n]+/
+    const themeVersionDefinitionPattern = /"theme_version"\s+[^,;\n]+/
+    const themeIdMatch = themeIdDefinitionPattern.exec(sql)
+    const themeVersionMatch = themeVersionDefinitionPattern.exec(sql)
+    expect(themeIdMatch, '"theme_id" kolon tanımı migration.sql içinde bulunamadı').not.toBeNull()
+    expect(
+      themeVersionMatch,
+      '"theme_version" kolon tanımı migration.sql içinde bulunamadı',
+    ).not.toBeNull()
+    expect((themeIdMatch?.[0] ?? '').includes('NOT NULL')).toBe(false)
+    expect((themeVersionMatch?.[0] ?? '').includes('NOT NULL')).toBe(false)
+  })
+
+  it('idempotent backfill "WHERE theme_id IS NULL" koruyucusunu TAŞIYOR (ikinci koşumda mevcut seçimi geri yazmaz)', () => {
+    const sql = findTenantThemeSelectionMigrationSql()
+    expect(sql.includes('UPDATE "tenant"')).toBe(true)
+    expect(sql.includes('WHERE "theme_id" IS NULL')).toBe(true)
+  })
+
+  it('backfill yalnızca "modern"/"0.1.0" donmuş tarihsel değerini yazıyor (A-P1/ADR-0002 Karar 5)', () => {
+    const sql = findTenantThemeSelectionMigrationSql()
+    const updateStatementPattern = /UPDATE "tenant" SET[^;]+;/
+    const match = updateStatementPattern.exec(sql)
+    expect(match, 'backfill UPDATE ifadesi bulunamadı').not.toBeNull()
+    const updateStatement = match?.[0] ?? ''
+    expect(updateStatement.includes(`'modern'`)).toBe(true)
+    expect(updateStatement.includes(`'0.1.0'`)).toBe(true)
+  })
+
+  it('CHECK kısıtı eşleşme değişmezini beklenen biçimde taşıyor: (theme_id IS NULL) = (theme_version IS NULL)', () => {
+    const sql = findTenantThemeSelectionMigrationSql()
+    expect(sql.includes('ADD CONSTRAINT "tenant_theme_selection_pairing_check"')).toBe(true)
+    expect(
+      sql.includes('CHECK (("theme_id" IS NULL) = ("theme_version" IS NULL))'),
+      'CHECK kısıtının ifadesi beklenen eşleşme değişmezini birebir taşımıyor',
+    ).toBe(true)
+  })
+})

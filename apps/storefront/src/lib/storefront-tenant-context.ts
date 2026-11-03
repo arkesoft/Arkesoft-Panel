@@ -12,11 +12,36 @@
 // `resolved.origin` BAĞLAMA DAHİL — `src/lib/request-origin.ts`'in (K20) TEK
 // türetme noktasının çıktısı; sayfalar/uçlar bunu YENİDEN HESAPLAMAZ.
 //
-// v0.0.10 NOTU (R9): `themeId`/`themeVersion` `StorefrontTenant`'a BURAYA
-// eklenir — başka hiçbir dosya değişmez.
+// v0.0.10 NOTU (R9, T-012/S8): `themeId`/`themeVersion` `StorefrontTenant`'a
+// BURAYA EKLENDİ — başka hiçbir dosya değişmedi. Tel sözleşmesinin çıplak
+// `themeId`/`themeVersion` çifti (`@arkesoft/trpc` `storefrontTenantSchema`)
+// burada TAŞINMAZ — middleware (`src/middleware.ts`, İŞ 2/İŞ 3) o çifti
+// `src/themes/registry.ts`'in `resolveTheme()`'i ile ZATEN ÇÖZÜMLENMİŞ bir
+// `ThemeRegistryKey` + önceden hesaplanmış `styleText`'e indirger; sayfalar
+// (`index.astro`) ham `themeId`/`themeVersion` değerini HİÇ GÖRMEZ — yalnızca
+// render edilmeye HAZIR bu iki alanı görür (K1'in "DEĞER kiracıya bağlıdır
+// → yalnızca middleware'in ulaştığı yanıtta, `private, no-store`. KURAL
+// kiracıdan bağımsızdır → derleme çıktısında donar; hangi kanalda
+// taşındığı önbellek politikasını ETKİLEMEZ" taşıyıcısı tam burada
+// başlar).
+import type { ThemeRegistryKey } from '../themes/registry.js'
+
+/**
+ * Bir kiracı bağlamının render edilmeye hazır tema bilgisi — middleware'in
+ * (ADR-0002 Karar 2) `ThemeResolutionError`'ı ZATEN 503'e eşleyip ele aldığı
+ * için bu tip hiçbir hata/`null` dalı TAŞIMAZ: bir sayfa bu alanı gördüğünde
+ * çözüm KESİNLEŞMİŞTİR.
+ */
+export interface StorefrontTenantTheme {
+  /** `src/themes/ThemeTemplate.astro`'nun dispatch ettiği, ZATEN doğrulanmış kayıt defteri anahtarı — ikinci bir string birleştirme burada YAPILMAZ. */
+  readonly key: ThemeRegistryKey
+  /** `src/themes/registry.ts`'in SÜREÇ BAŞINA BİR KEZ hesapladığı CSS metni (K5) — burada YENİDEN HESAPLANMAZ, middleware'den TAŞINIR. */
+  readonly styleText: string
+}
 
 export interface StorefrontTenant {
   readonly name: string
+  readonly theme: StorefrontTenantTheme
 }
 
 export type StorefrontTenantContext =

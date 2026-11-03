@@ -332,12 +332,13 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
     expect(varyValues).toContain('cookie')
   })
 
-  // AC13 (ROADMAP v0.0.8, T-009/S7, ADR-0012) — `storefront.currentTenant`
-  // GERÇEK HTTP yanıtının gövdesi `{name}`'in DIŞINDA HİÇBİR ALAN taşımaz
-  // (`planId`/`deletedAt`/`id`/`slug`/`status`/`primaryDomain` → 0 bayt) VE
-  // bu yüzey OTURUMSUZ (`Cookie` YOK) 200 döner — kimlik ekseni açıldı, tenant
-  // ekseni (`x-arkesoft-tenant` → host çözümü) DEĞİŞMEDİ.
-  it('AC13 — /trpc/storefront.currentTenant: OTURUMSUZ 200, gövde yalnızca {name} (altı yasak alan 0 bayt)', async () => {
+  // AC13/AC8 (ROADMAP v0.0.8, T-009/S7, güncelleme v0.0.10/T-012/S4, ADR-0012) —
+  // `storefront.currentTenant` GERÇEK HTTP yanıtının gövdesi `{name, themeId,
+  // themeVersion}`'ın DIŞINDA HİÇBİR ALAN taşımaz (`planId`/`deletedAt`/`id`/
+  // `slug`/`status`/`primaryDomain` → 0 bayt, AC8 negatif pin) VE bu yüzey
+  // OTURUMSUZ (`Cookie` YOK) 200 döner — kimlik ekseni açıldı, tenant ekseni
+  // (`x-arkesoft-tenant` → host çözümü) DEĞİŞMEDİ.
+  it('AC13 — /trpc/storefront.currentTenant: OTURUMSUZ 200, gövde yalnızca {name,themeId,themeVersion} (altı yasak alan 0 bayt)', async () => {
     const response = await request(httpServer())
       .get('/trpc/storefront.currentTenant')
       .set('x-arkesoft-tenant', tenantSlug)
@@ -348,7 +349,7 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
       .object({ result: z.object({ data: z.record(z.string(), z.unknown()) }) })
       .parse(response.body)
 
-    expect(Object.keys(body.result.data)).toEqual(['name'])
+    expect(Object.keys(body.result.data)).toEqual(['name', 'themeId', 'themeVersion'])
 
     const forbiddenKeys = ['planId', 'deletedAt', 'id', 'slug', 'status', 'primaryDomain']
     for (const key of forbiddenKeys) {

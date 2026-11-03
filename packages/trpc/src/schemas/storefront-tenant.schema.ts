@@ -34,9 +34,39 @@
 // getirebilsin (ROADMAP Sürüm Politikası §2: "Public API: MINOR = yalnızca
 // ekleme"). Çıplak `string` seçilse v0.0.10 MAJOR olurdu.
 
+// GÜNCELLEME (ROADMAP v0.0.10, T-012/S4, architect tRPC SÖZLEŞMESİ): `themeId`/
+// `themeVersion` EKLENDİ — yukarıdaki R9 TELAFİSİ'nin (satır 32-35) adıyla önceden
+// ödediği genişleme. Düz (flat) şekil KORUNUYOR (`{ name, themeId, themeVersion }`,
+// AC8) — iç içe `{ theme: {...} | null }` daha iyi tiplenirdi ama kullanıcıya
+// duyurulmuş kabul kriterinin şeklini değiştirmek bedele değmez. Yasal olmayan
+// durum (`themeId`/`themeVersion`'dan tam biri null) bu katmanda ENGELLENMEZ —
+// kapı DB CHECK kısıtı (`(theme_id IS NULL) = (theme_version IS NULL)`) + tek
+// eşleme fonksiyonu + tüketicide (vitrin kayıt defteri) adlandırılmış hatadır.
+//
+// `themeVersion` semver-DOĞRULANMAZ, `themeId` slug-DOĞRULANMAZ — bilinçli.
+// `THEME_ID_PATTERN`/`SEMVER_CORE_PATTERN_SOURCE` theme-sdk barrel'ında YOK
+// (`packages/theme-sdk/src/index.ts:26-34`); burada yeniden yazmak İKİNCİ bir
+// doğruluk kaynağı olurdu. Değer bizim kendi DB'mizden geliyor; gerçek kapı
+// TÜKETİCİDE ve daha güçlü: vitrin kayıt defteri TAM EŞLEŞME araması ile
+// bilinmeyen id VE sürümü reddeder (AC2, ROADMAP v0.0.10/T-012/S7).
+//
+// İKİSİ DE `.nullable()` — KALICI olarak nullable, bu sürümün geçici bir
+// eksiği DEĞİL. `apps/api` doğrulayamadığı bir seçimi İCAT ETMEZ: hangi tema
+// modüllerinin kurulu olduğu storefront DERLEME ÇIKTISININ özelliğidir
+// (A3/A4), `apps/api` bunu bilemez. Varsayılanı uygulayan taraf VİTRİNDİR —
+// `apps/api` coalesce ETMEZ (port `storefront-tenant-read.port.ts:20-26`
+// TOTAL kalır, `null` dönmez; alan değeri `null` OLABİLİR, bu port'un kendisinin
+// dönüşü `null` olması ile AYNI şey DEĞİLDİR).
+// ⚠ BAĞLAYICI: bu iki alanı İLERİDE non-null yapmak MAJOR'dır (`ROADMAP.md:1380`,
+// "MINOR = yalnızca ekleme") — "temizlik" gerekçesiyle daraltılamaz.
+
 import { z } from 'zod'
 
-export const storefrontTenantSchema = z.object({ name: z.string() })
+export const storefrontTenantSchema = z.object({
+  name: z.string(),
+  themeId: z.string().nullable(),
+  themeVersion: z.string().nullable(),
+})
 
 /** {@link storefrontTenantSchema}'nın çıkarılan tip karşılığı. */
 export type StorefrontTenant = z.infer<typeof storefrontTenantSchema>

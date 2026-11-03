@@ -16,6 +16,8 @@
 // kurmak için kullanılıyor, davranış DOĞRULAMASI `expect`'lerde).
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import type * as ApiClientModule from '../api-client.js'
+
 // `vi.mock` çağrıları dosyanın EN BAŞINA hoisted edilir — fabrikanın
 // kapattığı (closure) `queryMock`/`createStorefrontTrpcClientMock`
 // normal `const` ile tanımlanırsa hoisting SIRASINDA henüz İLKLENMEMİŞ
@@ -32,9 +34,19 @@ const { queryMock, createStorefrontTrpcClientMock } = vi.hoisted(() => {
   }
 })
 
-vi.mock('../api-client.js', () => ({
-  createStorefrontTrpcClient: createStorefrontTrpcClientMock,
-}))
+// `parseStorefrontTenantResponse` BİLEREK MOCKLANMAZ (`importOriginal` ile
+// GERÇEĞİ taşınır) — T-012/S8 (R5): bu fonksiyonun davranışı (Zod
+// doğrulaması + eksik/`null` alan normalizasyonu) bu test dosyasının ÖLÇMEK
+// İSTEDİĞİ ŞEYİN TAM KENDİSİ (aşağıdaki "adım 5.5" describe bloğu); onu da
+// mocklamak testi anlamsız kılardı. `createStorefrontTrpcClient` TEK mocklanan
+// — ağ KURULMASIN.
+vi.mock('../api-client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof ApiClientModule>()
+  return {
+    ...actual,
+    createStorefrontTrpcClient: createStorefrontTrpcClientMock,
+  }
+})
 
 vi.mock('../storefront-env.js', () => ({
   storefrontEnv: {
@@ -45,6 +57,15 @@ vi.mock('../storefront-env.js', () => ({
 
 import { onRequest } from '../../middleware.js'
 import { requireResolvedTenant } from '../storefront-tenant-context.js'
+import { DEFAULT_THEME_SELECTION, resolveTheme } from '../../themes/registry.js'
+
+/**
+ * Kayıt defterinin varsayılan girdisinin GERÇEK `styleText`'i —
+ * `expect.any(String)` yerine BİREBİR değer karşılaştırması (T-012/S8).
+ * `resolveTheme()` artık `{ key, entry }` döndürüyor (T-012, düzeltme turu
+ * 1, F2) — `styleText` `entry` ÜZERİNDEN okunur.
+ */
+const DEFAULT_THEME_STYLE_TEXT = resolveTheme(DEFAULT_THEME_SELECTION).entry.styleText
 
 type OnRequestContext = Parameters<typeof onRequest>[0]
 type OnRequestNext = Parameters<typeof onRequest>[1]
@@ -131,7 +152,13 @@ describe('onRequest — adım 4-6: başarılı çözümleme', () => {
     expect(createStorefrontTrpcClientMock).toHaveBeenCalledWith('demo.arkesoft.localhost')
     expect(context.locals.tenant).toEqual({
       kind: 'resolved',
-      tenant: { name: 'Demo Mağaza' },
+      // T-012/S8 (R5): bu mock yanıtında `themeId`/`themeVersion` HİÇ YOK —
+      // "seçim yok" gibi davranır, `DEFAULT_THEME_SELECTION`'a (`modern@0.1.0`)
+      // düşer. Hata FIRLAMAZ, 404/503 ÜRETİLMEZ (pm iş kuralı md 8).
+      tenant: {
+        name: 'Demo Mağaza',
+        theme: { key: 'modern@0.1.0', styleText: DEFAULT_THEME_STYLE_TEXT },
+      },
       // `url.host` ('localhost:4321') DEĞİL — normalizedHost + url.protocol/.port.
       origin: 'http://demo.arkesoft.localhost:4321',
     })
@@ -152,7 +179,10 @@ describe('onRequest — adım 4-6: başarılı çözümleme', () => {
     expect(createStorefrontTrpcClientMock).toHaveBeenCalledWith('musteri-magazasi.com')
     expect(context.locals.tenant).toEqual({
       kind: 'resolved',
-      tenant: { name: 'Müşteri Mağazası' },
+      tenant: {
+        name: 'Müşteri Mağazası',
+        theme: { key: 'modern@0.1.0', styleText: DEFAULT_THEME_STYLE_TEXT },
+      },
       origin: 'http://musteri-magazasi.com:4321',
     })
   })
@@ -174,6 +204,179 @@ describe('onRequest — adım 4-6: başarılı çözümleme', () => {
 
     expect(response.headers.get('cache-control')).toBe('private, no-store')
   })
+})
+
+describe('onRequest — adım 5.5: tema seçimi + çözümü (T-012/S8, İŞ 3 + R5)', () => {
+  it(
+    'R5 TELAFİSİ: yanıtta themeId/themeVersion alanları HİÇ YOKSA (eski apps/api senaryosu, ' +
+      'dağıtım kayması) "seçim yok" gibi davranılır — DEFAULT_THEME_SELECTION render edilir, HATA FIRLAMAZ',
+    async () => {
+      // Zod .nullish() normalizasyonunun GERÇEKTEN eksik alanı (undefined)
+      // yakaladığını kanıtlamak için `themeId`/`themeVersion` BURADA literal
+      // olarak YAZILMADI (ne `null` ne bir değer) — eski bir API yanıtını
+      // AYNEN taklit ediyor.
+      queryMock.mockResolvedValueOnce({ name: 'Eski API Mağazası' })
+      const context = buildContext({
+        host: 'demo.arkesoft.localhost',
+        rewrite: (path: string) => htmlResponse(path),
+      })
+      const next = vi.fn(() =>
+        htmlResponse('<h1>Eski API Mağazası</h1>'),
+      ) as unknown as OnRequestNext
+
+      const response = expectResponse(await onRequest(context, next))
+
+      expect(response.status).toBe(200)
+      expect(context.locals.tenant).toMatchObject({
+        kind: 'resolved',
+        tenant: { theme: { key: 'modern@0.1.0' } },
+      })
+      expect(next).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it('themeId/themeVersion AÇIKÇA null İSE de AYNI şekilde "seçim yok" sayılır — varsayılan tema render edilir', async () => {
+    queryMock.mockResolvedValueOnce({ name: 'Demo Mağaza', themeId: null, themeVersion: null })
+    const context = buildContext({
+      host: 'demo.arkesoft.localhost',
+      rewrite: (path: string) => htmlResponse(path),
+    })
+    const next = vi.fn(() => htmlResponse('<h1>Demo Mağaza</h1>')) as unknown as OnRequestNext
+
+    const response = expectResponse(await onRequest(context, next))
+
+    expect(response.status).toBe(200)
+    expect(context.locals.tenant).toMatchObject({
+      tenant: { theme: { key: 'modern@0.1.0' } },
+    })
+  })
+
+  it('kayıt defterinde GERÇEKTEN var olan bir seçim (modern@0.1.0) AYNEN kullanılır — varsayılana düşmez', async () => {
+    queryMock.mockResolvedValueOnce({
+      name: 'Demo Mağaza',
+      themeId: 'modern',
+      themeVersion: '0.1.0',
+    })
+    const context = buildContext({
+      host: 'demo.arkesoft.localhost',
+      rewrite: (path: string) => htmlResponse(path),
+    })
+    const next = vi.fn(() => htmlResponse('<h1>Demo Mağaza</h1>')) as unknown as OnRequestNext
+
+    await onRequest(context, next)
+
+    expect(context.locals.tenant).toMatchObject({
+      tenant: { theme: { key: 'modern@0.1.0' } },
+    })
+  })
+
+  it(
+    'kayıt defterinde BULUNAMAYAN bir seçim ("seçim VAR ama bulunamadı") → 503, ' +
+      '404/503 gövdesinde tema/kiracı kimliği YOK — "seçim yok" davranışıyla KARIŞTIRILMAZ',
+    async () => {
+      queryMock.mockResolvedValueOnce({
+        name: 'Demo Mağaza',
+        themeId: 'bilinmeyen-tema',
+        themeVersion: '9.9.9',
+      })
+      const rewrite = vi.fn((path: string) => htmlResponse(path))
+      const context = buildContext({ host: 'demo.arkesoft.localhost', rewrite })
+      const next = vi.fn() as unknown as OnRequestNext
+
+      const response = expectResponse(await onRequest(context, next))
+
+      expect(response.status).toBe(503)
+      expect(context.rewrite).toHaveBeenCalledWith('/503')
+      expect(response.headers.get('cache-control')).toBe('private, no-store')
+      expect(await response.clone().text()).not.toContain('bilinmeyen-tema')
+    },
+  )
+
+  // ⚠ T-012/qa, tur 1 — EKSİK SENARYO (handoff İŞ 4, madde 1): DB'nin
+  // `tenant_theme_selection_pairing_check` CHECK kısıtı `themeId`/
+  // `themeVersion` çiftinin BİRİSİNİN null diğerinin null OLMAMASINI
+  // veritabanı SATIRINDA engelliyor — ama tel (API yanıtı) bu garantinin
+  // ARKASINDA değil (R5 TELAFİSİ zaten "ikisi de eksik" + "ikisi de null"
+  // senaryolarını kapsıyordu, "BİRİ dolu BİRİ null/eksik" HİÇ test edilmemişti,
+  // ölçüldü — bu açıklığı bu test KAPATIYOR). Bugünkü GERÇEK davranış: tek
+  // taraflı asimetri `themeId !== null && themeVersion !== null` koşulunu
+  // SAĞLAMADIĞI için "seçim YOK" ile AYNI dala (`DEFAULT_THEME_SELECTION`)
+  // düşüyor — 503 ÜRETMİYOR. Bu pin'in amacı bu davranışı GÖRÜNÜR kılmak:
+  // bir API/dağıtım kayması `themeId`'yi gönderip `themeVersion`'ı
+  // düşürürse (CHECK'in DB'de hiç izin vermediği bir şekil, ama tel üzerinde
+  // mümkün) vitrin SESSİZCE varsayılan temaya düşer, hata ÜRETMEZ.
+  it(
+    'themeId DOLU ama themeVersion null İKEN (DB CHECK kısıtının engellediği, ama tel üzerinde ' +
+      'mümkün olan asimetrik çift) "seçim yok" ile AYNI dala düşer — varsayılan tema render edilir, 503 ÜRETİLMEZ',
+    async () => {
+      queryMock.mockResolvedValueOnce({
+        name: 'Demo Mağaza',
+        themeId: 'modern',
+        themeVersion: null,
+      })
+      const context = buildContext({
+        host: 'demo.arkesoft.localhost',
+        rewrite: (path: string) => htmlResponse(path),
+      })
+      const next = vi.fn(() => htmlResponse('<h1>Demo Mağaza</h1>')) as unknown as OnRequestNext
+
+      const response = expectResponse(await onRequest(context, next))
+
+      expect(response.status).toBe(200)
+      expect(context.locals.tenant).toMatchObject({
+        tenant: { theme: { key: 'modern@0.1.0' } },
+      })
+    },
+  )
+
+  it(
+    'themeId null İKEN themeVersion DOLU (asimetrik çiftin TERSİ) → AYNI şekilde "seçim yok" ' +
+      'dalına düşer — varsayılan tema render edilir, 503 ÜRETİLMEZ',
+    async () => {
+      queryMock.mockResolvedValueOnce({
+        name: 'Demo Mağaza',
+        themeId: null,
+        themeVersion: '0.1.0',
+      })
+      const context = buildContext({
+        host: 'demo.arkesoft.localhost',
+        rewrite: (path: string) => htmlResponse(path),
+      })
+      const next = vi.fn(() => htmlResponse('<h1>Demo Mağaza</h1>')) as unknown as OnRequestNext
+
+      const response = expectResponse(await onRequest(context, next))
+
+      expect(response.status).toBe(200)
+      expect(context.locals.tenant).toMatchObject({
+        tenant: { theme: { key: 'modern@0.1.0' } },
+      })
+    },
+  )
+
+  // ⚠ T-012/qa, tur 1 — EKSİK SENARYO (handoff İŞ 4, madde 3): boş dize
+  // (`themeId: ''`) DB CHECK kısıtını GEÇER (`'' IS NOT NULL` doğrudur, ikisi
+  // de boş dize olsa denge sağlanır) — ama `''` middleware'in `!== null`
+  // kontrolünü de GEÇER (boş dize `null` DEĞİLDİR). Sonuç: "seçim yok"
+  // davranışıyla KARIŞTIRILMAZ — `resolveTheme({themeId:'',themeVersion:''})`
+  // kayıt defteri anahtarı `"@"`yı arar, BULAMAZ, `ThemeResolutionError`
+  // FIRLATIR → 503. Bu test bu zinciri UÇTAN UCA pinler; ölçülmeden önce
+  // bu dosyada test YOKTU.
+  it(
+    'themeId/themeVersion İKİSİ DE boş dize İKEN ("seçim yok" DEĞİL, "bilinmeyen tema") → 503, ' +
+      'CHECK kısıtı boş dizeyi engellemez ama resolveTheme bilinmeyen anahtar olarak REDDEDER',
+    async () => {
+      queryMock.mockResolvedValueOnce({ name: 'Demo Mağaza', themeId: '', themeVersion: '' })
+      const rewrite = vi.fn((path: string) => htmlResponse(path))
+      const context = buildContext({ host: 'demo.arkesoft.localhost', rewrite })
+      const next = vi.fn() as unknown as OnRequestNext
+
+      const response = expectResponse(await onRequest(context, next))
+
+      expect(response.status).toBe(503)
+      expect(context.rewrite).toHaveBeenCalledWith('/503')
+      expect(response.headers.get('cache-control')).toBe('private, no-store')
+    },
+  )
 })
 
 describe('onRequest — adım 5: tRPC hata eşlemesi (404 vs 503)', () => {

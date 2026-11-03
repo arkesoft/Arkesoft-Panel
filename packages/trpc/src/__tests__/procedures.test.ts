@@ -145,7 +145,7 @@ describe('TenantReadPort totalliği — bulunamadı durumu tele yansır', () => 
 })
 
 describe('storefront.currentTenant (publicTenantProcedure) — başarı yolu', () => {
-  it("anonim kimlik + çözülmüş tenant context'te StorefrontTenantReadPort'un döndürdüğü {name}'i tele TAŞIR (kimlik katmanı YOK, sıfır dallanma — ROADMAP v0.0.8, T-009/S5, ADR-0012)", async () => {
+  it("anonim kimlik + çözülmüş tenant context'te StorefrontTenantReadPort'un döndürdüğü {name,themeId,themeVersion}'i tele TAŞIR (kimlik katmanı YOK, sıfır dallanma — ROADMAP v0.0.8, T-009/S5, güncelleme v0.0.10/T-012/S4, ADR-0012)", async () => {
     const harness = createHarness({
       auth: { kind: 'anonymous' },
       tenantSummary: HARNESS_TENANT_SUMMARY,
@@ -153,10 +153,39 @@ describe('storefront.currentTenant (publicTenantProcedure) — başarı yolu', (
 
     const result = await harness.client.storefront.currentTenant.query()
 
-    expect(result).toEqual({ name: HARNESS_TENANT_SUMMARY.name })
+    expect(result).toEqual({
+      name: HARNESS_TENANT_SUMMARY.name,
+      themeId: null,
+      themeVersion: null,
+    })
     // Küme eşitliği — `id`/`slug`/`status`/`primaryDomain`/`planId`/`deletedAt`
-    // hiçbiri tele YAZILMAZ (architect K3, R9 telafisi).
-    expect(Object.keys(result)).toEqual(['name'])
+    // hiçbiri tele YAZILMAZ (architect K3, R9 telafisi; `themeId`/`themeVersion`
+    // v0.0.10'da EKLENDİ, AC8).
+    expect(Object.keys(result)).toEqual(['name', 'themeId', 'themeVersion'])
+  })
+})
+
+describe('storefront.currentTenant (publicTenantProcedure) — null-OLMAYAN tema seçimi yolu (solid tur1 M4 düzeltmesi)', () => {
+  it("StorefrontTenantReadPort'un döndürdüğü null-OLMAYAN {name,themeId,themeVersion}'ı BİREBİR tele TAŞIR (sıfır dallanma, yukarıdaki null yolunun YANINDA, onun YERİNE geçmez — ROADMAP v0.0.10, T-012/S4)", async () => {
+    const harness = createHarness({
+      auth: { kind: 'anonymous' },
+      tenantSummary: HARNESS_TENANT_SUMMARY,
+      storefrontTenantRead: createFakeStorefrontTenantReadPort(HARNESS_TENANT_SUMMARY, {
+        themeId: 'modern',
+        themeVersion: '0.1.0',
+      }),
+    })
+
+    const result = await harness.client.storefront.currentTenant.query()
+
+    expect(result).toEqual({
+      name: HARNESS_TENANT_SUMMARY.name,
+      themeId: 'modern',
+      themeVersion: '0.1.0',
+    })
+    // Küme eşitliği — yukarıdaki null yoluyla AYNI altı alanın hâlâ yok
+    // olduğunu, bu kez null-OLMAYAN değerlerle de doğrular.
+    expect(Object.keys(result)).toEqual(['name', 'themeId', 'themeVersion'])
   })
 })
 
@@ -174,6 +203,8 @@ describe("storefront.currentTenant — publicTenantProcedure'ün KİMLİK katman
 
     await expect(harness.client.storefront.currentTenant.query()).resolves.toEqual({
       name: HARNESS_TENANT_SUMMARY.name,
+      themeId: null,
+      themeVersion: null,
     })
   })
 })

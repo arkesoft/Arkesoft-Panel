@@ -1,5 +1,19 @@
 # @arkesoft/trpc
 
+## 0.2.0
+
+### Minor Changes
+
+- Mağazanın seçtiği tema artık kendi vitrininde gerçekten render ediliyor: ilk tema paketi
+  (`modern`) ana sayfa ve "sayfa bulunamadı" şablonlarıyla storefront'a bağlandı, tema rengi ve
+  yazı tipi ayarları sayfaya otomatik uygulanıyor. Mağaza sahibi bu sürümde henüz bir yüzey
+  görmüyor (tema seçimi her mağaza için şimdilik sabit) — bu, "tema seç, siteyi kur" vaadinin
+  temel alt yapısını kuruyor. [v0.0.10]
+
+### Patch Changes
+
+- @arkesoft/errors@0.2.0
+
 ## 0.1.1
 
 ### Patch Changes

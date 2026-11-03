@@ -1,19 +1,51 @@
 ---
-// @arkesoft/storefront — kiracı sayfası (200) (ROADMAP v0.0.8, T-009/S6,
-// architect "Sayfalar ve uçlar", `docs/ux/T-009.md` "Kiracı sayfası")
+// @arkesoft/storefront — kiracı sayfası (200) (ROADMAP v0.0.8, T-009/S6;
+// ROADMAP v0.0.10, T-012/S8 "İŞ 5" — tema render + metin prop'ları)
 //
 // K13b (bağlayıcı): bu dosyada KOŞUL/DÖNGÜ/`try`/fetch/env okuma/tür
 // dönüşümü YOK — `requireResolvedTenant` çağrısı tek bir fonksiyon
 // çağrısıdır (mantığın kendisi `src/lib/storefront-tenant-context.ts`'te
 // yaşar); `Astro.locals.tenant` HER ZAMAN `resolved`dir (`src/middleware.ts`
 // K21 adım 3 garantisi — `unresolved` durumu bu sayfaya hiç ULAŞMAZ).
+//
+// ⚠⚠ T-012/S8 İŞ 4 — K1'in taşıyıcısı BURADA: DEĞER kiracıya bağlıdır →
+// yalnızca middleware'in ulaştığı yanıtta, `private, no-store`. KURAL
+// kiracıdan bağımsızdır → derleme çıktısında donar; hangi kanalda
+// taşındığı (satır-içi veya `/_astro/*`, tema bileşenlerinin kendi scoped
+// `<style>`'ı, `packages/themes/modern`'de) önbellek politikasını
+// ETKİLEMEZ (T-012/`perf`+`architect` DÜZELTMESİ). Bu ayrım tam burada
+// somutlaşır: DEĞER, `<head>` içinde TEK satır-içi `<style>` ELEMENTİ
+// olarak `head-extra` slotuna, MEVCUT `<link rel="canonical">`
+// elementinin YANINA (onu DEĞİŞTİRMEDEN) girer. `BaseLayout.astro`
+// DOKUNULMADAN (mekanik pin).
+//
+// A-A3 (ÖLÇÜLDÜ, handoff'ta ham `pnpm build` kanıtı var): `is:inline`
+// ZORUNLU kalır, ama asıl gerekçesi önbellek DEĞİL, DERLEME ZAMANINDA
+// DONMADIR: Astro'nun derlediği bir `<style>` derleme ANINDA değerlendirilir
+// → kiracı DEĞERİ build'de donar ve v0.3.0 yapısal olarak KIRILIR. ⚠
+// "Aksi hâlde `theme.styleText` `/_astro/*.css`'e BUNDLE EDİLİR" iddiası
+// bugünkü boyutlarda (416 B < Vite `assetsInlineLimit` 4096 B eşiği)
+// DOĞRULANMAMIŞTIR — yalnızca eşik AŞILDIĞINDA doğru hâle gelir
+// (T-012/`perf`+`architect` ölçümü; eşik aşılırsa Astro davranışı KOD
+// DEĞİŞİKLİĞİ OLMADAN döner, izolasyon değişmezi korunur). İçerik
+// `set:html` ile YAZILIR (Astro'nun metin düğümü ESCAPE'inden kaçınmak
+// için) — `theme.styleText` zaten `src/themes/theme-css.ts`'in KENDİ izin
+// listesinden (ad + renk/yazı tipi deseni) geçmiş, HTML/CSS'i kıracak
+// karakter TAŞIMAZ.
+//
+// A-A2 (ÖLÇÜLDÜ, handoff'ta ham `pnpm build` kanıtı var): Astro aynı
+// adlandırılmış slota (`head-extra`) birden fazla elementi, HER BİRİNE AYNI
+// `slot="head-extra"` özniteliğini vererek kabul eder — `<Fragment>`
+// sarmalayıcı GEREKMEDİ.
 import BaseLayout from '../layouts/BaseLayout.astro'
+import ThemeTemplate from '../themes/ThemeTemplate.astro'
 import { TenantGreeting } from '../components/TenantGreeting.tsx'
 import { requireResolvedTenant } from '../lib/storefront-tenant-context.js'
 import { MESSAGES } from '../messages/messages.js'
 
 const resolvedTenant = requireResolvedTenant(Astro.locals.tenant)
 const storeName = resolvedTenant.tenant.name
+const theme = resolvedTenant.tenant.theme
 ---
 
 <BaseLayout
@@ -22,8 +54,13 @@ const storeName = resolvedTenant.tenant.name
 	description={MESSAGES.storefront.tenant.metaDescription(storeName)}
 >
 	<link rel="canonical" href={`${resolvedTenant.origin}/`} slot="head-extra" />
-	<h1 class="text-2xl font-semibold">{MESSAGES.storefront.tenant.heading(storeName)}</h1>
-	<p>{MESSAGES.storefront.tenant.body}</p>
+	<style is:inline set:html={theme.styleText} slot="head-extra" />
+	<ThemeTemplate
+		themeKey={theme.key}
+		kind="home"
+		heading={MESSAGES.storefront.tenant.heading(storeName)}
+		body={MESSAGES.storefront.tenant.body}
+	/>
 	<TenantGreeting
 		client:idle
 		summary={MESSAGES.storefront.tenant.disclosureSummary}

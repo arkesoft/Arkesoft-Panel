@@ -1,0 +1,28 @@
+---
+// @arkesoft/themes-modern — `home` şablonu (ROADMAP v0.0.10, T-012/S5,
+// AC1 + docs/ui/T-012.md bileşen eşlemesi)
+//
+// ⚠ A-PO1 (bağlayıcı): başlık/gövde metni PROP olarak alınır, sabit Türkçe
+// dize YOK — bu paket `apps/storefront/src/messages/messages.ts`'i ithal
+// EDEMEZ (CLAUDE.md §3: apps/* → packages/* yönü, tersi YASAK). Metnin
+// hangi mesaj anahtarından geleceği S8'in (apps/storefront) kararı.
+//
+// ⚠ Bu şablon `BaseLayout`'u İTHAL ETMEZ (K5: tema paketi hiçbir apps/*'a
+// bağlanmaz) — yalnızca BİR İÇERİK PARÇASIDIR, `BaseLayout`'un `<main>`
+// slotunun İÇİNE host storefront tarafından yerleştirilir (S7/S8'in işi).
+import PageSection from '../components/PageSection.astro'
+import PageHeading from '../components/PageHeading.astro'
+import BodyText from '../components/BodyText.astro'
+
+interface Props {
+	readonly heading: string
+	readonly body: string
+}
+
+const { heading, body } = Astro.props
+---
+
+<PageSection>
+	<PageHeading text={heading} />
+	<BodyText text={body} />
+</PageSection>

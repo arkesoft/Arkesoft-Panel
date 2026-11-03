@@ -68,16 +68,48 @@ test('session.me çıktısı export edilen SessionIdentity tipiyle de eşleşir 
   expectTypeOf<RouterOutputs['session']['me']>().toEqualTypeOf<SessionIdentity>()
 })
 
-test('storefront.currentTenant çıktısı literal tel şekliyle TAM eşleşir (totoloji karşıtı — şemadan TÜRETİLMEDİ, ROADMAP v0.0.8, T-009/S5)', () => {
-  // POZİTİF/JENERİK PİN — beklenen şekil LİTERAL (architect K3'ün TEK alanı,
-  // `id`/`slug`/`status`/`primaryDomain`/`planId`/`deletedAt` BİLİNÇLİ OLARAK
-  // yok).
+test('storefront.currentTenant çıktısı literal tel şekliyle TAM eşleşir (totoloji karşıtı — şemadan TÜRETİLMEDİ, ROADMAP v0.0.10, T-012/S4)', () => {
+  // POZİTİF/JENERİK PİN — beklenen şekil LİTERAL. GÜNCELLEME (ROADMAP v0.0.10,
+  // T-012/S4, architect tRPC SÖZLEŞMESİ): `themeId`/`themeVersion` EKLENDİ
+  // (public API MINOR — yalnızca ekleme, `storefront-tenant.schema.ts:32-35`'in
+  // R9 TELAFİSİ'nin önceden ödediği genişleme). `id`/`slug`/`status`/
+  // `primaryDomain`/`planId`/`deletedAt` HÂLÂ BİLİNÇLİ OLARAK yok — bu altı
+  // alanın yokluğu aşağıdaki NEGATİF PİN testiyle tip düzeyinde AYRICA ölçülür.
   expectTypeOf<RouterOutputs['storefront']['currentTenant']>().toEqualTypeOf<{
     name: string
+    themeId: string | null
+    themeVersion: string | null
   }>()
 })
 
 test('storefront.currentTenant çıktısı export edilen StorefrontTenant tipiyle de eşleşir (export belgesi)', () => {
   // Export'un KENDİ belgesi — bu, yukarıdaki LİTERAL pinin YERİNE geçmez.
   expectTypeOf<RouterOutputs['storefront']['currentTenant']>().toEqualTypeOf<StorefrontTenant>()
+})
+
+test('storefront.currentTenant çıktısında id/slug/status/primaryDomain/planId/deletedAt HÂLÂ YOK (NEGATİF PİN, AC8, ROADMAP v0.0.10, T-012/S4)', () => {
+  // ⚠ Pozitif pinin yukarıdaki güncellenmesi "testi gevşetme" DEĞİL — public
+  // API'de EKLEME (minor) ve genişleme `storefront-tenant.schema.ts:32-35`
+  // tarafından adıyla önceden ödenmişti. Telafi BU testtir: altı alanın
+  // YOKLUĞU tip düzeyinde AYRICA, ALAN BAŞINA pinlenir, aksi hâlde pozitif
+  // pinin güncellenmesi tek başına denetimsiz bir gevşetme olurdu.
+  //
+  // Mekanizma: `expectTypeOf(...).not.toHaveProperty(key)` — `expect-type`
+  // kütüphanesinin kendi belgelediği negatif idiomu (`expectTypeOf(obj).not.
+  // toHaveProperty('c')`). `NegativeExpectTypeOf.toHaveProperty`'nin imzası
+  // `KeyType extends keyof Actual` İLE SINIRLI DEĞİL (pozitif `toHaveProperty`
+  // tam tersine sınırlıdır) — bu yüzden var OLMAYAN bir anahtar güvenle
+  // geçirilebilir. Anahtar `Actual`'da GERÇEKTEN varsa `MismatchArgs` ek
+  // argüman zorunlu kılar ve çağrı eksik argümanla `tsc` HATASI üretir —
+  // yani her satır KENDİ başına, BAĞIMSIZ olarak mutasyona duyarlıdır
+  // (altı alandan biri şemaya eklenirse SADECE o alanın satırı kırmızı
+  // döner, intersection tabanlı bir "hepsi birden" testin aksine).
+  type CurrentTenantOutput = RouterOutputs['storefront']['currentTenant']
+
+  expectTypeOf<CurrentTenantOutput>().not.toHaveProperty('id')
+  expectTypeOf<CurrentTenantOutput>().not.toHaveProperty('slug')
+  expectTypeOf<CurrentTenantOutput>().not.toHaveProperty('status')
+  expectTypeOf<CurrentTenantOutput>().not.toHaveProperty('primaryDomain')
+  expectTypeOf<CurrentTenantOutput>().not.toHaveProperty('planId')
+  expectTypeOf<CurrentTenantOutput>().not.toHaveProperty('deletedAt')
 })

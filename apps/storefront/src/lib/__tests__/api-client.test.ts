@@ -107,3 +107,65 @@ describe('createStorefrontTrpcClient', () => {
     expect(createTrpcClientMock).not.toHaveBeenCalled()
   })
 })
+
+// T-012/S8 — R5 TELAFİSİ testleri. `parseStorefrontTenantResponse`'un
+// KENDİSİ `storefront-env.ts`'e dokunmaz, ama AYNI dosyada (`api-client.ts`)
+// modül YÜKLENİRKEN çalışan `createStorefrontTrpcClient`'ın `API_CONNECTION_
+// TARGET` hesaplaması vardır — dosyayı import etmek bunu da tetikler. Bu
+// yüzden yukarıdaki describe'un AYNI deseni (geçerli env + `vi.resetModules()`
+// + dinamik `import()`) burada da zorunlu.
+describe('parseStorefrontTenantResponse (R5 — dağıtım kayması telafisi)', () => {
+  it('name/themeId/themeVersion TAMAMEN doluysa AYNEN (normalize edilmeden) döner', async () => {
+    setValidEnv('http://127.0.0.1:3000')
+    vi.resetModules()
+    const { parseStorefrontTenantResponse } = await import('../api-client.js')
+
+    const result = parseStorefrontTenantResponse({
+      name: 'Demo Mağaza',
+      themeId: 'modern',
+      themeVersion: '0.1.0',
+    })
+
+    expect(result).toEqual({ name: 'Demo Mağaza', themeId: 'modern', themeVersion: '0.1.0' })
+  })
+
+  it(
+    'themeId/themeVersion yanıtta HİÇ YOKSA (eski apps/api + yeni vitrin — dağıtım kayması) ' +
+      'FIRLAMAZ, ikisini de null\'a NORMALİZE EDER ("seçim yok" gibi davranır)',
+    async () => {
+      setValidEnv('http://127.0.0.1:3000')
+      vi.resetModules()
+      const { parseStorefrontTenantResponse } = await import('../api-client.js')
+
+      const result = parseStorefrontTenantResponse({ name: 'Eski API Mağazası' })
+
+      expect(result).toEqual({
+        name: 'Eski API Mağazası',
+        themeId: null,
+        themeVersion: null,
+      })
+    },
+  )
+
+  it('themeId/themeVersion AÇIKÇA null İSE de AYNI şekilde null kalır (eksik/null ayrımı KALDIRILIR)', async () => {
+    setValidEnv('http://127.0.0.1:3000')
+    vi.resetModules()
+    const { parseStorefrontTenantResponse } = await import('../api-client.js')
+
+    const result = parseStorefrontTenantResponse({
+      name: 'Demo Mağaza',
+      themeId: null,
+      themeVersion: null,
+    })
+
+    expect(result).toEqual({ name: 'Demo Mağaza', themeId: null, themeVersion: null })
+  })
+
+  it("`name` de YOKSA (API'nin TAMAMEN uyumsuz bir sürümü) FIRLAR — SESSİZCE YUTULMAZ", async () => {
+    setValidEnv('http://127.0.0.1:3000')
+    vi.resetModules()
+    const { parseStorefrontTenantResponse } = await import('../api-client.js')
+
+    expect(() => parseStorefrontTenantResponse({})).toThrow()
+  })
+})

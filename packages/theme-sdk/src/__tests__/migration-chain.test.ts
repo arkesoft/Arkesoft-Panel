@@ -172,3 +172,35 @@ describe('validateMigrationChain — biçim denetimi (semver karşılaştırmas�
     ])
   })
 })
+
+// ⚠ K3 PİN TESTLERİ (ROADMAP A3/`:1745`, T-012/architect K3, T-012/S3) —
+// `chain.ts`'in `themeMajor > 1` eşiği BU TASK'TA DEĞİŞTİRİLMEDİ (diff boş,
+// handoff'ta `git diff` ile kanıtlanır). Bu iki test BUGÜNKÜ davranışı
+// BELGELİ kılar: `0.x` aralığında (major 1'e ulaşmamış, yani "major 1'den
+// KÜÇÜK" değil — burada `themeMajor === 0` durumu) `THEME_MIGRATION_MISSING`
+// kontrolü HİÇ ÇALIŞMAZ (`themeMajor > 1` koşulu `0`/`1` için `false`'tur).
+// ⚠ Bu, architect'in üç gerekçesiyle (ADR-0002 Karar 7) BİLİNEN BİR BOŞLUKTUR,
+// HATA DEĞİLDİR: yükümlülüğün kaynağı sürüm aritmetiği değil ayar şeması
+// kırılmasıdır, `0.x`'te kurulu taban yoktur (A-P1), çapraz sürüm kontrolü
+// `ThemeRelease`'i gerektirir (henüz yok). Vadesi — bu boşluğun
+// `ThemeRelease` ile MAKİNELEŞTİRİLECEĞİ sürüm — **v0.0.21**'dir
+// (ADR-0002 Karar 7, architect K3).
+describe('validateMigrationChain — K3: `0.x` migration eşiği (BİLİNEN boşluk, vade v0.0.21 — chain.ts DEĞİŞMEDİ)', () => {
+  it('K3/1: version "0.2.0" + migrations: [] → ok: true (THEME_MIGRATION_MISSING ÜRETİLMEZ, çünkü themeMajor=0 ≤ 1 — bilinen boşluk, hata DEĞİL)', () => {
+    const result = validateMigrationChain([], '0.2.0')
+
+    expect(result.ok).toBe(true)
+  })
+
+  it('K3/2: version "0.2.0" + [{from:"0.1.0",to:"0.2.0"}] → ok: true (gönüllü 0.x zinciri REDDEDİLMİYOR — taşıyıcı mekanizma 0.x\'te ÇALIŞIYOR)', () => {
+    const migrations = [identityMigration('0.1.0', '0.2.0')]
+
+    const result = validateMigrationChain(migrations, '0.2.0')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) {
+      throw new Error('beklenmeyen başarısızlık')
+    }
+    expect(result.value).toBe(migrations)
+  })
+})

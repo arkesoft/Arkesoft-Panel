@@ -74,6 +74,19 @@
 # doğrulandı: `@arkesoft/theme-sdk#test` komutu `vitest run`,
 # `<NONEXISTENT>` değil). Sessiz boşluk doğmuyor; 8 → 9 satır.
 #
+# GÜNCELLEME (ROADMAP v0.0.10, T-012/S6 — devops): yeni paket
+# `@arkesoft/themes-modern` (tema, kaynak-dağıtımlı) bir "test" script'i
+# kazandı ("vitest run"). `apps/storefront` ona `workspace:*` ile bağımlı
+# (`exports`: `"."`/`"./templates/*"` tüketimi) → paket "storefront"
+# job'unun (`filter: '@arkesoft/storefront...'`, ci.yml:1000) kapanışına
+# GİRİYOR; bu job "run-test" için açıkça 'false' GEÇMİYOR, varsayılan
+# 'true' geçerli → test adımı GERÇEKTEN koşuyor
+# (`pnpm exec turbo run test --filter='@arkesoft/storefront...' --dry=json`
+# ile doğrulandı: `@arkesoft/themes-modern#test` komutu `vitest run`,
+# `<NONEXISTENT>` DEĞİL). Yeni bir CI job'u GEREKMİYOR (R6, vade v0.0.19 —
+# CI'ya yeni job eklemek bu Task'ın kapsamı dışında). Sessiz boşluk
+# doğmuyor; 9 → 10 satır.
+#
 # Satır başında # olan satırlar ve boş satırlar yorum sayılır, taranmaz.
 
 @arkesoft/admin
@@ -83,5 +96,6 @@
 @arkesoft/storefront
 @arkesoft/tenancy
 @arkesoft/theme-sdk
+@arkesoft/themes-modern
 @arkesoft/trpc
 @arkesoft/ui

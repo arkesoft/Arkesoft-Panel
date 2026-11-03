@@ -1,0 +1,23 @@
+---
+// @arkesoft/themes-modern — BodyText (ROADMAP v0.0.10, T-012/S5,
+// docs/ui/T-012.md "BodyText.astro")
+//
+// Gövde paragrafı. Metin PROP olarak alınır (A-PO1). Renk `--color-body`,
+// yazı tipi `--font-body` — token tüketim kararı `PageSection.astro`'nun
+// dosya başı yorumunda. Kontrast: `#FFFFFF` üzerine `#374151` = 10.31:1
+// (docs/ui/T-012.md "Kontrast tablosu").
+interface Props {
+	readonly text: string
+}
+
+const { text } = Astro.props
+---
+
+<p class="theme-modern-body text-base md:text-lg">{text}</p>
+
+<style>
+	.theme-modern-body {
+		color: var(--color-body);
+		font-family: var(--font-body);
+	}
+</style>

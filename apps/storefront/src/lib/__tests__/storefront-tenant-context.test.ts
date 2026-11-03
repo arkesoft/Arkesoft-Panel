@@ -9,9 +9,15 @@ import type { StorefrontTenantContext } from '../storefront-tenant-context.js'
 
 describe('requireResolvedTenant', () => {
   it('kind: "resolved" bağlamını AYNEN döner', () => {
+    // T-012/S8 (R9): `tenant.theme` ZORUNLU alan oldu — `key`/`styleText`
+    // middleware'in `src/themes/registry.ts` üzerinden ZATEN çözümlediği
+    // değerler, bu modül onları YENİDEN HESAPLAMAZ, sadece TAŞIR.
     const resolved: StorefrontTenantContext = {
       kind: 'resolved',
-      tenant: { name: 'Demo Mağaza' },
+      tenant: {
+        name: 'Demo Mağaza',
+        theme: { key: 'modern@0.1.0', styleText: ':root{--color-primary:#2563EB;}' },
+      },
       origin: 'http://demo.arkesoft.localhost:4321',
     }
 

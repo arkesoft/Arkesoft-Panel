@@ -48,6 +48,12 @@ const CHANGELOG_SENTINEL = '<!-- Changesets bu çizginin altına yazar. Elle gir
 const KNOWN_INDEPENDENT_PACKAGES: ReadonlySet<string> = new Set([
   '@arkesoft/theme-sdk',
   '@arkesoft/trpc',
+  // T-012/S6 (ROADMAP v0.0.10): `@arkesoft/themes-modern` — her tema KENDİ
+  // semver'ini taşır (ROADMAP.md:1352), `.changeset/config.json`'ın fixed
+  // grubuna GİREMEZ (architect kararı, T-012 handoff). Bu küme tam o
+  // yasağın meşru kayıt yeri — fixed grupta olmayan ama drift HATASI
+  // üretmesini istemediğimiz tek bağımsız semver birimi.
+  '@arkesoft/themes-modern',
 ])
 
 /** Workspace paketlerinin arandığı dizinler (`pnpm-workspace.yaml` ile birebir aynı). */

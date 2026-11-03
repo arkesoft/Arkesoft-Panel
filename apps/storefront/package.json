@@ -1,6 +1,6 @@
 {
   "name": "@arkesoft/storefront",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Çok kiracılı vitrin (Astro SSR) — tema runtime",
@@ -17,6 +17,7 @@
     "@arkesoft/tenancy": "workspace:*",
     "@arkesoft/trpc": "workspace:*",
     "@arkesoft/errors": "workspace:*",
+    "@arkesoft/themes-modern": "workspace:*",
     "astro": "catalog:",
     "@astrojs/node": "catalog:",
     "@astrojs/react": "catalog:",
