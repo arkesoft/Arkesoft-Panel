@@ -885,15 +885,58 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
-      redis:
-        image: redis:8.10-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
+      # ⚠ Redis BU BLOKTA DEĞİL — bilinçli, ROADMAP v0.0.11.
+      #
+      # v0.0.11'in fail-closed kapısı (AC10 —
+      # "apps/api/src/__tests__/helpers/assert-queue-capable-redis.ts")
+      # kuyruk testlerinden ÖNCE çalışma anında "appendonly=yes" ve
+      # "maxmemory-policy=noeviction" ÖLÇÜYOR. Redis'in varsayılanı
+      # "appendonly=no" olduğu için ARGÜMANSIZ bir Redis bu kapıyı DOĞRU
+      # şekilde kırmızıya çevirir (9016c7a'da ölçüldü: "api" job'unda 5 test
+      # dosyası / 7 hata; altısı birebir kapının mesajı, yedincisi kapıda
+      # düşen "beforeAll"ın "afterAll"a bıraktığı ikincil etki). Kapı bir
+      # kusur DEĞİL, teşhis: kapı olmasaydı CI'ın kuyruk testleri KALICI
+      # OLMAYAN bir Redis'e karşı koşup YANILTICI YEŞİL verirdi.
+      #
+      # GitHub Actions'ın "services" şemasında bu argümanları verecek bir alan
+      # YOK. Üç yol da ÖLÇÜLDÜ, üçü de bu şemada çalışmıyor:
+      #
+      #   1) "command" alanı — ŞEMADA YOK. actionlint 1.7.12 (guards job'unun
+      #      indirdiği sürümün AYNISI) birebir şunu diyor: 'unexpected key
+      #      "command" for "services" section. expected one of "credentials",
+      #      "env", "image", "options", "ports", "volumes"' → exit 1. Yani bu
+      #      yol yalnızca çalışmıyor, "guards" job'unun "0 bulgu" şartını da
+      #      kırıyor. (Bu yüzden "infra/docker-compose.yml:54"ün çözümü buraya
+      #      BİREBİR KOPYALANAMIYOR — compose "command" kullanıyor.)
+      #
+      #   2) "options: --entrypoint …" — ARGÜMAN TAŞIMIYOR. İki biçim de
+      #      ölçüldü: "--entrypoint redis-server" imajın CMD'sini SİLER ve
+      #      Redis argümansız kalkar (CONFIG GET appendonly → 'no', kapı yine
+      #      kırmızı); "--entrypoint 'redis-server --appendonly yes'" ise
+      #      'executable file not found in $PATH' + exit 127 verir (docker'ın
+      #      "--entrypoint"i TEK bir çalıştırılabilir alır, argüman listesi
+      #      almaz).
+      #
+      #   3) "volumes:" ile bir redis.conf bağlamak — redis-server dosya
+      #      yolunu BİR ARGÜMAN olarak almadıkça o dosyayı OKUMUYOR (ölçüldü:
+      #      conf'ta "appendonly yes" yazılı olmasına rağmen CONFIG GET → 'no',
+      #      INFO server'da "config_file:" BOŞ). Ayrıca servisler
+      #      checkout'tan ÖNCE başladığı için repodaki bir dosya o anda henüz
+      #      diskte DEĞİL.
+      #
+      # SEÇİLEN YOL (3. yol): Redis, aşağıdaki ilk adımda "docker run" ile
+      # "infra/docker-compose.yml:54"ün BİREBİR AYNI argümanlarıyla
+      # kaldırılıyor. Gerekçe ölçülmüş, estetik değil: yerelde kapının gördüğü
+      # üçlü (appendonly='yes' · maxmemory-policy='noeviction' · save='60 1')
+      # CI'da da BİREBİR aynı oluyor. Alternatif olan "servisi bırak, sonra
+      # ayarı çalışma anında değiştir" yolu appendonly'yi düzeltirdi ama
+      # "save"i imaj varsayılanında ('3600 1 300 100 60 10000') bırakırdı —
+      # yani kapının TEŞHİS satırında yerel ile CI AYRIŞMAYA DEVAM ederdi; bu
+      # Task'ın kovaladığı kusur sınıfı tam olarak bu (beyan ≠ gerçeklik).
+      # Aynı disiplin Mailpit notunda da yazılı: yerel tanımla AYNI imaj/sürüm.
+      #
+      # --- (Redis notu burada bitiyor; aşağısı Mailpit servisine ait) ------
+      #
       # Mailpit (A-G9, T-006/S1): `infra/docker-compose.yml`'daki yerel
       # tanımla AYNI imaj/sürüm (axllent/mailpit:v1.32). AC4'ün "Mailpit
       # HTTP API'sinden gerçekten teslim edilmiş mesaj okunur" gereksinimi
@@ -918,6 +961,86 @@ jobs:
     steps:
       - name: Depoyu checkout et
         uses: actions/checkout@v4
+
+      # ROADMAP v0.0.11 — kuyruk-yetenekli Redis. Neden "services" bloğunda
+      # DEĞİL: yukarıdaki üç ölçümlü gerekçeye bakın. Bu adım "setup-workspace"ten
+      # ÖNCE: Redis kalkmazsa ~2 dakikalık kurulum/derleme harcanmadan, TEK bir
+      # satırla kırmızı veriyoruz.
+      - name: Kuyruk-yetenekli Redis'i ayağa kaldır (AC10 kapısının gereği)
+        shell: bash
+        env:
+          # Etiket SABİT ("latest" yok) ve "infra/docker-compose.yml:51" ile AYNI.
+          REDIS_IMAGE: redis:8.10-alpine
+          REDIS_INSTANCE_NAME: arkesoft-ci-redis
+        run: |
+          set -euo pipefail
+
+          # Argüman listesi "infra/docker-compose.yml:54" ile BİREBİR aynı
+          # ("redis-server --appendonly yes --save 60 1") + "--maxmemory-policy
+          # noeviction" AÇIKÇA. Bugünkü Redis varsayılanı zaten "noeviction" —
+          # ama ÖRTÜK bırakmak bu sürümün kovaladığı kusur sınıfı (beyan ≠
+          # gerçeklik): kapı bu değeri ASSERT ediyor, dolayısıyla CI'ın onu
+          # BEYAN ETMESİ gerekiyor. (S1/S5 aynı gerekçeyle
+          # "TENANT_PROVISION_CONCURRENCY"yi örtük kütüphane varsayılanına
+          # bırakmadı.)
+          #
+          # Kalıcı volume BİLEREK YOK: CI koşumu efemer, her koşum TEMİZ bir
+          # Redis'le başlamalı. Yereldeki isimli "redis-data" volume'u ile bu
+          # BİLİNÇLİ bir fark — orada veri YAŞAMALI, burada YAŞAMAMALI.
+          # Port eşlemesi önceki servis tanımıyla AYNI (6379:6379) → okuyan
+          # taraf ("REDIS_URL=redis://localhost:6379", .env.example:54) için
+          # hiçbir davranış değişikliği yok.
+          docker run -d \
+            --name "$REDIS_INSTANCE_NAME" \
+            -p 6379:6379 \
+            "$REDIS_IMAGE" \
+            redis-server --appendonly yes --save 60 1 --maxmemory-policy noeviction
+
+          # Hazır olma beklemesi: runner'ın servis sağlık kapısı artık bu
+          # Redis'te geçerli değil, bu yüzden AÇIKÇA bekliyoruz. Yoklama komutu
+          # "infra/docker-compose.yml:60"taki healthcheck'in AYNISI
+          # ("redis-cli ping | grep -q PONG"). "localhost" yerine "docker exec"
+          # ile konteynerin İÇİNDEN soruluyor → IPv4/IPv6 çözümleme yüzeyi hiç
+          # açılmıyor (repo kuralı: HTTP healthcheck'lerde "localhost" yok).
+          redis_ready=false
+          for attempt in $(seq 1 24); do
+            if docker exec "$REDIS_INSTANCE_NAME" redis-cli ping 2>/dev/null | grep -q PONG; then
+              redis_ready=true
+              echo "Redis hazır (deneme $attempt)."
+              break
+            fi
+            sleep 2
+          done
+          if [ "$redis_ready" != true ]; then
+            echo "::error::Redis 48 saniye içinde PONG vermedi."
+            docker logs "$REDIS_INSTANCE_NAME" || true
+            exit 1
+          fi
+
+          # Erken teşhis, fail-closed. AC10 kapısı bunu testlerin İÇİNDE de
+          # ölçüyor (ve asıl otorite ORADA) — ama orada düşerse 7 hata birden
+          # çıkıyor ve kök neden gürültüye karışıyor. Burada TEK adım, TEK
+          # satırla söylüyor.
+          # ⚠ Yalnızca OKUMA: bu adım hiçbir Redis ayarını DEĞİŞTİRMİYOR.
+          redis_config_ok=true
+          for expectation in "appendonly=yes" "maxmemory-policy=noeviction"; do
+            parameter="${expectation%%=*}"
+            expected="${expectation#*=}"
+            measured="$(docker exec "$REDIS_INSTANCE_NAME" redis-cli CONFIG GET "$parameter" | tail -n 1)"
+            if [ "$measured" = "$expected" ]; then
+              echo "  $parameter = '$measured' (beklenen '$expected') ✔"
+            else
+              echo "::error::Redis yapılandırması beklenenden farklı: $parameter = '$measured', beklenen '$expected'."
+              redis_config_ok=false
+            fi
+          done
+          # "save" ASSERT EDİLMİYOR (kapı da etmiyor, S4 K6) — yalnızca teşhis
+          # için raporlanıyor; yerel/CI eşitliğinin görünür kanıtı: '60 1'.
+          measured_save="$(docker exec "$REDIS_INSTANCE_NAME" redis-cli CONFIG GET save | tail -n 1)"
+          echo "  save = '$measured_save' (ASSERT EDİLMEZ, yalnızca teşhis)"
+          if [ "$redis_config_ok" != true ]; then
+            exit 1
+          fi
 
       - name: Çalışma alanını hazırla
         uses: ./.github/actions/setup-workspace
