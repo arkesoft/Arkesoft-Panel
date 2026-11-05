@@ -40,7 +40,9 @@ import { JOB_DEFINITIONS, TENANT_PROVISION_JOB } from '../queue/job-registry.js'
 import {
   buildDlqQueueName,
   JOB_ATTEMPTS,
+  QUEUE_CLOSE_TIMEOUT_MS,
   QUEUE_KEY_PREFIX,
+  QUEUE_QUIT_TIMEOUT_MS,
   TENANT_PROVISION_CONCURRENCY,
 } from '../queue/queue-constants.js'
 import { JOB_ENQUEUED_LOG_EVENT } from '../queue/queue-log-events.js'
@@ -282,6 +284,64 @@ describe('(2) enqueue — SIRALAMA, jobId eşlemesi, iş seçenekleri (gerçek B
   })
 })
 
+/**
+ * `QueueLifecycleService.onModuleDestroy()`'un en kötü durum bütçesini
+ * AYNALAR (`queue-lifecycle.service.ts`): kayıt defterindeki HER iş türü
+ * için iki `queue.close()` (`QUEUE_CLOSE_TIMEOUT_MS`) + bir
+ * `connection.quit()`/`disconnect()` (`QUEUE_QUIT_TIMEOUT_MS`) + güvenlik
+ * payı. Rastgele bir sayı DEĞİL — aşağıdaki `waitForQueueConnectionEnd`'in
+ * ÜST SINIRI, "asla dönmeyen bir kapanış" ile "henüz dönmemiş normal
+ * kapanış"ı ayırt etmek için var.
+ */
+const CONNECTION_END_WAIT_BUDGET_MS =
+  JOB_DEFINITIONS.length * 2 * QUEUE_CLOSE_TIMEOUT_MS + QUEUE_QUIT_TIMEOUT_MS + 2_000
+
+/**
+ * `connection.status`'ün `'end'`e geçtiğini DURUMU YOKLAYARAK değil, bu
+ * geçişin KENDİ sinyalini (`ioredis`'in `'end'` olayı) dinleyerek doğrular.
+ *
+ * ⚠ NEDEN DURUM YOKLAMASI (`expect(status).toBe('end')` doğrudan okuma)
+ * KIRILGAN: `ioredis`'te `status` alanı `Redis.js#setStatus` içinde
+ * SENKRON güncellenir, ama bu güncellemeyi TETİKLEYEN native socket
+ * `'close'` olayı `connection.quit()`'in döndürdüğü promise'in
+ * çözülmesinden SONRA, AYRI bir event-loop turunda ateşlenir
+ * (`event_handler.js#closeHandler`). `QueueLifecycleService.onModuleDestroy`
+ * (`app.close()` zinciri) `connection.quit()`'i BEKLER ama bu, socket'in
+ * GERÇEKTEN kapandığı anlamına gelmez — `status` o anda hâlâ `'ready'`
+ * olabilir. Yük altında (CI'da 62 worker) bu ARA, senkron bir okumanın
+ * yakalayabileceği kadar büyüyor (bu dosyanın önceki CI kırmızısı).
+ *
+ * Bu fonksiyon dinleyiciyi KAPATMADAN ÖNCE kurar (çağıran sırası bunu
+ * garanti eder — bkz. çağrı yeri) ve `'end'` olayını bekler; zaman aşımı
+ * mesajı YALNIZCA "timeout" demez, kapanışın FİİLEN olmadığını adlandırır
+ * (mutasyon kanıtının okunabilir olması için).
+ */
+async function waitForQueueConnectionEnd(connection: Redis, timeoutMs: number): Promise<void> {
+  if (connection.status === 'end') {
+    return
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      timer = setTimeout(() => {
+        reject(
+          new Error(
+            `kuyruk bağlantısı kapanmadı: ${String(timeoutMs)}ms içinde 'end' olayı gelmedi (son status: ${connection.status})`,
+          ),
+        )
+      }, timeoutMs)
+
+      connection.once('end', () => {
+        resolve()
+      })
+    })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 describe('(3) üretim yolu — `Job` satırı KİRACI KAPSAMLI yazılıyor + kapanış sözleşmesi', () => {
   let app: INestApplication<Server> | undefined
   let prismaService: PrismaService
@@ -379,30 +439,51 @@ describe('(3) üretim yolu — `Job` satırı KİRACI KAPSAMLI yazılıyor + kap
     expect(ownRows).toHaveLength(1)
   })
 
-  it('SON TEST — kuyruk artığı bırakılmıyor + QueueLifecycleService KENDİ bağlantısını kapatıyor', async () => {
-    expect(queueConnection.status).not.toBe('end')
+  it(
+    'SON TEST — kuyruk artığı bırakılmıyor + QueueLifecycleService KENDİ bağlantısını kapatıyor',
+    async () => {
+      expect(queueConnection.status).not.toBe('end')
 
-    // ⚠ ARTIK BIRAKMAMA (Orkestratör ölçtü, DoD maddesi): bu sonda ÜRETİM
-    // kuyruklarını kullanıyor ve paylaşılan Redis'te `meta`/`id`/`events`/
-    // `marker` metadata anahtarları bırakırdı. Her koşum kendi artığını
-    // KENDİSİ siler — yoksa anahtarlar birikir ve bir sonraki alt görev
-    // (S6/S7) "askıda iş var mı?" sorusunu yanlış cevaplar.
-    // `obliterate` DESENE KAPSAMLI: yalnızca bu iki kuyruğun anahtarlarını
-    // siler; `platform:auth:*` gibi başka testlerin durumuna DOKUNMAZ
-    // (bütün veritabanını boşaltan komutlar BU SONDADA KULLANILMAZ).
-    for (const entry of registry.values()) {
-      await entry.queue.obliterate({ force: true })
-      await entry.dlqQueue.obliterate({ force: true })
-    }
+      // ⚠ ARTIK BIRAKMAMA (Orkestratör ölçtü, DoD maddesi): bu sonda ÜRETİM
+      // kuyruklarını kullanıyor ve paylaşılan Redis'te `meta`/`id`/`events`/
+      // `marker` metadata anahtarları bırakırdı. Her koşum kendi artığını
+      // KENDİSİ siler — yoksa anahtarlar birikir ve bir sonraki alt görev
+      // (S6/S7) "askıda iş var mı?" sorusunu yanlış cevaplar.
+      // `obliterate` DESENE KAPSAMLI: yalnızca bu iki kuyruğun anahtarlarını
+      // siler; `platform:auth:*` gibi başka testlerin durumuna DOKUNMAZ
+      // (bütün veritabanını boşaltan komutlar BU SONDADA KULLANILMAZ).
+      for (const entry of registry.values()) {
+        await entry.queue.obliterate({ force: true })
+        await entry.dlqQueue.obliterate({ force: true })
+      }
 
-    const closingApp = app
-    app = undefined
+      const closingApp = app
+      app = undefined
 
-    await closingApp?.close()
+      // ⚠ Dinleyici `app.close()`'DAN ÖNCE kuruluyor (fonksiyon çağrısı
+      // SENKRON olarak `connection.once('end', …)`'i kaydeder) — kapanış
+      // `await`'ten önce tetiklenirse olay KAÇMAZ.
+      const connectionEnded = waitForQueueConnectionEnd(
+        queueConnection,
+        CONNECTION_END_WAIT_BUDGET_MS,
+      )
 
-    // `RedisService.quit()` yalnızca `REDIS_CLIENT`'ı kapatır; bu bağlantı
-    // `'queue'` profilinin AYRI örneğidir ve kapanışı `QueueLifecycleService`
-    // yapar (T-013/S3'ün bağlayıcı notu, AC9'un ön koşulu).
-    expect(queueConnection.status).toBe('end')
-  })
+      await closingApp?.close()
+
+      // `RedisService.quit()` yalnızca `REDIS_CLIENT`'ı kapatır; bu bağlantı
+      // `'queue'` profilinin AYRI örneğidir ve kapanışı `QueueLifecycleService`
+      // yapar (T-013/S3'ün bağlayıcı notu, AC9'un ön koşulu). `status`'u
+      // DOĞRUDAN YOKLAMIYORUZ — kapanışın KENDİ sinyalini (`'end'` olayı)
+      // bekliyoruz (gerekçe: `waitForQueueConnectionEnd`'in başındaki yorum).
+      await connectionEnded
+
+      expect(queueConnection.status).toBe('end')
+    },
+    // ⚠ Vitest'in VARSAYILAN test zaman aşımı (5000ms)'den BİLEREK BÜYÜK:
+    // `CONNECTION_END_WAIT_BUDGET_MS` (kapanış zincirinin KENDİ bütçesi,
+    // 7000ms) içeride dolup KENDİ ("bağlantı kapanmadı…") hatasını fırlatsın
+    // — vitest'in jenerik "Test timed out" mesajı bunu MASKELEMESİN
+    // (mutasyon kanıtının okunabilir kalması için, T-015 düzeltme notu).
+    CONNECTION_END_WAIT_BUDGET_MS + 3_000,
+  )
 })

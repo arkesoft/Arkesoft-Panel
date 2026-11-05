@@ -31,11 +31,20 @@
 // İÇERMEZ, yalnızca şema/RLS/rol doğrulaması sağlar).
 //
 // TABLO ADI LİTERAL YAZIMI BAĞLAYICI DEĞİL (AGENT_BASELINE §5 literal-jeton
-// kuralı yalnızca GUC AYAR ADINI — `app.tenant_id` — hedefler, CI'nin
+// kuralı yalnızca GUC AYAR ADINI — (`app.` + `tenant_id`) — hedefler, CI'nin
 // taraması bu dosyayı KAPSASA bile burada o jeton YOK): `tenant` bir Postgres
 // GUC ayarı değil, sabit bir platform tablosu adıdır; bu fonksiyon
 // taksonomiden BAĞIMSIZ, SABİT bir prob tablosu kullanır (K-E5'in "hangi
 // tablo sır taşıyor" ayrımı burada KONU DEĞİL).
+//
+// ⚠ LİTERAL-JETON KURALI (AGENT_BASELINE §5): yukarıdaki GUC ayar adı bu
+// dosyada BİTİŞİK YAZILMAZ. CI'ın `guards` işi (AC4) `app.` + `tenant_id`
+// jetonunu mekanik `grep` ile tarar ve izinli tek adresi
+// `packages/db/src/tenant-context.ts`tır; bu yorum bitişik yazılırsa kendi
+// kendini eşler ve kapı KALICI YANLIŞ POZİTİF verir (aynı kusur sınıfı başka
+// bir GUC fonksiyon adında da yaşandı — bkz. `invitation-token.ts` ve
+// `assert-queue-capable-redis.test.ts`'teki aynı kural). İki parçayı burada
+// yeniden birleştirip "düzeltme" YAPMA.
 
 import { z } from 'zod'
 
