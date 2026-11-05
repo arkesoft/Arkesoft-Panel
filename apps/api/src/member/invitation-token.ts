@@ -51,13 +51,21 @@ const TOKEN_SEPARATOR = '.'
  * ⚠ DESEN `trim()` KONTROLÜNÜ KAPSAR VE AŞAR: önceki kapı yalnızca BOŞLUK
  * karakterlerini arıyordu, oysa NUL baytı (U+0000) bir boşluk karakteri
  * DEĞİLDİR — `trim()` onu SOYMAZ. ÖLÇÜLDÜ: NUL taşıyan bir kiracı yarısı
- * kiracı bağlamı kuran katmanın boşluk kapısından da geçiyor ve PostgreSQL
- * `set_config`'in bağlı parametresinde `22021 invalid byte sequence for
- * encoding "UTF8": 0x00` ile REDDEDİYORDU → `AppError` DEĞİL, jenerik bir
- * HTTP 500 + istek başına bir `error` seviyeli HAM kayıt (mesaj + yığın izi).
- * Bu, ADR-0016 madde 6 KOŞUL D'nin "tüm başarısızlık modları AYNI 404"
- * değişmezini AYIRT EDİLEBİLİR kılıyordu ve bu uca kiracı ÜYELİĞİ bile
- * gerekmiyor (kiracı bağlamından muaf yol).
+ * kiracı bağlamı kuran katmanın boşluk kapısından da geçiyor ve PostgreSQL'in
+ * (`set_` + `config`) adlı fonksiyonunun bağlı parametresinde `22021 invalid
+ * byte sequence for encoding "UTF8": 0x00` ile REDDEDİYORDU → `AppError`
+ * DEĞİL, jenerik bir HTTP 500 + istek başına bir `error` seviyeli HAM kayıt
+ * (mesaj + yığın izi). Bu, ADR-0016 madde 6 KOŞUL D'nin "tüm başarısızlık
+ * modları AYNI 404" değişmezini AYIRT EDİLEBİLİR kılıyordu ve bu uca kiracı
+ * ÜYELİĞİ bile gerekmiyor (kiracı bağlamından muaf yol).
+ *
+ * ⚠ LİTERAL-JETON KURALI (AGENT_BASELINE §5): yukarıdaki fonksiyon adı bu
+ * dosyada BİTİŞİK YAZILMAZ. CI'ın `guards` işi (AC4) `set_` + `config`
+ * jetonunu mekanik `grep` ile tarar ve izinli tek adresi
+ * `packages/db/src/tenant-context.ts`tır; bu yorum bitişik yazılırsa kendi
+ * kendini eşler ve kapı KALICI YANLIŞ POZİTİF verir (T-014 FIX 2'de fiilen
+ * yaşandı — bkz. `assert-queue-capable-redis.test.ts`'teki aynı kural).
+ * İki parçayı burada yeniden birleştirip "düzeltme" YAPMA.
  *
  * ⚠⚠ DÜZELTME ÇAĞIRAN TARAFTADIR: kiracı kapsamlı istemcinin boşluk kapısını
  * sertleştirmek DEĞERLENDİRİLDİ ve REDDEDİLDİ (ADR-0003 madde 1) — o kapı veri
