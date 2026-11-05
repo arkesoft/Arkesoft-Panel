@@ -60,6 +60,16 @@ function runWithStore<T>(callback: () => T): T {
     logger: pino({ level: 'silent' }),
     tenant: { kind: 'exempt' },
     auth: { kind: 'exempt' },
+    // ROADMAP v0.0.14, T-014/S4 EKLEMESİ (additive, po R-PO2):
+    // `RequestContext.client` ZORUNLU bir alan ve `?` ile opsiyonel
+    // YAPILMADI (`auth`'un v0.0.5 emsali) → bu dosyadaki BEŞ kurucunun
+    // hepsi DOLDURULDU.
+    // ⚠ İSTEMCİ IP'Sİ BU ALANDAN OKUNMUYOR: oran sınırı muhafızı IP'yi
+    // HAM İSTEKTEN (`resolveClientIp`) çözmeye devam ediyor — iki yol AYNI
+    // saf çözümleyiciyi paylaşır ama muhafız ALS'ye BAĞIMLI DEĞİLDİR. Bu
+    // yüzden buradaki `null` değerler aşağıdaki sayaç assert'lerini
+    // ETKİLEMEZ; etkilerse bu, davranış değişikliği olurdu.
+    client: { ip: null, userAgent: null },
   }
   return requestContextStorage.run(store, callback)
 }
@@ -342,6 +352,9 @@ describe('RateLimitAccountResetInterceptor — birim (mock RateLimitService, Red
       logger: pino({ level: 'silent' }),
       tenant: { kind: 'exempt' },
       auth: { kind: 'exempt' },
+      // T-014/S4 (po R-PO2) — ZORUNLU alan, `?` YOK. Gerekçe dosyanın
+      // yukarısındaki `runWithStore` yorumunda.
+      client: { ip: null, userAgent: null },
     }
 
     requestContextStorage.run(store, () => {
@@ -385,6 +398,9 @@ describe('RateLimitAccountResetInterceptor — birim (mock RateLimitService, Red
       logger: pino({ level: 'silent' }),
       tenant: { kind: 'exempt' },
       auth: { kind: 'exempt' },
+      // T-014/S4 (po R-PO2) — ZORUNLU alan, `?` YOK. Gerekçe dosyanın
+      // yukarısındaki `runWithStore` yorumunda.
+      client: { ip: null, userAgent: null },
     }
     const warnSpy = vi.spyOn(store.logger, 'warn')
 
@@ -431,6 +447,9 @@ describe('RateLimitAccountResetInterceptor — birim (mock RateLimitService, Red
       logger: pino({ level: 'silent' }),
       tenant: { kind: 'exempt' },
       auth: { kind: 'exempt' },
+      // T-014/S4 (po R-PO2) — ZORUNLU alan, `?` YOK. Gerekçe dosyanın
+      // yukarısındaki `runWithStore` yorumunda.
+      client: { ip: null, userAgent: null },
     }
     const warnSpy = vi.spyOn(store.logger, 'warn')
 
@@ -478,6 +497,9 @@ describe('RateLimitAccountResetInterceptor — birim (mock RateLimitService, Red
       logger: pino({ level: 'silent' }),
       tenant: { kind: 'exempt' },
       auth: { kind: 'exempt' },
+      // T-014/S4 (po R-PO2) — ZORUNLU alan, `?` YOK. Gerekçe dosyanın
+      // yukarısındaki `runWithStore` yorumunda.
+      client: { ip: null, userAgent: null },
     }
 
     requestContextStorage.run(store, () => {

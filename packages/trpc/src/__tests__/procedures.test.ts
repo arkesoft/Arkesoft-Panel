@@ -25,10 +25,12 @@ import {
   HARNESS_TENANT_SUMMARY,
   createFakeErrorFactoryPort,
   createFakeJobReadPort,
+  createFakeMembershipReadPort,
   createFakeStorefrontTenantReadPort,
   createFakeTenantReadPort,
   createHarness,
   createRecordingLogger,
+  createRecordingMemberWritePort,
 } from './harness.js'
 import { publicProcedure, router } from '../trpc.js'
 import type { TrpcContext } from '../context/trpc-context.types.js'
@@ -79,6 +81,10 @@ describe('publicProcedure — hermetik semantik (architect K4)', () => {
         // ROADMAP v0.0.11, T-013/S8 — ZORUNLU üye (po R-P2); bu test
         // `job.*` ÇAĞIRMAZ, stub yalnızca sözleşmeyi doldurur.
         jobRead: createFakeJobReadPort(HARNESS_JOB_SUMMARY),
+        // ROADMAP v0.0.14, T-014/S2 — İKİSİ DE ZORUNLU üye (po R-PM5); bu
+        // test `member.*` ÇAĞIRMAZ, stub'lar yalnızca sözleşmeyi doldurur.
+        membershipRead: createFakeMembershipReadPort('owner'),
+        memberWrite: createRecordingMemberWritePort().port,
       },
       errors: createFakeErrorFactoryPort(),
     }

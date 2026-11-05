@@ -173,6 +173,11 @@ describe('getTenantContext — fail-closed (R4 telafisi)', () => {
       // alandan BAĞIMSIZ, sabit `'pending'` yeterli (S6'nın own test'leri
       // `auth` dalını kendi dosyalarında kapsar).
       auth: { kind: 'pending' },
+      // ROADMAP v0.0.14, T-014/S4 EKLEMESİ (additive, po R-PO2): ZORUNLU alan,
+      // `?` ile opsiyonel YAPILMADI (`auth`'un v0.0.5 emsali). Bu dosyanın
+      // konusu kiracı çözümünün fail-closed davranışı — istemci alanları
+      // ilgisiz, iki `null` yeterli.
+      client: { ip: null, userAgent: null },
     }
     requestContextStorage.run(store, callback)
   }

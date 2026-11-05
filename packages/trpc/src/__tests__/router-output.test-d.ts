@@ -23,10 +23,18 @@
 import { expectTypeOf, test } from 'vitest'
 
 import type { RouterInputs, RouterOutputs } from '../index.js'
+import type { Permission } from '../authz/permissions.js'
+import type { permissionProcedure } from '../authz/permission-procedure.js'
 import type { TenantSummary } from '../schemas/tenant-summary.schema.js'
 import type { StorefrontTenant } from '../schemas/storefront-tenant.schema.js'
 import type { JobListPage, JobSummary } from '../schemas/job-summary.schema.js'
 import type { SessionIdentity } from '../schemas/session-identity.schema.js'
+import type {
+  MemberInvitation,
+  MemberInvitationAccepted,
+  MemberRemoved,
+  MemberRole,
+} from '../schemas/member.schema.js'
 
 // `test()` sarmalayıcıları ÇALIŞMA ZAMANINDA YÜRÜMEZ (bu dosya
 // `vitest.config.ts`'in `include: ['src/**/*.test.ts']` deseninin DIŞINDA,
@@ -178,4 +186,78 @@ test('job.list girdisinde kiracı alanı YOK (ADR-0009 madde 7 — kiracı ASLA 
   // `jobListInputSchema`'ya bir kiracı alanı eklerse bu satır KIRILIR.
   expectTypeOf<RouterInputs['job']['list']>().not.toHaveProperty('tenantId')
   expectTypeOf<RouterInputs['job']['get']>().not.toHaveProperty('tenantId')
+})
+
+// ---------------------------------------------------------------------------
+// `member.*` + izin kataloğu — ROADMAP v0.0.14, T-014/S2
+// ---------------------------------------------------------------------------
+
+test("AC3 ayak (a) TİP DÜZEYİ PİNİ — permissionProcedure'ün girdisi TAM OLARAK izin kataloğudur", () => {
+  // ⚠⚠ AC3'ün (a) ayağının BİRİNCİL mekanizması bu eşitliktir: parametre tipi
+  // `Permission` olduğu için katalogda OLMAYAN bir izin adı DERLENMEZ. Bu pin
+  // mekanizmanın SESSİZCE gevşetilmesini (parametreyi `string`'e açmak)
+  // yakalar — gevşetme olursa `toEqualTypeOf` İKİ YÖNLÜ eşitlik istediği için
+  // bu satır kırmızıya düşer.
+  expectTypeOf<Parameters<typeof permissionProcedure>[0]>().toEqualTypeOf<Permission>()
+})
+
+test('izin kataloğu TAM OLARAK iki izinden oluşur (literal, katalogdan TÜRETİLMEDİ)', () => {
+  // Totoloji karşıtı: beklenen küme LİTERAL yazılır. Kataloğa bir izin
+  // eklemek/çıkarmak bu satırı KIRAR — "ölü izin yok" ayağının (b) TİP
+  // düzeyindeki kardeşi.
+  expectTypeOf<Permission>().toEqualTypeOf<'job:read' | 'member:write'>()
+})
+
+test('member.invite çıktısı literal tel şekliyle TAM eşleşir (totoloji karşıtı)', () => {
+  expectTypeOf<RouterOutputs['member']['invite']>().toEqualTypeOf<{
+    invitationId: string
+    expiresAt: string
+  }>()
+  expectTypeOf<RouterOutputs['member']['invite']>().toEqualTypeOf<MemberInvitation>()
+})
+
+test('member.invite GİRDİSİNDE rol birleşimi owner İÇERMEZ (yapısal dışlama, TİP düzeyi)', () => {
+  // ⚠ `invitableRoleSchema`'nın `.exclude(['owner'])`'ı yalnızca ÇALIŞMA
+  // ZAMANI reddi değil, TİP düzeyinde de daraltmadır: birisi şemayı tam rol
+  // sözlüğüne geri açarsa bu satır kırılır.
+  expectTypeOf<RouterInputs['member']['invite']['role']>().toEqualTypeOf<
+    'admin' | 'staff' | 'support' | 'readonly'
+  >()
+})
+
+test('member.acceptInvitation çıktısı TEK alanlıdır ve kiracıya ait HİÇBİR alan taşımaz (ADR-0016 madde 6 koşul C)', () => {
+  // POZİTİF PİN — `accepted` literal `true` (çıplak boolean DEĞİL).
+  expectTypeOf<RouterOutputs['member']['acceptInvitation']>().toEqualTypeOf<{
+    accepted: true
+  }>()
+  expectTypeOf<
+    RouterOutputs['member']['acceptInvitation']
+  >().toEqualTypeOf<MemberInvitationAccepted>()
+
+  // NEGATİF PİN — ⚠ ADR-0016 madde 6 koşul C'nin TİP düzeyindeki karşılığı:
+  // alan BAŞINA bağımsız satır (biri eklenirse YALNIZCA o satır kırmızı).
+  type Accepted = RouterOutputs['member']['acceptInvitation']
+
+  expectTypeOf<Accepted>().not.toHaveProperty('tenantId')
+  expectTypeOf<Accepted>().not.toHaveProperty('slug')
+  expectTypeOf<Accepted>().not.toHaveProperty('name')
+  expectTypeOf<Accepted>().not.toHaveProperty('role')
+})
+
+test('member.updateRole / member.remove çıktıları literal tel şekliyle TAM eşleşir', () => {
+  expectTypeOf<RouterOutputs['member']['updateRole']>().toEqualTypeOf<{
+    userId: string
+    role: 'owner' | 'admin' | 'staff' | 'support' | 'readonly'
+  }>()
+  expectTypeOf<RouterOutputs['member']['updateRole']>().toEqualTypeOf<MemberRole>()
+
+  expectTypeOf<RouterOutputs['member']['remove']>().toEqualTypeOf<{ userId: string }>()
+  expectTypeOf<RouterOutputs['member']['remove']>().toEqualTypeOf<MemberRemoved>()
+})
+
+test('member.* GİRDİLERİNİN HİÇBİRİNDE kiracı alanı YOK (ADR-0009 madde 7, dört uç)', () => {
+  expectTypeOf<RouterInputs['member']['invite']>().not.toHaveProperty('tenantId')
+  expectTypeOf<RouterInputs['member']['acceptInvitation']>().not.toHaveProperty('tenantId')
+  expectTypeOf<RouterInputs['member']['updateRole']>().not.toHaveProperty('tenantId')
+  expectTypeOf<RouterInputs['member']['remove']>().not.toHaveProperty('tenantId')
 })

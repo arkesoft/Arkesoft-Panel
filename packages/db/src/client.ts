@@ -173,6 +173,23 @@ export type AuthModelName = (typeof AUTH_SECRET_BEARING_MODELS)[number]
  * ⚠ Bir typecheck hatasını susturmak için bu satıra `'job'` EKLEMEK o garantiyi
  * SESSİZCE YOK EDER — doğru çözüm çağrıyı `withTenant()` içine taşımaktır.
  *
+ * **`'auditLog'` VE `'tenantInvitation'` DA BU ALLOWLIST'E BİLEREK EKLENMEDİ
+ * (ROADMAP v0.0.14, T-014/S1, architect K-A3 — AÇIK mimari karar, yukarıdaki
+ * BAĞLAYICI KURAL gereği):** ikisi de kiracıya bağlı tablolardır, RLS'leri VAR
+ * + FORCE'ludur, ama onlara erişim YALNIZCA kiracı kapsamlı yolda gereklidir.
+ * Üye EKLENMEDİĞİ için `prisma.db.auditLog.create(...)` /
+ * `prisma.db.tenantInvitation.findUnique(...)` `apps/api`'de DERLENMEZ — yani
+ * denetim kaydı veya davet yazmanın TEK DERLENEBİLİR yolu `withTenant()`'tır.
+ * Bunun yük taşıyan sonucu: denetim kaydı yapısal olarak iş yazmasıyla AYNI
+ * transaction'da ve kiracı bağlamı KURULMUŞ hâlde yazılır — "aynı transaction'a
+ * koymayı unutma" bir yorum değil, bir DERLEME KISITIDIR. Mekanik kanıtlar:
+ * `__tests__/type-pins/auth-model-narrowing.pin.ts` →
+ * `pinAppPrismaDatabaseDropsAuditLog` ve
+ * `pinAppPrismaDatabaseDropsTenantInvitation`.
+ * ⚠ `Prisma` NAMESPACE'İ BU PAKETTEN DEĞER OLARAK EXPORT EDİLMEDİ (T-014'te
+ * değerlendirilip REDDEDİLDİ: allowlist garantisini zayıflatır) — bu sürümde
+ * yeni bir export YOK.
+ *
  * `$disconnect` BİLEREK Pick'TE YOK (önceki `Omit<>` sürümünde vardı) —
  * ölçüldü: `apps/api`'de `$disconnect()` HER ZAMAN `#client` (TAM tip,
  * `AuthPrismaDatabase`/`PrismaDatabase`) üzerinden çağrılıyor
@@ -218,8 +235,24 @@ export type AppPrismaDatabase = Pick<PrismaDatabase, 'tenant' | 'user' | 'tenant
  * ⚠ Simetrik ve BAĞLAYICI karar: `AppPrismaDatabase`'e `'job'` EKLENMEZ
  * (gerekçesi orada) — ikisi ZIT yönde ilerler ve bu kasıtlıdır: `Job`'a
  * erişimin TEK derlenebilir yolu `withTenant()`'tır.
+ *
+ * GENİŞLETME (ROADMAP v0.0.14, T-014/S1, architect K-A3 — AÇIK mimari karar):
+ * `'auditLog'` ve `'tenantInvitation'` EKLENDİ, allowlist İKİ üyeden DÖRT
+ * üyeye çıktı. Gerekçe: denetim kaydı yazma kapısının imzası
+ * `(tx: TenantTransactionClient, …)` olacak — bu imza, denetim kaydının HER
+ * ZAMAN `withTenant()` İÇİNDE ve iş yazmasıyla AYNI transaction'da yazılmasını
+ * DERLEME ZAMANINDA zorlar; davet akışı (oluştur/kabul et/sil) aynı şekilde
+ * yalnızca kiracı kapsamlı transaction içinde çalışır. ⚠ Simetrik ve BAĞLAYICI
+ * karar: `AppPrismaDatabase`'e bu İKİ üye EKLENMEZ (gerekçesi orada) — `Job`'un
+ * emsali birebir tekrarlanır, iki tip ZIT yönde ilerler.
+ * ⚠ Bu ekleme `__tests__/type-pins/auth-model-narrowing.pin.ts`'teki jenerik
+ * kapalı dünya pinini GERÇEKTEN kırdı (ölçüldü: `TS2322`, o dosyanın doc'unda
+ * tsc çıktısı birebir yazılı) — karar bu yüzden iki yerde kayda geçti.
  */
-export type TenantTransactionClient = Pick<TransactionClient, 'tenantMembership' | 'job'>
+export type TenantTransactionClient = Pick<
+  TransactionClient,
+  'tenantMembership' | 'job' | 'auditLog' | 'tenantInvitation'
+>
 
 /**
  * Tam Prisma istemci yüzeyinin (sır taşıyan üç modeli DE İÇEREN) takma adı.

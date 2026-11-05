@@ -27,7 +27,7 @@
 // v0.0.8'de **TEK** satır eklendi: `/trpc/storefront.currentTenant`
 // (`publicTenantProcedure` — kimlik YOK, kiracı ZORUNLU; gerekçe
 // `auth-exempt-paths.ts` dosya başı yorumu, dördüncü grup, ADR-0012'nin dört
-// koşulu). `TENANT_EXEMPT_PATHS` BU satırla DEĞİŞMEDİ (13'te kalır) — vitrin
+// koşulu). `TENANT_EXEMPT_PATHS` BU satırla DEĞİŞMEDİ — vitrin
 // ziyaretçisi KİMLİKSİZDİR ama KİRACISIZ DEĞİLDİR, kiracı `Host`'tan
 // çözülmek ZORUNDADIR. Kimse `publicProcedure`'ü (kiracı da gerektirmeyen
 // taban builder, `@arkesoft/trpc/server`'ın `trpc.ts`'i) HTTP'de
@@ -38,6 +38,23 @@
 // (unresolved → 404) → AuthGuard (oturumsuz → 401 · üye değil → 403) →
 // RateLimitGuard (/trpc'de anında true) → SameOriginGuard (@UseGuards,
 // burada) → TrpcController.handle → createTrpcRequestHandler`.
+//
+// GÜNCELLEME (ROADMAP v0.0.14, T-014/S4, ADR-0016 madde 6): `TENANT_EXEMPT_PATHS`'e
+// bu sürümde **TEK** satır eklendi — `/trpc/member.acceptInvitation`. ⚠ Yukarıdaki
+// v0.0.8 paragrafı artık kümenin BÜYÜKLÜĞÜNÜ KOPYALAMIYOR: kanonik liste ve
+// kardinalite `tenancy/tenant-exempt-paths.ts`'te yaşıyor ve bu dosyada bir
+// sayı tekrarlamak kaçınılmaz olarak bayatlıyordu (ölçüldü — o paragraf
+// v0.0.14'e kadar "13'te kalır" diyordu). ⚠ `AUTH_EXEMPT_PATHS` BU satırla
+// DEĞİŞMEDİ (`git status` → o dosya temiz); büyüklüğü BURADA TEKRARLANMIYOR,
+// kanonik kaynağı `auth/auth-exempt-paths.ts` ve kardinalite assertion'ı
+// `__tests__/auth-exempt-paths.test.ts`'tir. (⚠ ÖLÇÜLDÜ: bu dosyanın v0.0.8
+// paragrafı o kümeyi "9'da kalır" diye yazıyor ama küme v0.0.8'in KENDİ
+// eklemesiyle ONA ulaşmıştı — kopyalanan sayı bayatlamanın ders kitabı
+// örneği. v0.0.14 o hatayı TEKRARLAMIYOR.) Kabul eden kişi KİMLİKSİZ
+// DEĞİLDİR — oturumu
+// ZORUNLUDUR (`protectedProcedure`), yalnızca KİRACI bağlamından muaftır,
+// çünkü tanım gereği henüz üye değildir ve kiracı bağlamını bir YETENEK
+// belirtecinden türetir. Muafiyetin dört koşulu o dosyanın başındadır.
 //
 // `allowBatching: false` zaten `createTrpcRequestHandler()` İÇİNDE
 // (`@arkesoft/trpc/server`, S3) — burada fail-closed bir yedeğe İHTİYAÇ YOK
@@ -54,6 +71,8 @@ import { API_ENV } from '../config/config.tokens.js'
 import type { HttpRequestLike, HttpResponseLike } from '../http/http-request.types.js'
 import { toWebHeaders } from '../http/to-web-headers.js'
 import { JobReadPortAdapter } from './ports/job-read.port.adapter.js'
+import { MemberWritePortAdapter } from './ports/member-write.port.adapter.js'
+import { MembershipReadPortAdapter } from './ports/membership-read.port.adapter.js'
 import { StorefrontTenantReadPortAdapter } from './ports/storefront-tenant-read.port.adapter.js'
 import { TenantReadPortAdapter } from './ports/tenant-read.port.adapter.js'
 import { createTrpcContext } from './trpc-context.factory.js'
@@ -143,6 +162,9 @@ export class TrpcController {
     @Inject(StorefrontTenantReadPortAdapter)
     private readonly storefrontTenantRead: StorefrontTenantReadPortAdapter,
     @Inject(JobReadPortAdapter) private readonly jobRead: JobReadPortAdapter,
+    @Inject(MembershipReadPortAdapter)
+    private readonly membershipRead: MembershipReadPortAdapter,
+    @Inject(MemberWritePortAdapter) private readonly memberWrite: MemberWritePortAdapter,
     @Inject(TrpcErrorsPortAdapter) private readonly errorsPort: TrpcErrorsPortAdapter,
   ) {}
 
@@ -151,13 +173,19 @@ export class TrpcController {
   async handle(@Req() req: TrpcHttpRequest, @Res() res: HttpResponseLike): Promise<void> {
     const request = buildTrpcWebRequest(req, this.env.AUTH_BASE_URL)
     // ⚠ `TrpcPorts` burada ELLE kurulur (üretimdeki TEK yer). `jobRead`
-    // v0.0.11'den itibaren ZORUNLU üyedir — atlanırsa typecheck kırılır
-    // (`context/trpc-context.types.ts`'in gerekçesi, po R-P2).
+    // v0.0.11'den, `membershipRead` ve `memberWrite` ise v0.0.14'ten
+    // itibaren ZORUNLU üyedir — herhangi biri atlanırsa typecheck kırılır
+    // (`context/trpc-context.types.ts`'in gerekçesi, po R-P2/R-PM5).
+    // ⚠ Üyeleri OPSİYONEL yaparak typecheck hatasını susturmak o dosyanın
+    // YAZILI yasağıdır; doğru çözüm portu DOLDURMAKTIR — bu satırlar o
+    // çözümün ta kendisi.
     const context = createTrpcContext(
       {
         tenantRead: this.tenantRead,
         storefrontTenantRead: this.storefrontTenantRead,
         jobRead: this.jobRead,
+        membershipRead: this.membershipRead,
+        memberWrite: this.memberWrite,
       },
       this.errorsPort,
     )

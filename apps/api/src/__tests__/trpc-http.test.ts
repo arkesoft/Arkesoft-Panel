@@ -29,6 +29,8 @@ import type { TrpcClient } from '@arkesoft/trpc'
 import { createTrpcRequestHandler } from '@arkesoft/trpc/server'
 import type {
   JobReadPort,
+  MemberWritePort,
+  MembershipReadPort,
   StorefrontTenantReadPort,
   TenantReadPort,
   TrpcContext,
@@ -38,6 +40,7 @@ import request from 'supertest'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 
+import { PermissionDeniedError } from '../errors/domain/permission-denied.error.js'
 import { TenantContextRequiredError } from '../errors/domain/tenant-context-required.error.js'
 import { UnauthenticatedError } from '../errors/domain/unauthenticated.error.js'
 import { PrismaService } from '../prisma/prisma.service.js'
@@ -46,6 +49,7 @@ import { createTestApp } from './helpers/create-test-app.js'
 import { ProbeDetailsError, TrpcProbeController } from './helpers/trpc-probe.controller.js'
 import {
   jobStatusWireValuesMatchPrismaAtRuntime,
+  tenantRoleWireValuesMatchPrismaAtRuntime,
   tenantStatusWireValuesMatchPrismaAtRuntime,
 } from './type-pins/trpc-wire-contract.pin.js'
 
@@ -218,6 +222,22 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
       findJob: () => Promise.reject(new ProbeDetailsError()),
       listJobs: () => Promise.reject(new ProbeDetailsError()),
     }
+    // ROADMAP v0.0.14, T-014/S4 — `TrpcPorts`'un v0.0.14'ten itibaren ZORUNLU
+    // iki üyesi. Bu probe `member.*`'ı ÇAĞIRMAZ; stub yalnızca sözleşmeyi
+    // doldurmak için var ve hiçbir assert buna dayanmaz.
+    // ⚠ OPSİYONEL YAPILMASI YASAK (po R-PM5, `context/trpc-context.types.ts`
+    // dosyasının YAZILI yasağı): `storefrontTenantRead`'in v0.0.8 ve
+    // `jobRead`'in v0.0.11 emsali — bir typecheck hatasını susturmak için `?`
+    // konmaz, doğru çözüm portu DOLDURMAKTIR. Bu iki satır o çözümdür.
+    const probeMembershipRead: MembershipReadPort = {
+      requireRole: () => Promise.reject(new ProbeDetailsError()),
+    }
+    const probeMemberWrite: MemberWritePort = {
+      invite: () => Promise.reject(new ProbeDetailsError()),
+      acceptInvitation: () => Promise.reject(new ProbeDetailsError()),
+      updateRole: () => Promise.reject(new ProbeDetailsError()),
+      remove: () => Promise.reject(new ProbeDetailsError()),
+    }
     const context: TrpcContext = {
       requestId,
       logger: { info: () => undefined, warn: () => undefined, error: () => undefined },
@@ -227,10 +247,16 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
         tenantRead: probeTenantRead,
         storefrontTenantRead: probeStorefrontTenantRead,
         jobRead: probeJobRead,
+        membershipRead: probeMembershipRead,
+        memberWrite: probeMemberWrite,
       },
       errors: {
         unauthenticated: () => new UnauthenticatedError(),
         tenantContextRequired: () => new TenantContextRequiredError(),
+        // ROADMAP v0.0.14, T-014/S4 — `TrpcErrorFactoryPort`'un ZORUNLU üçüncü
+        // üyesi. Bu probe izin kapısına UĞRAMAZ (`tenant.current`
+        // `tenantProcedure`'dür); fabrika yalnızca sözleşmeyi doldurur.
+        permissionDenied: (permission, role) => new PermissionDeniedError(permission, role),
       },
     }
 
@@ -291,6 +317,16 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
     // assert DEĞER kümesini denetler (tip pininin yakalayamayacağı sapma:
     // aynı anahtarlar ama Prisma'nın değer tarafı farklı yazılmış).
     expect(jobStatusWireValuesMatchPrismaAtRuntime()).toBe(true)
+  })
+
+  it('PİN 8 çalışma zamanı yarısı — tenantRoleSchema.options, Object.values(TenantRole) ile SIRALANMIŞ eşleşiyor', () => {
+    // ROADMAP v0.0.14, T-014/S4 — AC4. PİN 1/5'in birebir ikizi: tip pini
+    // (`pinTenantRoleWireKeysExactlyMatchTenantRole`, `pnpm typecheck`)
+    // anahtar KÜMESİNİ denetler, bu assert DEĞER kümesini denetler.
+    // ⚠ BU ÇAĞRI OLMADAN pin YALNIZCA tip seviyesinde kalırdı — pin dosyası
+    // bir `.test.ts` DEĞİL (vitest glob'u onu yakalamaz), yani içindeki
+    // çalışma zamanı fonksiyonları ancak buradan çağrılırsa KOŞAR.
+    expect(tenantRoleWireValuesMatchPrismaAtRuntime()).toBe(true)
   })
 
   // GÜVENLİK DÜZELTMESİ (security tur 1, medium bulgu — GUARD ATLATMA):

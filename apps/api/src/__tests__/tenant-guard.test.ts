@@ -40,6 +40,12 @@ function runWithPendingTenant(callback: () => void): void {
     // artık ZORUNLU bir alan — bu testin konusu `tenant` dalı olduğu için
     // sabit `'pending'` yeterli.
     auth: { kind: 'pending' },
+    // ROADMAP v0.0.14, T-014/S4 EKLEMESİ (additive, po R-PO2):
+    // `RequestContext.client` ZORUNLU bir alan. ⚠ `?` ile opsiyonel
+    // YAPILMADI — `auth`'un v0.0.5'teki emsali birebir izlendi: alan ZORUNLU
+    // eklenir ve her kurucu DOLDURULUR. Bu testin konusu `tenant` dalı,
+    // istemci alanları değil → iki `null` yeterli.
+    client: { ip: null, userAgent: null },
   }
   requestContextStorage.run(store, callback)
 }

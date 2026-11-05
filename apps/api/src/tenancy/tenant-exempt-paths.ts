@@ -15,9 +15,12 @@
 // sonucuna GÜVENİR (bkz. `tenant.guard.ts` dosya başı yorumu — tek kaynaktan
 // okunan tek karar, iki yerde tekrarlanan path-eşleştirme mantığı YOK).
 //
-// Birim testi (`tenant-exempt-paths.test.ts`) kümenin TAM OLARAK bu on üç
+// Birim testi (`tenant-exempt-paths.test.ts`) kümenin TAM OLARAK bu on dört
 // elemandan oluştuğunu assert eder — listeyi büyütmek bu testi DEĞİŞTİRMEYİ,
 // yani kod inceleme görünürlüğünü ZORUNLU kılar (R4 telafisi #2).
+// ⚠ O testin kardinalite assertion'ı `toContain`'e DÜŞÜRÜLEMEZ ve `.size`
+// kontrolü KALDIRILAMAZ: inceleme görünürlüğü TAM OLARAK bu iki assert'ten
+// geliyor. Küme eşitliği ELLE güncellenir.
 //
 // GÜNCELLEME (ROADMAP v0.0.5, T-006/S5, architect "TENANT İZOLASYONU" bölümü,
 // PM riski 6 — BEKLENEN): 2 → 12. Gerekçe: panel giriş yüzeyi platform host'u
@@ -65,10 +68,51 @@
 //       testle değil). Mekanizma TAM EŞLEŞME + `allowBatching: false`
 //       (`@arkesoft/trpc/server`) değişmezine dayanır — `trpc.controller.ts`
 //       dosya başı yorumunun GÜNCEL hâline bkz. (ADR-0011).
+//
+// GÜNCELLEME (ROADMAP v0.0.14, T-014/S4, architect K-A9, ADR-0016 madde 6):
+// 13 → 14, BEŞİNCİ grup eklendi:
+//   (5) 1 YETENEK TABANLI kiracı bağlamı ucu (`/trpc/member.acceptInvitation`).
+//
+// ⚠⚠ BU, LİSTEDEKİ İLK VE TEK **YAZMA** UCUDUR — önceki on üçü ya I/O'suz
+// prob, ya kimlik delegasyonu, ya kullanıcının kendi oturumları, ya da bir
+// okuma. Bu yüzden muafiyetin gerekçesi bir cümleyle GEÇİŞTİRİLEMEZ:
+// ADR-0016 madde 6, muafiyeti "GENEL BİR KİRACI KAYNAĞI DEĞİLDİR" diye
+// nitelendiren DÖRT KOŞULA bağlar ve dördü de BU uç için sağlanır:
+//
+//   A. TEK DAYANAK YÜKSEK ENTROPİLİ BİR YETENEK BELİRTECİDİR — 256 bit
+//      CSPRNG çıktısı; diskte yalnızca `sha256` ÖZETİ saklanır (ham belirteç
+//      ASLA); süresi DOLAR (7 gün); TEK KULLANIMLIKTIR (kabul edilince satır
+//      SİLİNİR). Çağıranın BEYAN ETTİĞİ bir kiracı kimliği YOKTUR — girdi
+//      şemasında kiracı alanı YOK ve eklenemez.
+//   B. BELİRTEÇTEN TÜREYEN BAĞLAM TEK BİR KİRACI KAPSAMLI BLOKTA KULLANILIR
+//      ve o blokta BAŞKA kiracı verisi OKUNMAZ (yalnızca bu davetin satırı,
+//      yeni üyelik ve denetim kaydı). Oturum sahibinin e-postası bloğun
+//      DIŞINDA, PLATFORM seviyesinde okunur.
+//   C. ÇIKTI ŞEMASI KİRACIYA AİT HİÇBİR ALAN TAŞIMAZ (tek `accepted` alanı)
+//      ve resolver kiracı bağlamına ERİŞMEZ — erişemez de, çünkü builder'ı
+//      kiracıyı daraltmıyor. Aksi hâlde geçerli bir belirteç bir kiracı
+//      OKUMA yüzeyine dönüşürdü.
+//   D. TÜM BAŞARISIZLIK MODLARI TEK HATA SINIFINA İNDİRGENİR — "belirteç yok",
+//      "süresi geçmiş", "e-posta eşleşmiyor", "ikinci kez kullanıldı",
+//      "biçim bozuk" ve "kiracı çözülemedi" AYNI 404'ü verir. Ayırmak
+//      belirteci bir VARLIK ORACLE'ına çevirirdi.
+//
+// ⚠ BU MUAFİYET KİMLİK MUAFİYETİ DEĞİLDİR: `AUTH_EXEMPT_PATHS`'e HİÇBİR satır
+// EKLENMEDİ. ⚠ O kümenin BÜYÜKLÜĞÜ burada TEKRARLANMIYOR — kanonik kaynağı
+// `auth/auth-exempt-paths.ts`, kardinalite assertion'ı
+// `__tests__/auth-exempt-paths.test.ts`. Gerekçe ÖLÇÜLDÜ: yukarıdaki (4)
+// numaralı v0.0.7 paragrafı o kümeyi "9'da kalır" diye yazıyor, oysa küme
+// v0.0.8'in eklemesiyle ONDAN BÜYÜK — kopyalanan sayı kaçınılmaz olarak
+// bayatlıyor (teknik borç, `docs`'a bildirildi). v0.0.14 aynı hatayı
+// TEKRARLAMIYOR. Kabul eden kişinin OTURUMU ZORUNLUDUR
+// (`protectedProcedure`, oturumsuz 401) — belirteç kiracıyı kanıtlar, KİMLİĞİ
+// kanıtlamaz; üyelik hangi kullanıcıya yazılacağı oturumdan okunur.
+// ⚠ Kümeye bir sonraki ekleme BU GEREKÇE SEVİYESİNİ karşılamak zorundadır;
+// yolu eklemek bir satır, NEDEN eklendiğini yazmak işin kendisidir.
 
 import { normalizeRequestPath } from '../http/normalize-request-path.js'
 
-/** Tenant çözümü gerektirmeyen, tam eşleşmeli on üç uç. */
+/** Tenant çözümü gerektirmeyen, tam eşleşmeli on dört uç. */
 export const TENANT_EXEMPT_PATHS: ReadonlySet<string> = new Set([
   '/health',
   '/health/ready',
@@ -83,6 +127,9 @@ export const TENANT_EXEMPT_PATHS: ReadonlySet<string> = new Set([
   '/auth/sessions/revoke',
   '/auth/sessions/revoke-all',
   '/trpc/session.me',
+  // (5) ROADMAP v0.0.14 — YETENEK tabanlı kiracı bağlamı; dört koşul dosya
+  // başı yorumunda SAYILI. Kümenin TEK yazma ucu.
+  '/trpc/member.acceptInvitation',
 ])
 
 /**

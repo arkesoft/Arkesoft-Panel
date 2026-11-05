@@ -4,7 +4,8 @@
 // SEVİYESİ tablolardır — `tenant_id` kolonu taşımazlar, bu tablolar kiracı
 // kimliğinin kaynağıdır. Tenant'a bağlı tabloların KANONİK LİSTESİ aşağıdaki
 // `TENANT_SCOPED_TABLES` dizisidir (v0.0.3'te tek üyeliydi: `TenantMembership`;
-// v0.0.11'de `Job` eklendi) — her üyenin `tenant_id` kolonu `text`, NOT NULL ve
+// v0.0.11'de `Job`, v0.0.14'te `AuditLog` ve `TenantInvitation` eklendi →
+// BUGÜN DÖRT ÜYE) — her üyenin `tenant_id` kolonu `text`, NOT NULL ve
 // `tenant_id` öncü bir bileşik benzersizlik kısıtının ilk kolonudur.
 //
 // GÜNCELLEME (ROADMAP v0.0.13, T-005/S3): `tenant_membership` için RLS
@@ -49,7 +50,9 @@
 // gerekmedi, prob tamlığı kapısı (`MISSING_TENANT_SCOPED_TABLE`) kırılmadı.
 
 // GENİŞLETME (ROADMAP v0.0.11, T-013/S2, architect K3): `job` EKLENDİ —
-// `TENANT_SCOPED_TABLES`'ın İKİNCİ üyesi, kiracıya bağlı arka plan işi kaydı.
+// `TENANT_SCOPED_TABLES`'ın İKİNCİ üyesi, kiracıya bağlı arka plan işi kaydı
+// (dizinin BUGÜNKÜ uzunluğu DÖRT — bkz. aşağıdaki v0.0.14 notu; "ikinci"
+// eklenme sırasıdır, dizi uzunluğu DEĞİL).
 // Bu tek satırlık değişiklik DÖRT mekanizmayı birden devreye sokar ve hiçbiri
 // bu dosyanın dışındaki linter kaynak kodunu DEĞİŞTİRMEYİ gerektirmez:
 //   1. Canlı katalog linter'ı (`catalog-lint.ts`, 20 kural) — `job` için
@@ -81,10 +84,31 @@ export const PLATFORM_LEVEL_TABLES = [
   'verification',
 ] as const
 
+// GENİŞLETME (ROADMAP v0.0.14, T-014/S1, architect K-A0/K-A1): `audit_log`
+// (ÜÇÜNCÜ üye, kiracıya bağlı denetim kaydı — append-only) ve
+// `tenant_invitation` (DÖRDÜNCÜ üye, henüz kabul edilmemiş üyelik daveti)
+// EKLENDİ → dizi İKİ üyeden DÖRT üyeye çıktı. `tenant_invitation`'ın AYRI bir
+// tablo olması bir kapsam genişletmesi DEĞİL, onaylanmış davet akışının veri
+// modeli sonucudur: kabul anında kullanıcı henüz var olmayabilir, dolayısıyla
+// üyelik satırını "beklemede" olarak önceden yazmak imkânsızdır.
+// Bu iki satırlık değişiklik yukarıdaki DÖRT mekanizmayı iki tablo için birden
+// devreye sokar; üçü BU alt görevde (S1) ölçüldü, dördüncüsü — prob tamlığı
+// kapısı — BİLEREK kırmızı bırakıldı ve prob yazımını S3'te zorlar (kabul
+// kriteri o başarısızlığın GÖZLENMESİNİ istiyor, bu yüzden şema ve prob AYNI
+// oturumda yazılmadı).
+// ⚠ Prob KAYDI HÂLÂ TEK YERDEDİR (`__tests__/tenant-membership.isolation.test.ts`)
+// — iki yeni tablo için İKİNCİ bir `createTenantIsolationSuite()` çağrı
+// noktası AÇILMAZ.
+
 /**
  * `tenant_id` kolonu taşıyan, kiracıya bağlı tablolar. v0.0.13'ten itibaren
  * her biri için `ENABLE` + `FORCE ROW LEVEL SECURITY` ve `tenant-context.ts`'in
  * `TENANT_CONTEXT_SETTING` sabitinde tanımlı GUC'u okuyan bir `USING`/
  * `WITH CHECK` politikası taşır (bkz. ilgili migration dosyası).
  */
-export const TENANT_SCOPED_TABLES = ['tenant_membership', 'job'] as const
+export const TENANT_SCOPED_TABLES = [
+  'tenant_membership',
+  'job',
+  'audit_log',
+  'tenant_invitation',
+] as const

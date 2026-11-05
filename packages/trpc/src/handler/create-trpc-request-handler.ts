@@ -38,10 +38,19 @@ export type TrpcRequestHandler = (options: TrpcHandlerOptions) => Promise<Respon
  * ZATEN `toTrpcError`/`errorFormatter`'ın tanıdığı, sınıflandırılmış bir
  * `AppError`'dır (`trpc.ts`'in `appErrorBoundary`'si tarafından BİLEREK
  * çevrildi) — beklenen bir iş akışı sonucudur (CLAUDE.md §4 "beklenen
- * durumlar için hata fırlat"), CLAUDE.md §4'ün log seviyesi tanımına göre
- * `error` ("müdahale gerekir") DEĞİL; bu dal burada ATLANIR (zaten
- * `error-formatter.test.ts`'in `cause-parse-fail` dalı AYRI bir `warn` ile
- * görünür).
+ * durumlar için hata fırlat") ve CLAUDE.md §4'ün log seviyesi tanımına göre
+ * BURADA `error` ("müdahale gerekir") olarak yazılmamalıdır; bu dal burada
+ * ATLANIR.
+ *
+ * ⚠⚠ DÜZELTME (ROADMAP v0.0.14, T-014 düzeltme turu 1 — `solid` M-1 +
+ * `security` medium #1): bu erken dönüşün ESKİ gerekçesi EKSİKTİ, çünkü
+ * atlanan dalı BAŞKA HİÇBİR HALKA da loglamıyordu — sınıflandırılmış domain
+ * hataları (yetki reddi dahil) HİÇBİR YERE yazılmıyordu. Erken dönüş ARTIK
+ * DOĞRU: `trpc.ts`'in `appErrorBoundary`'si o `AppError` için SINIRDA TEK bir
+ * yapılandırılmış kayıt (`logAppError`, 4xx → `warn` / 5xx → `error`) ZATEN
+ * yazdı ve `AppError.context` yalnızca ORADA elde edilebiliyordu (bu noktada
+ * `cause` yalnızca TEL gövdesini taşır — `toErrorBody` `context`'i hiç
+ * okumaz). Burada ikinci bir satır yazmak AYNI olayı İKİ KEZ kaydederdi.
  *
  * `error.cause` PARSE EDİLEMİYORSA (çerçeve kaynaklı rutin hata — bilinmeyen
  * prosedür, `?batch=1` reddi — VEYA `trpc.ts:150` civarının yeniden

@@ -37,12 +37,26 @@ import type {
   TrpcTenantState,
 } from '../context/trpc-context.types.js'
 import type { JobReadPort } from '../ports/job-read.port.js'
+import type { MemberWritePort } from '../ports/member-write.port.js'
+import type { MembershipReadPort } from '../ports/membership-read.port.js'
 import type { TenantReadPort } from '../ports/tenant-read.port.js'
 import type { StorefrontTenantReadPort } from '../ports/storefront-tenant-read.port.js'
 import type { TrpcErrorFactoryPort } from '../ports/trpc-error-factory.port.js'
+import type { Permission } from '../authz/permissions.js'
 import type { TenantSummary } from '../schemas/tenant-summary.schema.js'
 import type { StorefrontTenant } from '../schemas/storefront-tenant.schema.js'
 import type { JobListPage, JobSummary } from '../schemas/job-summary.schema.js'
+import type {
+  MemberAcceptInvitationInput,
+  MemberInvitation,
+  MemberInvitationAccepted,
+  MemberInviteInput,
+  MemberRemoveInput,
+  MemberRemoved,
+  MemberRole,
+  MemberUpdateRoleInput,
+  TenantRoleWire,
+} from '../schemas/member.schema.js'
 
 // ---------------------------------------------------------------------------
 // Kayıt tutan (recording) sahte logger
@@ -245,11 +259,193 @@ export function createFakeJobReadPort(summary: JobSummary): JobReadPort {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Üyelik/üye yazma sahteleri — ROADMAP v0.0.14, T-014/S2
+// ---------------------------------------------------------------------------
+
+/**
+ * `apps/api`'nin `TenantMembershipRequiredError`'ının test-yerel taklidi
+ * (403). ⚠ Üyelik okuma portunun TOTAL sözleşmesinin sınandığı yer: üyelik
+ * satırı yoksa port `null` DÖNMEZ, kimlik/üyelik muhafızının HTTP yolunda
+ * fırlattığı hatanın AYNISINI fırlatır (architect K-A5 gerekçe 3 — izin
+ * katmanı üyeliğin İKİNCİ savunma hattıdır).
+ */
+export class HarnessTenantMembershipRequiredError extends AppError {
+  constructor() {
+    super({
+      code: 'TENANT_MEMBERSHIP_REQUIRED',
+      httpStatus: 403,
+      userMessageKey: 'errors.auth.tenantMembershipRequired',
+    })
+  }
+}
+
+/**
+ * `apps/api`'nin `PermissionDeniedError`'ının test-yerel taklidi (403,
+ * architect K-A6). ⚠ İzin adı ve rol YALNIZCA `context`'e girer — tele
+ * GİRMEZ; `@arkesoft/errors`'ın `toErrorBody`'si `context`'i hiç okumadığı
+ * için bu garanti YAPISALDIR ve `details: {}` beklentisi testte doğrulanır.
+ */
+export class HarnessPermissionDeniedError extends AppError {
+  constructor(permission: Permission, role: TenantRoleWire) {
+    super({
+      code: 'PERMISSION_DENIED',
+      httpStatus: 403,
+      userMessageKey: 'errors.authz.permissionDenied',
+      context: { permission, role },
+    })
+  }
+}
+
+/** `apps/api`'nin davet hatasının test-yerel taklidi (404) — TÜM başarısızlık modlarının indirgendiği TEK sınıf (ADR-0016 madde 6 koşul D). */
+export class HarnessInvitationInvalidError extends AppError {
+  constructor() {
+    super({
+      code: 'INVITATION_INVALID',
+      httpStatus: 404,
+      userMessageKey: 'errors.member.invitationInvalid',
+    })
+  }
+}
+
+/** {@link createRecordingMembershipReadPort}'un kaydettiği tek bir rol okuması. */
+export interface RecordedMembershipRead {
+  readonly tenantId: string
+  readonly userId: string
+}
+
+/** {@link createRecordingMembershipReadPort}'un döndürdüğü çift: port + gözlemlenebilir okuma kaydı. */
+export interface RecordingMembershipReadPort {
+  readonly port: MembershipReadPort
+  readonly calls: readonly RecordedMembershipRead[]
+}
+
+/**
+ * `MembershipReadPort`'un KAYIT TUTAN sahte uygulaması. `role` `null` ise port
+ * TOTAL sözleşmesi uyarınca {@link HarnessTenantMembershipRequiredError}
+ * fırlatır — "üye değil" bir dönüş değeri olarak İFADE EDİLEMEZ.
+ *
+ * ⚠ Kayıt, `perf` ikamesinin birinci ölçümünün SÖZLEŞME TARAFINI mümkün
+ * kılar: izinli bir çağrı üyelik satırını TAM BİR KEZ okur, izinsiz bir
+ * prosedür ise HİÇ okumaz (çağrı sayısı testle SAYILIR, varsayılmaz). Ayrıca
+ * kaydedilen `tenantId` "kiracı host çözümünden gelir, girdiden DEĞİL"
+ * iddiasını ölçülebilir yapar.
+ *
+ * ⚠ Sahte port kiracı/kullanıcı kimliğini KARŞILAŞTIRMAZ: gerçek adaptörde de
+ * sahiplik uygulama kodunda karşılaştırılmıyor (kiracı kapsamlı istemci +
+ * satır seviyesi güvenlik yapıyor) — sahteyi karşılaştıracak biçimde yazmak,
+ * var olmayan bir uygulama-seviyesi kapıyı test ediyormuş gibi görünürdü
+ * (`createFakeJobReadPort`'un aynı gerekçesi).
+ */
+export function createRecordingMembershipReadPort(
+  role: TenantRoleWire | null,
+): RecordingMembershipReadPort {
+  const calls: RecordedMembershipRead[] = []
+
+  return {
+    calls,
+    port: {
+      requireRole(tenantId, userId) {
+        calls.push({ tenantId, userId })
+
+        return role === null
+          ? Promise.reject(new HarnessTenantMembershipRequiredError())
+          : Promise.resolve(role)
+      },
+    },
+  }
+}
+
+/** Kayıt tutmayan çağıranlar için ince sarmalayıcı — tek doğruluk kaynağı {@link createRecordingMembershipReadPort}'tur. */
+export function createFakeMembershipReadPort(role: TenantRoleWire | null): MembershipReadPort {
+  return createRecordingMembershipReadPort(role).port
+}
+
+/** {@link createRecordingMemberWritePort}'un kaydettiği tek bir çağrı — yöntem başına AYRIMLI birleşim (girdi tipi yöntemden türetilir, `unknown` torbası YOK). */
+export type RecordedMemberWriteCall =
+  | {
+      readonly method: 'invite'
+      readonly tenantId: string
+      readonly actorUserId: string
+      readonly input: MemberInviteInput
+    }
+  | {
+      readonly method: 'acceptInvitation'
+      readonly userId: string
+      readonly input: MemberAcceptInvitationInput
+    }
+  | {
+      readonly method: 'updateRole'
+      readonly tenantId: string
+      readonly actorUserId: string
+      readonly input: MemberUpdateRoleInput
+    }
+  | {
+      readonly method: 'remove'
+      readonly tenantId: string
+      readonly actorUserId: string
+      readonly input: MemberRemoveInput
+    }
+
+/** Harness'in varsayılan `member.invite` çıktısı — gerçekçi, PII içermez, BELİRTEÇ taşımaz. */
+export const HARNESS_MEMBER_INVITATION: MemberInvitation = {
+  invitationId: 'inv_harness_01',
+  expiresAt: '2026-11-11T09:00:00.000Z',
+}
+
+/** {@link createRecordingMemberWritePort}'un döndürdüğü çift: port + gözlemlenebilir çağrı kaydı. */
+export interface RecordingMemberWritePort {
+  readonly port: MemberWritePort
+  readonly calls: readonly RecordedMemberWriteCall[]
+}
+
+/**
+ * `MemberWritePort`'un KAYIT TUTAN sahte uygulaması. İki şeyi birden sağlar:
+ * (1) resolver'ların porta GEÇİRDİĞİ argümanlar gözlemlenebilir olur —
+ * "`tenantId` host çözümünden geliyor, girdiden DEĞİL" iddiası böyle ÖLÇÜLÜR;
+ * (2) üç yöntem girdiyi ÇIKTIYA yankılar, bu yüzden tel şeklinin
+ * resolver'dan geçerken bozulmadığı doğrulanabilir.
+ *
+ * ⚠ PORT DÜZEYİ OVERRIDE ALANI BİLEREK YOK (`createFakeJobReadPort`'un
+ * `CreateHarnessOptions` içindeki yazılı gerekçesinin aynısı, po R-P2): bir
+ * override alanının adı sözleşmedeki ZORUNLU üyenin adıyla birebir çakıştığı
+ * anda, "sözleşmede opsiyonel bir üye var mı" sorusunu grep ile denetleyen
+ * kapı kalıcı YANLIŞ POZİTİF verir (AGENT_BASELINE.md §5). Farklı davranış
+ * gereken testler kendi `TrpcContext`'ini kurar — bu fabrika export edilmiş
+ * durumda ve `procedures.test.ts`'teki desen hazır.
+ */
+export function createRecordingMemberWritePort(): RecordingMemberWritePort {
+  const calls: RecordedMemberWriteCall[] = []
+
+  return {
+    calls,
+    port: {
+      invite(tenantId, actorUserId, input) {
+        calls.push({ method: 'invite', tenantId, actorUserId, input })
+        return Promise.resolve(HARNESS_MEMBER_INVITATION)
+      },
+      acceptInvitation(userId, input) {
+        calls.push({ method: 'acceptInvitation', userId, input })
+        return Promise.resolve<MemberInvitationAccepted>({ accepted: true })
+      },
+      updateRole(tenantId, actorUserId, input) {
+        calls.push({ method: 'updateRole', tenantId, actorUserId, input })
+        return Promise.resolve<MemberRole>({ userId: input.userId, role: input.role })
+      },
+      remove(tenantId, actorUserId, input) {
+        calls.push({ method: 'remove', tenantId, actorUserId, input })
+        return Promise.resolve<MemberRemoved>({ userId: input.userId })
+      },
+    },
+  }
+}
+
 /** `TrpcErrorFactoryPort`'un sahte uygulaması. */
 export function createFakeErrorFactoryPort(): TrpcErrorFactoryPort {
   return {
     unauthenticated: () => new HarnessUnauthenticatedError(),
     tenantContextRequired: () => new HarnessTenantContextRequiredError(),
+    permissionDenied: (permission, role) => new HarnessPermissionDeniedError(permission, role),
   }
 }
 
@@ -392,6 +588,17 @@ export interface CreateHarnessOptions {
   // davranışı gerekirse `createFakeJobReadPort` export edilmiş durumda ve
   // çağıran kendi `TrpcContext`'ini (procedures.test.ts'teki desen) kurar.
   readonly jobSummary?: JobSummary
+  /**
+   * Aktörün bu kiracıdaki rolü (ROADMAP v0.0.14, T-014/S2). `null` → üyelik
+   * satırı YOK (üyelik portu `TENANT_MEMBERSHIP_REQUIRED` fırlatır).
+   * Varsayılan `'owner'` — çoğu testin ihtiyacı budur.
+   *
+   * ⚠ Bu alan bir ROL'dür, bir PORT değil: üyelik okuma portu için port
+   * düzeyi override alanı BİLEREK yok (bkz. `createRecordingMemberWritePort`
+   * yorumundaki po R-P2 gerekçesi — override alanı adının zorunlu üye adıyla
+   * çakışması grep kapısını kalıcı yanlış pozitife düşürür).
+   */
+  readonly membershipRole?: TenantRoleWire | null
   readonly errors?: TrpcErrorFactoryPort
   readonly logger?: RecordingLogger
 }
@@ -400,12 +607,40 @@ export interface Harness {
   readonly context: TrpcContext
   readonly client: TrpcClient
   readonly logger: RecordingLogger
+  /**
+   * Üye yazma portuna yapılan çağrıların kaydı (ROADMAP v0.0.14, T-014/S2) —
+   * resolver'ların porta GEÇİRDİĞİ argümanları gözlemlemek için.
+   */
+  readonly memberWriteCalls: readonly RecordedMemberWriteCall[]
+  /**
+   * Üyelik okuma portuna yapılan ROL OKUMALARININ kaydı (ROADMAP v0.0.14,
+   * T-014/S2) — izinli çağrının satırı TAM BİR KEZ okuduğunu, izinsiz
+   * prosedürün HİÇ okumadığını SAYMAK için.
+   */
+  readonly membershipReadCalls: readonly RecordedMembershipRead[]
   /** Tipli istemcinin ULAŞAMADIĞI senaryolar (bilinmeyen prosedür yolu vb.) için ham istek gönderir. */
   readonly rawRequest: (path: string) => Promise<Response>
 }
 
 const DEFAULT_REQUEST_ID = 'req_harness_default'
 const HARNESS_BASE_URL = 'http://trpc.test/trpc'
+
+/**
+ * ELLE kurulmuş bir `TrpcContext` için süreç-içi tipli istemci üretir
+ * (ROADMAP v0.0.14, T-014/S2). `createHarness`'ın sağladığı varsayılanların
+ * YETMEDİĞİ testler (port düzeyinde farklı davranış isteyenler) için YAZILI
+ * kaçış yolu — bu fabrika olmasa her böyle test fetch ponyfill'ini yeniden
+ * yazar ve `as` ile tip zorlamaya mecbur kalırdı (`createLocalFetch` `as`/
+ * `any` KULLANMADAN derlenen tek yoldur).
+ */
+export function createClientForContext(context: TrpcContext): TrpcClient {
+  const handler = createTrpcRequestHandler()
+
+  return createTrpcClient({
+    url: HARNESS_BASE_URL,
+    fetch: createLocalFetch(handler, context),
+  })
+}
 
 /**
  * Hermetik koşum hattını kurar — `createTrpcRequestHandler()` + sahte
@@ -417,6 +652,12 @@ const HARNESS_BASE_URL = 'http://trpc.test/trpc'
 export function createHarness(options: CreateHarnessOptions = {}): Harness {
   const logger = options.logger ?? createRecordingLogger()
   const tenantSummary = options.tenantSummary ?? HARNESS_TENANT_SUMMARY
+  const memberWrite = createRecordingMemberWritePort()
+  // ⚠ `??` KULLANILMAZ: `membershipRole: null` MEŞRU bir değerdir ("üyelik
+  // satırı yok") ve `??` onu sessizce varsayılana çevirirdi.
+  const membershipRead = createRecordingMembershipReadPort(
+    options.membershipRole === undefined ? 'owner' : options.membershipRole,
+  )
 
   const context: TrpcContext = {
     requestId: options.requestId ?? DEFAULT_REQUEST_ID,
@@ -438,6 +679,9 @@ export function createHarness(options: CreateHarnessOptions = {}): Harness {
         options.storefrontTenantRead ?? createFakeStorefrontTenantReadPort(tenantSummary),
       // ROADMAP v0.0.11, T-013/S8 — ZORUNLU üye (po R-P2).
       jobRead: createFakeJobReadPort(options.jobSummary ?? HARNESS_JOB_SUMMARY),
+      // ROADMAP v0.0.14, T-014/S2 — İKİSİ DE ZORUNLU üye (po R-PM5).
+      membershipRead: membershipRead.port,
+      memberWrite: memberWrite.port,
     },
     errors: options.errors ?? createFakeErrorFactoryPort(),
   }
@@ -452,6 +696,8 @@ export function createHarness(options: CreateHarnessOptions = {}): Harness {
     context,
     client,
     logger,
+    memberWriteCalls: memberWrite.calls,
+    membershipReadCalls: membershipRead.calls,
     rawRequest: (path: string) =>
       handler({ req: new Request(`${HARNESS_BASE_URL}/${path}`), context }),
   }

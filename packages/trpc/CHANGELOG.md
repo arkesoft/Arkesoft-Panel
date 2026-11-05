@@ -1,5 +1,31 @@
 # @arkesoft/trpc
 
+## 0.4.0
+
+### Minor Changes
+
+- Public API'ye `member` namespace'i eklendi: `member.invite` bir e-posta adresini belirli bir role
+  davet eder, `member.acceptInvitation` daveti kabul edip üyeliği oluşturur, `member.updateRole` bir
+  üyenin rolünü değiştirir, `member.remove` üyeyi ekipten çıkarır. Bunlar sözleşmenin ilk yazma
+  uçlarıdır; dördü de mağaza bağlamını zorunlu kılar.
+
+  Sözleşmeye ayrıca izin kataloğu (`job:read`, `member:write`) ve rol → izin eşlemesi girdi. İzin
+  gerektiren prosedürler yeni `permissionProcedure` basamağından geçiyor; yetkisi olmayan çağrı tele
+  `PERMISSION_DENIED` ve 403 olarak dönüyor, istenen iznin adı ve çağıranın rolü yanıta **girmiyor**
+  (yalnızca sunucu logunda görünüyor). Hangi prosedürün hangi izni istediği kapalı bir yüzey
+  tablosunda tutuluyor, yani izin istemeyi unutmuş yeni bir prosedür eklemek mümkün değil.
+
+  `job.get` ve `job.list` de izinli basamağa taşındı; `job:read` izni beş rolün beşine de verildiği
+  için dün bu uçları çağırabilen her istemci bugün de çağırabiliyor — hiçbir yetenek kaldırılmadı.
+
+  Bu bir **yalnızca ekleme** sürümüdür: var olan dört namespace'in hiçbir prosedürü, alanı veya tipi
+  değişmedi, zorunlu hâle gelmedi, kaldırılmadı. Mevcut istemciler değişiklik yapmadan çalışmaya
+  devam eder. [v0.0.14]
+
+### Patch Changes
+
+- @arkesoft/errors@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes

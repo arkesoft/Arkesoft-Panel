@@ -1,7 +1,7 @@
 // @arkesoft/api — TENANT_EXEMPT_PATHS testleri (ROADMAP v0.0.4, T-002/ST-5,
 // architect K-A4/K5, R4 telafisi #2)
 //
-// Kümenin TAM OLARAK on üç elemandan oluştuğunu assert eder — listeyi
+// Kümenin TAM OLARAK on dört elemandan oluştuğunu assert eder — listeyi
 // büyütmek bu testi DEĞİŞTİRMEYİ (inceleme görünürlüğünü) ZORUNLU kılar.
 //
 // GÜNCELLEME (ROADMAP v0.0.5, T-006/S5): 2 → 12 (gerekçe `tenant-exempt-
@@ -12,6 +12,19 @@
 // (`/trpc/session.me` — dördüncü grup, gerekçe `tenant-exempt-paths.ts`
 // dosya başı yorumunda). `.size`'ı gevşetmek / `toContain`'e düşmek yasak —
 // küme eşitliği ELLE güncellendi.
+//
+// GÜNCELLEME (ROADMAP v0.0.14, T-014/S4, architect K-A9, ADR-0016 madde 6):
+// 13 → 14 (`/trpc/member.acceptInvitation` — BEŞİNCİ grup ve kümenin İLK
+// YAZMA ucu; muafiyetin DÖRT koşulu `tenant-exempt-paths.ts` dosya başı
+// yorumunda tek tek SAYILI). ⚠ Kardinalite assertion'ı KORUNDU: `.size`
+// kontrolü ne kaldırıldı ne `toContain`'e düşürüldü — küme eşitliği yine
+// ELLE güncellendi. ⚠ `AUTH_EXEMPT_PATHS` BU sürümde DEĞİŞMEDİ; büyüklüğü
+// BURADA TEKRARLANMIYOR (kendi kardinalite assertion'ı
+// `auth-exempt-paths.test.ts`'te yaşıyor ve ÖLÇÜLDÜ: oradaki sayı,
+// `tenant-exempt-paths.ts`'in v0.0.7 paragrafının kopyaladığı sayıdan
+// FARKLI — v0.0.8 o kümeye bir satır eklemişti). İki eksenin birlikte
+// oynamadığının mekanik kanıtı `auth-path-sets.test.ts` ve
+// `auth-exempt-paths.test.ts`'tedir.
 
 import { describe, expect, it } from 'vitest'
 
@@ -31,14 +44,15 @@ const EXPECTED_EXEMPT_PATHS = [
   '/auth/sessions/revoke',
   '/auth/sessions/revoke-all',
   '/trpc/session.me',
+  '/trpc/member.acceptInvitation',
 ] as const
 
 describe('TENANT_EXEMPT_PATHS', () => {
-  it('tam olarak on üç eleman taşır', () => {
-    expect(TENANT_EXEMPT_PATHS.size).toBe(13)
+  it('tam olarak on dört eleman taşır', () => {
+    expect(TENANT_EXEMPT_PATHS.size).toBe(14)
   })
 
-  it('küme TAM OLARAK beklenen on üç elemandır', () => {
+  it('küme TAM OLARAK beklenen on dört elemandır', () => {
     expect(new Set(TENANT_EXEMPT_PATHS)).toEqual(new Set(EXPECTED_EXEMPT_PATHS))
   })
 
@@ -72,9 +86,9 @@ describe('TENANT_EXEMPT_PATHS', () => {
   })
 
   // ROADMAP v0.0.6, T-007/S6, architect riski 8 — muafiyet kümesi regresyonu:
-  // `/trpc/*`'nin GERİ KALANI (yalnızca `/trpc/session.me` HARİÇ, v0.0.7'de
-  // dördüncü gruba EKLENDİ) BİLİNÇLİ OLARAK bu kümede DEĞİL — tam eşleşme,
-  // prefix/regex YASAK; kardinalite assert'i (13) bu satırla DEĞİŞMEDİ.
+  // `/trpc/*`'nin GERİ KALANI (yalnızca `/trpc/session.me` ve v0.0.14'te
+  // eklenen `/trpc/member.acceptInvitation` HARİÇ) BİLİNÇLİ OLARAK bu kümede
+  // DEĞİL — tam eşleşme, prefix/regex YASAK.
   it('/trpc/tenant.current MUAF DEĞİLDİR — tRPC yüzeyinin GERİ KALANI kiracı bağlamından muaf değil', () => {
     expect(isTenantExemptPath('/trpc/tenant.current')).toBe(false)
   })
@@ -84,9 +98,20 @@ describe('TENANT_EXEMPT_PATHS', () => {
   // kümeye (kiracı ekseni) EKLENMEDİ — vitrin ziyaretçisi KİMLİKSİZDİR ama
   // KİRACISIZ DEĞİLDİR, kiracı `Host`'tan ÇÖZÜLMEK ZORUNDADIR
   // (`TenantGuard`'ın çözümsüz host'u 404 ile reddetme davranışı KORUNUR).
-  // Kardinalite assert'i (13) BU satırla DEĞİŞMEDİ — iki ekseni OYNAMADIĞININ
+  // Kardinalite assert'i BU satırla DEĞİŞMEDİ — iki ekseni OYNAMADIĞININ
   // mekanik kanıtı budur.
   it('/trpc/storefront.currentTenant MUAF DEĞİLDİR — kimlik ekseni açıldı, kiracı ekseni OYNAMADI', () => {
     expect(isTenantExemptPath('/trpc/storefront.currentTenant')).toBe(false)
   })
+
+  // GÜNCELLEME (ROADMAP v0.0.14, T-014/S4): davet AKIŞININ diğer üç ucu
+  // kiracı kapsamlıdır ve muafiyet YALNIZCA kabul ucuna verildi. Bu üç assert
+  // muafiyetin namespace'e DEĞİL tek bir yola verildiğinin kanıtıdır — prefix
+  // eşleşmesi olsaydı davet/rol/çıkarma uçları da sessizce muaf olurdu.
+  it.each(['/trpc/member.invite', '/trpc/member.updateRole', '/trpc/member.remove'])(
+    '%s MUAF DEĞİLDİR — muafiyet namespace’e değil TEK yola verildi',
+    (path) => {
+      expect(isTenantExemptPath(path)).toBe(false)
+    },
+  )
 })

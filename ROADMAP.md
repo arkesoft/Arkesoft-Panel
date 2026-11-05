@@ -4,8 +4,18 @@
 > Her değişiklik buradaki bir versiyona bağlı olmak zorundadır. Versiyon kapanınca ilgili kutular
 > işaretlenir, changeset eklenir ve `CHANGELOG.md` güncellenir.
 
-**Durum:** Taslak — onay bekliyor. Henüz hiçbir versiyon uygulanmadı.
-**Son güncelleme:** 2026-10-26
+**Durum:** Uygulanıyor — **Faz 0** sürüyor. Kapanmış sürüm girdisi: **15** (`v0.0.1` – `v0.0.14`,
+artı `v0.0.9.1` hotfix'i). Sıradaki sürüm: **v0.0.14.1** (`arkesoft_auth` rolü, hotfix deseni),
+ardından v0.0.15.
+**Gerçekleşen sürüm numaraları:** platform (kök `arkesoft` + 10 paketlik `fixed` grup) **0.4.0** ·
+`@arkesoft/trpc` (public API) **0.4.0** · `@arkesoft/theme-sdk` **0.1.1** ·
+`@arkesoft/themes-modern` **0.1.0**.
+**Son güncelleme:** 2026-11-04 (v0.0.14 kapanışı)
+
+> ⚠ Bu iki satır v0.0.1'den v0.0.13'e kadar **güncellenmemiş** ve _"henüz hiçbir versiyon
+> uygulanmadı"_ demeye devam etmişti; v0.0.14'ün kapanışında ölçülerek düzeltildi (sürüm
+> başlıklarının `✅` işaretleri ve `package.json` dosyaları tek tek sayıldı). Her sürüm kapanışında
+> bu bloğun da güncellenmesi `release` adımının işidir.
 
 ---
 
@@ -697,7 +707,7 @@ sayımı, bayat `dist`, FULL TURBO'nun ölçüm olmaması, literal-jeton kuralı
 
 ---
 
-## v0.0.14 — RBAC ve yetki modeli
+## v0.0.14 — RBAC ve yetki modeli ✅ (tamamlandı: 2026-11-04)
 
 **Hedef:** Rol ve izin kontrolü tüm uçlarda uygulanabilir olsun.
 
@@ -706,15 +716,227 @@ sayımı, bayat `dist`, FULL TURBO'nun ölçüm olmaması, literal-jeton kuralı
 **Kapsam:**
 
 - [ ] Roller: `owner`, `admin`, `staff`, `support`, `readonly`; platform tarafında `platform_admin`
-- [ ] İzin kataloğu (`product:write`, `order:read`, `theme:publish` ...), rol → izin eşlemesi
+- [x] İzin kataloğu (`product:write`, `order:read`, `theme:publish` ...), rol → izin eşlemesi
 - [ ] `@RequirePermission()` dekoratörü ve tRPC `permissionProcedure`
-- [ ] Davet akışı: e-posta ile üye davet, kabul, rol değiştirme, çıkarma
-- [ ] Yetki değişikliklerinin denetim kaydına (audit log) yazılması
-- [ ] `AuditLog` tablosu: actorId, tenantId, action, subject, diff, ip, userAgent
+- [x] Davet akışı: e-posta ile üye davet, kabul, rol değiştirme, çıkarma
+- [x] Yetki değişikliklerinin denetim kaydına (audit log) yazılması
+- [x] `AuditLog` tablosu: actorId, tenantId, action, subject, diff, ip, userAgent
       **Dokunulan paketler:** apps/api, packages/db, packages/trpc
       **Kabul kriteri:** `readonly` rolü yazma ucuna 403 alır; davet akışı entegrasyon testi yeşil; izin kataloğu ile dekoratör kullanımları arasındaki tutarlılığı doğrulayan test var.
       **Bağımlılık:** v0.0.13, v0.0.5
       **Tahmini büyüklük:** L
+
+**KAPSAM REVİZE EDİLDİ (pm, kullanıcı onayı 2026-11-04): üç kalem çıkarıldı, iki kalem eklendi.**
+
+⚠ **İki kutu bilinçli olarak işaretsiz bırakıldı**, çünkü her ikisinin de **bir yarısı
+uygulanmadı** (v0.0.11'in Bull Board emsali: uygulanmayan madde işaretlenmez):
+
+- **Kapsam maddesi 1** — beş kiracı rolünün **tamamı teslim edildi**: enum zaten vardı, bu sürüm rolü üyelik tablosundan **okuyup bağlama taşıdı** (sürümden önce `role` üretim kodunda **hiçbir yerde okunmuyordu**, ölçüldü) ve rol → izin eşlemesini **tam** bir kayıt tipiyle fail-closed hâle getirdi. ⚠ Maddenin `platform_admin` yarısı **uygulanmadı** ve **v0.0.20**'ye (süper admin iskeleti, impersonation + denetim kaydı) taşındı. Üç bağımsız ölçüm aynı yöne işaret etti: şema `platform_admin`'i **yazılı bir kararla** reddediyor (_"platform yetkisi, üyelik değildir"_) ve eklemek o kararı sessizce ters çevirip kiracı rolü enum'una **kiracı dışı anlam** yüklerdi; tüketecek panel **yok** (o yüzey v0.0.20'de tanımlı); oturum kiracı taşımadığı için platform yetkisi **oturumda taşınamaz**, ayrı bir mekanizma ister.
+- **Kapsam maddesi 3** — `permissionProcedure` **teslim edildi** (beşinci builder basamağı, iki zorunlu port, izin kullanım kaydı ve kapalı dünya prosedür yüzeyi tablosuyla). ⚠ `@RequirePermission()` NestJS dekoratörü **yazılmadı** ve REST iş yüzeyi açıldığında (ufukta **v0.0.20**) yazılacak. Ölçülmüş gerekçe: üretimdeki REST controller'ların tamamı sağlık probu, kimlik delegasyonu, kullanıcının kendi oturumları ve tRPC taşıma katmanıdır → **izinle kapılanacak tek bir iş ucu yok**; dekoratör sıfır tüketiciyle doğar ve kabul kriterinin _"katalog ↔ kullanım tutarlılığı"_ maddesini **boş küme üzerinde** doğrulardı. İş değeri **aynı mekanizmayla**, gerçek çağrı yeri olan `permissionProcedure` üzerinden tamamen karşılandı.
+
+⚠ **Her iki taşıma da kullanıcı onayının parçasıdır ve borç satırı olarak kayıtlıdır**
+(bkz. [Teknik Borç → v0.0.14 kaynaklı borçlar](#teknik-borç)) — sessizce düşmeleri yasaktı.
+
+**Üçüncü çıkarma:** yukarıdaki _"Devreden borç"_ paragrafının tarif ettiği **beş ayaklı**
+`arkesoft_auth` teslimi (rol + tablo `REVOKE`/kolon `GRANT` + katalog linter'ına kolon yetkisi
+kural sınıfı + ikinci Prisma istemcisi/havuzu + üçüncü zorunlu bağlantı URL'si) **bu sürümde
+yapılmadı**; kullanıcı onayıyla **v0.0.14.1** olarak hemen aşağıya, **v0.0.15'ten önce** koşacak
+**kutulu bir sürüm** hâline getirildi. ⚠ Bu bir **erteleme değil sıralamadır** ve borç tablosunda
+**satır olarak tutulmamaktadır**: borç v0.0.5'ten v0.0.14'e bir kez taşınmıştı, üçüncü bir
+erteleme mekanizmayı inandırıcılıktan düşürürdü. Dört ölçülmüş gerekçe: (1) RBAC ile **sıfır
+işlevsel kesişim**; (2) kendi başına `M` büyüklüğünde ve T-013'ün üç tip piniyle pinlediği
+istemci dosyasına dokunuyor; (3) aciliyet ölçüldü — borç tablosundaki önemi `medium` ve metni
+birebir _"hiçbiri bugün sömürülen bir açık değil"_ diyor; (4) **yol açmıyor**: v0.0.15 (2FA) bu
+sürüme bağımlıdır ve bağımlılığı karşılayan şey **yetki modelidir**, kimlik-rol ayrımı değil.
+
+**İki kalem EKLENDİ (kapsam genişletmesi değil, onaylı maddelerin sonucu):**
+
+- **`TenantInvitation` tablosu** — davet akışı kalıcı bir davet kaydı olmadan teslim **edilemez**: kabul anında kullanıcı henüz var olmayabilir, dolayısıyla üyelik satırını _"beklemede"_ olarak önceden yazmak imkânsızdır; Better Auth'un doğrulama tablosu da kullanılamaz (sır taşıyan modeller listesinde, erişimi kimlik modülüne kapalı). Sonuç: kiracı taksonomisi **iki üyeden dört üyeye** çıktı, **iki** prob ve **iki** RLS politikası yazıldı.
+- **"Son `owner` silinemez" değişmezi + sahiplik devri** — borç tablosunda **v0.0.14 vadeli ve yazılı** olan kalem (iki `Cascade` yabancı anahtarın son sahip üyeliğini sessizce silip **sahipsiz kiracı** üretmesi). Davet/çıkarma akışının tam üstündeydi; bu sürümde kapanmasa akış bu hatayı **üretecekti**. ⚠ Karşılanma **kod + kapı seviyesindedir, veritabanı garantisi değildir** ve _"kapandı"_ **denmemiştir** — bkz. borç tablosu.
+
+Ayrıca `job.get` / `job.list` izinli builder'a **taşındı** (`job:read`, beş rolün beşine de
+verili) → davranış birebir korundu, sıkılaştırma **eklemeli** kaldı ve prosedür yüzeyi tablosu
+ilk gününden bir muafiyet satırıyla doğmadı.
+
+**Kabul kriterleri 3'ten 8'e çıkarıldı** (AC1–AC8) ve sekizinin sekizi de karşılandı. Gerekçe:
+ROADMAP'in üç kriteri bu zeminde **koşturulamazdı** (platformda sıfır mutation vardı) ve
+üçüncüsü kapsam revizyonundan sonra yeniden yazılmak zorundaydı. Karşılıksız kriter yok.
+
+**Kabul kriteri çıktısı (`qa`'nın KENDİ koşumu, ÜÇ bağımsız koşum, hepsi `--force` ve 0 cached
+— önbellekten oynatılan çıktı kanıt sayılmadı):**
+
+```
+build (ön-build, bayat dist tuzağı) · lint 21/21 · typecheck 21/21 · test 18/18
+test:isolation 10/10 · build 13/13 · format:check     → YEDİSİ DE EXIT 0, hepsi 0 cached
+Koşum 1 (taban ağaç): test 1251 / 123 dosya, 0 skipped / 0 todo
+                      test:isolation 48 test / 5 dosya  (db 35 + api 13)
+Son durum:            api 479 → kök toplam 1261 (aritmetik; AC8 yeniden koşturulmadı)
+8 kabul kriterinin 8'i qa'nın kendi ölçümünde geçti — devralma yok
+52 mutasyon fiilen uygulandı, kırmızı görüldü ve md5 ile birebir geri alındı
+  (S1 7 · S2 7 · S3 6 · S4 7 · S5 8 · FIX 1 8 · qa 9)
+AC5 kanıt zinciri: prob tamlığı kapısı ÖNCE gerçek bir expect başarısızlığı verdi
+  ("eksik prob: audit_log, tenant_invitation"), SONRA 0 — çağrı noktası hâlâ TEK
+AC7 eşzamanlı devir yarışı canlı Postgres'te: tam biri 200, tam biri 409, owner = 1
+```
+
+**Gate'ler:** `solid` PASS (1 medium, 9 low) → tur 2 (dar) **PASS**, M-1 **kapandı**, 0 medium,
+artı 1 yeni low (L-10) · `security` PASS (2 medium, 9 low) → tur 2 (dar) **PASS**, M-1 **ve**
+M-2 **kapandı**, ADR-0016 madde 6'nın **koşul D'si artık tam**, 0 medium, artı 1 yeni low
+(L-11) · `qa` **PASS** (0 medium, 6 low — **beşini kendi dosyalarında kapattı**). `wcag`
+**atlandı** (UI yüzeyi yok; ölçülebilir ikame: `apps/admin` ve `packages/ui` diff'i **boş**) ·
+`perf` **atlandı — ikameli**: üç ölçüm (izinli isteğin üyelik satırını **tam iki kez** okuması,
+SMTP'nin transaction **dışında ve commit'ten sonra** olması, iş okuma yüzeyinin **hiç
+değişmemesi**) kabul kriteri testlerine girdi ve `qa` üçünü de **doğruladı**. Bir düzeltme turu
+koştu (1/3; `backend` + biçim kapısı için `devops`), **açık `medium` sayısı 0**. ⚠ Tur,
+`AGENT_BASELINE.md` §4'ün _"`medium` bulgular gate sonucu PASS olsa bile düzeltme turu açar"_
+kuralı gereği açıldı — kural T-014'te **doğru okundu ve kayda geçti**, bkz.
+`docs/development.md` → _Ölçüm disiplini_ (f). Borç satırlarının tamamı
+[Teknik Borç → v0.0.14 kaynaklı borçlar](#teknik-borç) bölümüne kaydedildi. ⚠ **Açık `low`
+sayısı satır satır sayılarak 18 bulundu** (7 `solid` + 8 `security` + L-10 + L-11 + L-12); Task
+dosyasının özetindeki **15** rakamı kendi ifadesiyle (`9 + 9 − 5 + 3`) **aritmetik olarak
+tutmuyor** ve çıkarılan beş kapanıştan yalnızca **ikisi** o on sekizin üyesi — gerekçe borç
+bölümünün başındaki sayım notunda. Kapanan üç gate `low`'u (ikisi `qa`, biri düzeltme turu)
+listede **silinmedi, işaretlendi**.
+
+**Versiyon etkisi:** platform **minor** (yeni yetenek, geriye uyumlu; göç yok, kaldırılan
+yetenek yok) · `@arkesoft/trpc` **minor** (Public API birimi; `member` namespace'i, beşinci
+builder ve `TrpcPorts`'a iki zorunlu üye — **yalnızca ekleme**, mevcut dört namespace'in hiçbir
+alanı değişmedi/zorunlulaşmadı/kaldırılmadı) → **iki ayrı changeset zorunlu**; açık minor
+changeset yazılmazsa sözleşme paketi fixed grubun kaskadıyla **patch olarak** yayınlanır
+(Sürüm Politikası §2 ihlali). `@arkesoft/theme-sdk` ve temalar **etkilenmiyor**. Kırıcı
+değişiklik yok, yeni ana bağımlılık yok (bağımlılık manifestoları ve kilit dosyası diff'i
+**boş**). ⚠ **Sözleşme snapshot koşumu (`pnpm test:contract`) hâlâ yok** (vade v0.0.22) → semver
+kararı **elle analizle** verildi; izin kataloğundaki bir daraltmanın mekanik olarak MAJOR
+tetiklemesi o sürümle gelecek. ⚠ **`TrpcPorts`'a zorunlu üye eklemek MAJOR değildir:** bunlar
+tel sözleşmesi değil, `apps/api`'nin uyduğu sunucu tarafı uygulama dikişidir ve repo dışı
+uygulayıcısı yok — emsal v0.0.11'de ölçüldü. **Dört birimin gerçekleşen sürümlerini `release`
+ölçecek, varsaymayacak.**
+
+**Gerçekleşen sürümler (`release`, 2026-11-04 — `pnpm release:version` sonrası her birim
+`package.json`'dan tek tek okunarak ÖLÇÜLDÜ, hiçbiri varsayılmadı):**
+
+- **Platform** (kök `arkesoft`): `0.3.0` → **`0.4.0`**. `--apply` kökü senkronladı;
+  `node scripts/sync-platform-version.ts --check` exit 0.
+- **`fixed` grup** (10 paket: `admin`, `api`, `config`, `db`, `errors`, `integrations`,
+  `storefront`, `superadmin`, `tenancy`, `ui`): `0.3.0` → **`0.4.0`** — onu da, kökle eşit
+  (`apps/api` sürümünü köke pinleyen manifest testi korunuyor).
+- **`@arkesoft/trpc`** (public API birimi, `fixed` grupta **değil**): `0.3.0` → **`0.4.0`**.
+  ⚠ **Minor kazandı.** Kaskat tuzağı **ikinci kez fiilen gerçekleşti ve yenildi:**
+  `packages/trpc/CHANGELOG.md`'nin `0.4.0` bloğu hem _"Minor Changes"_ (bizim Türkçe özetimiz) hem
+  _"Patch Changes → @arkesoft/errors@0.4.0"_ taşıyor. Açık minor changeset yazılmasaydı yayınlanan
+  sürüm `0.3.1` olacaktı (Sürüm Politikası §2 ihlali).
+- **`@arkesoft/theme-sdk`**: `0.1.1` → **`0.1.1`** — **HAREKET ETMEDİ**.
+  `git status --porcelain packages/theme-sdk` bump öncesi **ve** sonrası **boş**.
+- **`@arkesoft/themes-modern`**: `0.1.0` → **`0.1.0`** — **HAREKET ETMEDİ**.
+  `git status --porcelain packages/themes` bump öncesi **ve** sonrası **boş**. (v0.0.10 tam burada
+  sürpriz üretmişti; bu yüzden varsayılmadı, iki kez ölçüldü.)
+
+İki changeset yazıldı (`rbac-rol-izin-ve-davet-akisi.md` → `@arkesoft/api` + `@arkesoft/db` minor;
+`member-namespace-ve-izin-katalogu.md` → `@arkesoft/trpc` minor); ikisi de `changeset version`
+tarafından tüketildi ve `.changeset/` yalnızca `config.json` ile kaldı. ⚠ **Kök `CHANGELOG.md`
+biçim kapısını yine karşılamadı** (`release:version`'ın beşinci sapması; v0.0.9.1, v0.0.10 ve
+v0.0.11'de dört kez olmuştu): `sync-platform-version.ts` özeti `- ${summary}` olarak eklediği için
+çok paragraflı özetin **ilk paragraftan sonrası girintisiz** düşüyor ve madde imine bağlı
+kalmıyor. `release` kendi ürettiği dosyada düzeltti (girinti + platform girdisinin öne alınması).
+
+**Kabul kriteri — `release`'in KENDİ koşumu, 2026-11-04 (sürüm bump'ı SONRASI, hepsi `--force` ve
+0 cached; `qa`'nın sayıları devralınmadı):**
+
+```
+build (ön-build, bayat dist tuzağı)  13/13 görev, 0 cached  → exit 0
+pnpm lint --force                    21/21 görev, 0 cached  → exit 0
+pnpm typecheck --force               21/21 görev, 0 cached  → exit 0
+pnpm test --force                    18/18 görev, 0 cached  → exit 0
+    1261 test / 125 dosya, 0 skipped / 0 todo
+    (api 479 · theme-sdk 223 · db 172 · storefront 125 · trpc 110 · errors 48
+     tenancy 39 · admin 37 · ui 23 · themes-modern 5)
+pnpm test:isolation --force          10/10 görev, 0 cached  → exit 0
+    53 test / 6 dosya  (db 35 / 2 dosya + api 18 / 4 dosya)
+pnpm build --force                   13/13 görev, 0 cached  → exit 0
+pnpm format:check                    "All matched files use Prettier code style!" → exit 0
+node scripts/sync-platform-version.ts --check                → exit 0
+```
+
+⚠ **İki sayı `qa`'nın raporundan FARKLI çıktı ve fark açıklanabilir** — ikisi de `qa`'nın kendi
+etiketlediği _"Koşum 1 (taban ağaç)"_ değerleriydi, son duruma göre yeniden koşturulmamıştı.
+Birincisi: kök test toplamı `qa`'da **1251 / 123 dosya** (taban) ve _"1261"_ olarak **aritmetikle**
+türetilmişti; `release`'in koşumu **1261 / 125 dosya** ölçtü, yani aritmetik **tuttu**. İkincisi:
+`test:isolation` `qa`'da **48 test / 5 dosya** (db 35 + api 13) yazılıydı; gerçek son durum
+**53 test / 6 dosya** (db 35 + api **18**) — fark, `qa`'nın kendi kapattığı bir `low` için yazdığı
+beş testlik çapraz kiracı yazma dosyasıdır. **Her iki sapma da eksik ölçüm değil, bayat ölçümdür**
+ve yukarıdaki blok `release`'in birinci elden koşumudur.
+
+**ADR:** [ADR-0016](./docs/adr/0016-yetki-modeli-izin-katalogu-ve-yetenek-tabanli-kiraci-baglami.md)
+— yetki modeli, izin kataloğu ve yetenek tabanlı kiracı bağlamı (yedi karar: kataloğun sözleşme
+paketinde yaşaması · rolün her istekte ayrı bir porttan okunması · yetki reddinin **403** olması
+ve izin/rolün yalnızca loga girmesi · INV-OWNER'ın **kodda CAS** ile zorlanması · denetim
+kaydının tek yazma kapısı ve kapalı `diff` sözlüğü · **dört koşullu** yetenek tabanlı kiracı
+bağlamı istisnası — ADR-0009 madde 7 ve ADR-0011 madde 3'e dar bir istisna · iş okuma uçlarının
+izinli builder'a eklemeli taşınması; artı dokuz reddedilen alternatif, dokuz ölçülmüş olgu ve
+beş gözden geçirme koşulu).
+
+**Yeni varsayımlar:** T-014'ün varsayımları [Varsayımlar](#varsayımlar-ve-açık-kararlar)
+bölümünün sonundaki **"T-014 (v0.0.14) varsayımları"** listesine kaydedildi. Etiketler Task
+dosyasının **yerel** numaralandırmasını korur ve `(T-014)` ekiyle yazılır — gate raporları ve
+kaynak yorumları bu etiketlerle atıf verdiği için yeniden numaralandırmak izlenebilirliği
+koparırdı.
+
+**Geliştirici notları:** `docs/development.md` → _"Taksonomiye tablo eklemenin DÖRT
+mekanizması"_ (dört üye, prob kaydının tek çağrı noktası, doğal benzersizlik ayrımı) ·
+_"Append-only tablo ile izolasyon probu arasındaki gerilim"_ · _"Üyelik ve davet uçları"_
+(topoloji, fragman kararı, dışa açık sabitler, **operatör kırılması YOK** notu) ve _Ölçüm
+disiplini_'ne üç yeni kural: (f) `medium` bulgunun düzeltme turu açması, (g) bir düzeltmenin
+kendisinin bayatlaması ve çapraz referansta **sembol adı** kullanma, (h) biçim kapısının **iki**
+ignore dosyasını birlikte okuması.
+
+---
+
+## v0.0.14.1 — `arkesoft_auth` rolü ve kolon bazlı yetki ayrımı (hotfix)
+
+**Hedef:** Parola hash'i / oturum belirteci / doğrulama belirteci taşıyan üç platform tablosu
+veritabanı seviyesinde de korunsun; ADR-0008'in v0.0.14'e vadeli borcu kapansın.
+**Hedefin gerekçesi:** Bugünkü mekanizma **üç katmanlı** (tip + lint + yanıt/log yüzeyi) ve
+derleme zamanında güçlüdür, ama **veritabanı garantisi değildir**: uygulama rolü üç tabloyu
+filtresiz okuyabilir. ADR-0008 bunu kendi _"Olumsuz Sonuçlar"_ bölümünde açıkça yazıyor
+(`docs/adr/0008-sir-tasiyan-tablolarin-tipi-ve-linti-ile-korunmasi.md:117-119`).
+**Kapsam (kullanıcı onayı 2026-11-04: "v0.0.14.1 — hotfix deseni", v0.0.9.1 emsali):**
+
+- [ ] `arkesoft_auth` rolü (`NOSUPERUSER`, `NOBYPASSRLS`, `NOCREATEDB`) — yalnızca üç hash/belirteç tablosunu okur, başka hiçbir tabloyu okumaz
+- [ ] Katalog linter'ına **kolon yetkisi kural sınıfı** eklenmesi
+- [ ] **Mevcut** tablo yetkisi kuralının üç tablo için kolon bazlı sorguya **tadil edilmesi**
+- [ ] Platform tablolarına tablo bazlı `REVOKE` + hash/belirteç kolonlarına kolon bazlı `GRANT`
+- [ ] İkinci Prisma istemcisi/havuzu + `DATABASE_AUTH_URL` (**ikinci operatör kırılması**)
+- [ ] Geri almanın **dördüncü kademesi** + `pnpm db:rollback-roles` (yazılı v0.0.14 borcu)
+      **Dokunulan paketler:** packages/db, apps/api, packages/config, infra
+      **Kabul kriteri:** `arkesoft_auth` ile üç tablo okunabiliyor, `arkesoft_app` ile **okunamıyor** (canlı prob); katalog linter'ı üç tabloda bulgu **üretmiyor** ama kolon yetkisi sapmasında **üretiyor** (**iki yönlü**, mutasyonla); `DATABASE_AUTH_URL` yokken rol katalogda varsa **fail-fast** (`DATABASE_URL`'e düşmek **yasak** — sessiz güvenlik kaybı); dördüncü kademe geri alma koşturuldu ve katalog **başlangıç durumuna döndü**.
+      **Bağımlılık:** v0.0.14
+      **Tahmini büyüklük:** M
+
+⚠⚠ **SIRA KISITI BAĞLAYICIDIR (architect K-A17, `pm` R-PM2 — tek PR içinde bile geçerli):**
+
+1. **Önce** kolon yetkisi **kural sınıfını** ekle.
+2. **Sonra** mevcut tablo yetkisi kuralını üç tablo için kolon bazlı sorguya **tadil et**.
+3. **Ancak sonra** `REVOKE` / `GRANT` DDL'ini uygula.
+
+**Gerekçe ölçülmüştür:** katalog linter'ının rol yetkisi kuralı tablo bazlı yetki soruyor ve
+uygulama rolünden tablo bazlı `REVOKE` uygulandığı **an** üç tablo için bulgu üretir
+(`packages/db/src/catalog-lint.ts`, `lintAppRoleDmlPrivileges`). Yani **linter kural sınıfı bu
+teslimin bir ayağı değil, ÖN KOŞULUDUR.** Sıra yanlış olursa CI kırmızıya döner ve **linteri
+gevşetme baskısı** doğar — bu yolun kendisi CLAUDE.md §10 madde 6 ihlalidir. Doğru yol kuralın
+**sınıfını** değiştirmek ve **iki yönlü mutasyonla** kanıtlamaktır.
+
+⚠ **ADR-0008 ile çelişki YOK, ama atıf doğru verilmeli.** ADR-0008 kolon bazlı `REVOKE`'u
+değerlendirip reddetti (`:91`) — reddedilen şey **aynı rolde** kolon `REVOKE`'uydu (giriş
+sorgusu belirteç kolonunu `WHERE` içinde taşıdığı için okuma yetkisi şart); kabul edilen
+**rol ayrımıdır**: tablo `REVOKE` uygulama rolünden, kolon `GRANT` yeni kimlik rolüne. Borcun
+tarifi `:69-82`, borcun kendisi `:119`. ⚠ **`"R-1 KARARI"` jetonu ADR-0008'de GEÇMEZ** (ölçüldü,
+repo geneli arama → 0 eşleşme); o jetonla arama yapan okuyucu _"böyle bir karar yok"_ sonucuna
+varır. Yukarıdaki _"Devreden borç"_ paragrafındaki etiket **bu yüzden yanlıştır, özü doğrudur.**
+
+✅ **v0.0.14'ten gelen iki iyi haber — bu sürümün kapsamı BÜYÜMEDİ:**
+
+- v0.0.14'ün iki yeni tablosu **kiracı seviyesidir** → `REVOKE` işi **platform** tablolarındadır, **kesişim yok**.
+- Davet tablosu **ham belirteç saklamıyor** (yalnızca `sha256` özeti) → sır taşıyan modeller listesine **girmedi** ve kimlik bilgisi taşıyan kolon sayısı **üçte kaldı**.
 
 ---
 
@@ -1842,6 +2064,39 @@ taşır.
   v0.15.0'ın bayat satır tespiti geldiğinde doğru kurtarma yolu terminal satırın **operatör
   tarafından yeniden açılması** olacak — kodda sessiz geçiş değil. Etki: v0.0.11, v0.15.0.
 
+## T-014 (v0.0.14) varsayımları — RBAC ve yetki modeli
+
+**Etiket notu (önemli):** aşağıdaki kimlikler T-014'ün **Task-yerel** numaralandırmasını korur
+ve bu yüzden `(T-014)` ekiyle yazılır — gate raporları ve bazı kaynak dosya yorumları bu
+etiketlerle atıf veriyor, yeniden numaralandırmak izlenebilirliği koparırdı. ⚠ **Çakışma
+uyarısı:** `A-PO1` etiketi T-012'de **ve** T-014'te ayrı anlamlarla kullanılmıştır (T-012'nin
+`A-PO1`'i mesaj kataloğu paketinin yokluğuyla, T-014'ünki davet tablosunun yabancı anahtar
+kararıyla ilgilidir); `A-A1`-`A-A6` satırları **T-002'ye**, `A-S*` etiketleri **ilgili Task'a**
+aittir. Biçim: satırlar tek bir tablo hücresine sığmadığı için bu bölüm T-013 emsaline uyularak
+**liste** olarak yazıldı.
+
+- **A-PM1 (T-014) — TUTTU, `po` üç bağımsız ölçümle teyit etti.** Davet akışı için panel ekranı bu sürümde gerekmiyor (sürümün _"Dokunulan paketler"_ listesinde `apps/admin` yok). Genişletme yapılmadı, dolayısıyla ek kullanıcı onayı gerekmedi. Etki: v0.0.14, v0.1.0.
+- **A-PM2 (T-014) — TUTTU, uygulandı ve mekanik olarak korunuyor.** İzin kataloğu yalnızca **var olan** uçları kapsar; henüz var olmayan uçlar için yer tutucu izin yazılmadı → katalog **tam olarak iki izin** taşıyor. Kataloğa tüketicisi olmayan bir izin eklemek tutarlılık testini **kırmızıya düşürüyor** (mutasyonla ölçüldü: beş test kırmızı). Etki: v0.0.14.
+- **A-PM3 (T-014) — ÇÖZÜLDÜ, artık varsayım değil.** Bölünen sürümün numarası kullanıcı kararıyla **v0.0.14.1** oldu (hotfix deseni, v0.0.9.1 emsali) ve kutulu bir sürüm olarak bu dosyaya girdi. Etki: v0.0.14, v0.0.14.1.
+- **A-A1 (T-014) — ÜRÜN KARARI, kullanıcıya bildirildi.** _"Her kiracının tam olarak bir sahibi vardır"_ kabul edilebilir bir ürün kararıdır (Shopify'ın _store owner_ emsali) ve gevşetme yönü (çoklu sahip) **eklemelidir**. ⚠ Ama gevşetme bedava değil: karşılaştır-ve-değiştir deseni _"tam olarak bir"_e dayanıyor, dolayısıyla çoklu sahiplik **satır kilidi stratejisinin yeniden tasarlanmasını** gerektirir (ADR-0016 gözden geçirme koşulu 4). Etki: v0.0.14.
+- **A-A2 (T-014) — VARSAYIM OLARAK KABUL EDİLMEDİ, İKİ KEZ ÖLÇÜLDÜ.** Router'ın prosedür envanteri test içinde çalışma zamanında elde edilebiliyor (noktalı tam yol anahtarlı düz bir kayıt; **dokuz prosedür, dört mutation**) → grep yedeğine **düşülmedi** ve tutarlılık testinin kapalı dünya ayağının kırılganlığı **artmadı**. `qa` kendi koşumunda yeniden ölçtü. İki kısıt kayda geçti: nesne ayrıştırıcısı bu kayıtta **kullanılamıyor** (değerler fonksiyon) ve iç API'ye **tipli erişim yapılmadı** → kütüphane yükseltmesinde kırılma yeri **tek ve gürültülü**. Etki: v0.0.14.
+- **A-A3 (T-014) — KABUL EDİLEBİLİR, `security` değerlendirdi.** Davet kabulü için e-posta doğrulanmışlığı **şart koşulmuyor**; belirteç posta kutusu erişimini **zaten** kanıtlıyor ve kabul ayrıca oturum adresinin davet adresiyle **normalize eşleşmesini** şart koşuyor (iki faktör: belirteç + adres sahipliği). Şart koşmak, tüketici arayüzü olmadığı için **çıkmaz bir sokak** üretirdi. Etki: v0.0.14.
+- **A-A4 (T-014) — TUTTU; `security` ve `qa` doğruladı.** Davet yaşam süresi, bekleyen davet üst sınırı ve tekrar davet bekleme süresi **ortam değişkeni değil, dışa açık kod sabitidir** ve testler bunları **import eder**. ⚠ Üçlü **burst'ü** kapatıyor, **sürdürülebilir** hacmi kapatmıyor; oran sınırı mekanizması bilinçli olarak açılmadı. Etki: v0.0.14, v0.1.0.
+- **A-A5 (T-014) — TUTTU, üç bağımsız ölçüm.** Üyelik yazma uçları bu sürümde **tarayıcıdan erişilemez** (panel host'undan 404; panelde kiracı seçimi v0.1.0) → kabul kriterleri sunucu istemcisiyle ölçüldü. Tek istisna davet kabul ucudur ve o da **oturum zorunlu** kalmıştır. Etki: v0.0.14, v0.1.0.
+- **A-PO1 (T-014) — `db` KARAR VERDİ VE YAZDI** (mimari tasarım bu kolonları söylememişti). Davet tablosunun kiracı yabancı anahtarı `Cascade`'dir — olmasaydı kiracı temizliği bekleyen davetleri **yetim bırakır** ve çapraz kiracı senaryosu **sızdırırdı**; `Restrict` ise kiracı silmeyi **geçici bir kayıt** yüzünden kilitlerdi. Davet edeni gösteren kolon ise **yabancı anahtar taşımaz**, denetim kaydının aktör kolonuyla aynı gerekçeyle: _"daveti kim gönderdi"_ bir **olgudur**. Etki: v0.0.14.
+- **A-DB1 (T-014) — TUTTU ve TİP SEVİYESİNE ÇIKARILDI.** Denetim kaydının özne kolonunun anlamı **eylem başına değişiyor** ve bu sözleşme başlangıçta yalnızca şema yorumunda yazılıydı (zorlayıcısı yoktu). Yazma kapısı bunu eylem → alan eşlemesi + exhaustive `switch` ile **derleme zamanında** zorluyor; **iki yönlü** mutasyonla ölçüldü (yanlış alan adı → `TS2353`, her iki yönde). Etki: v0.0.14.
+- **A-DB2 (T-014) — TUTTU, uçtan uca ölçüldü; ama zorlayıcısı KODDADIR.** E-posta küçük harf normalizasyonu bir **uygulama** sözleşmesidir, veritabanı kısıtı değil: benzersizlik kısıtı normalize edilmemiş bir değerle **hâlâ delinebilir**. `security` ölçtü: karışık harfli bir adresle davet edildiğinde posta alıcısı küçük harf, satır küçük harf ve karşılaştırma normalize. ⚠ Kullanıcı tablosu okuması **büyük/küçük harf duyarsızdır** ve bu ayrı bir sözleşmedir (borç satırı: sıralama deterministik değil). Etki: v0.0.14.
+- **A-S3-1 (T-014) — BİLGİ NOTU.** İzolasyon probunun kullandığı denetim `diff` değeri, davet eylemi şemasıyla uyumludur. O şema ileride **daraltılırsa** prob etkilenmez ama **yorumu bayatlar** — bu, bu Task'ta dört kez ölçülen _"beyan ≠ gerçeklik"_ sınıfının küçük bir örneği olurdu. Etki: v0.0.14.
+- **A-S5-1 (T-014) — DOĞRULANAMADI; `qa` devraldı ve ölçemediğini yazdı.** Kabul kriteri testleri kiracıyı **geliştirici başlığıyla** seçiyor, yani gerçek _kiracı host'u_ çözümleme dalını (kısa ad XOR birincil alan adı) **kullanmıyorlar**. Gerçek host üzerinden ölçüm `test:e2e` yüzeyinin işidir ve ⚠ **üyelik uçları için bugün imkânsızdır**: kök e2e script'i yok **ve** uçlar tarayıcıdan erişilemiyor. Etki: v0.0.14, v0.0.19 (test altyapısı), v0.1.0.
+- **A-S5-2 (T-014) — TUTTU ve ölçüldü; ölçümün izolasyonu buna dayanıyor.** Davet ucu, davet edilen adrese ait bir hesap yoksa üyelik tablosunu **hiç okumuyor** → isteğin tüm üyelik okumaları **yetki yolundan** geliyor ve "tam iki okuma" ölçümü bu sayede izole. ⚠ Servisin bu erken dönüşü kaldırılırsa ölçüm **üç okuma** görür ve kırmızıya düşer — **istenen davranış**. Etki: v0.0.14, v0.0.17.
+
+**Düzeltme turundan gelen iki kayıt.** ⚠ Bunlar Task dosyasında **numaralı varsayım olarak
+yazılmamıştır**; bu yüzden `A-FIX*` biçiminde bir kimlik **uydurulmadı** ve ölçülmüş olgu olarak
+kaydedildiler:
+
+- **Taban iddiasının bayatlaması (FIX 1, ölçüldü).** Düzeltme turunun brief'indeki _"biçim kapısı temiz"_ taban iddiası **bayattı**: tek ihlal `backend`'in dosyası değil, başka bir aracın ürettiği bir test raporuydu ve mtime'ı turdan **önceydi**. ⚠ `backend` o dosyada biçimlendirme komutu **çalıştırmadı** (`AGENT_BASELINE.md` §5) ve ihlali `devops`'a devretti; çözüm iki ignore dosyasına birer satır oldu. Ders `docs/development.md` → _Ölçüm disiplini_ (h)'de.
+- **Kiracı kimliği kabul ucunun log kayıtlarında YOK (bilgi, borç değil).** Kabul ucu kiracıdan muaf olduğu için o istekte alt logger'a kiracı kimliği bağlanmıyor. Bu **bilinçli ve yazılıdır**, testte ölçülüyor ve CLAUDE.md §4'ün alan listesiyle çelişmesi **bu uca özgü** bir istisnadır (ADR-0016 Karar 6, koşul C'nin doğal sonucu). Etki: v0.0.14.
+
 ## Sürüm ve kilometre taşı ayrışması (v0.0.12'den başlayarak)
 
 **Karar (v0.0.12):** ROADMAP kilometre taşı numarası ile paket sürümü v0.0.12'den itibaren **ayrışabilir**.
@@ -2363,6 +2618,94 @@ tırnak içinde tire). (`security` T-012'nin üç `low`'unun ortak kökü — bk
   `solid` üçünün de **aynı dosyada üretim tüketicisi olduğunu** ölçtü; testin hizmetinde olan
   tek şey `export` sözcüğüydü.
 
+## v0.0.14 kaynaklı borçlar — RBAC ve yetki modeli (T-014 gate sonuçları)
+
+> **Not (`docs`, 2026-11-04):** Bu bölümün satırları T-014'ün **beş** gate raporundan
+> (`.claude/workflow/reviews/T-014-{solid-tur1,solid-tur2,security-tur1,security-tur2,qa-tur1}.md`)
+> ve Task dosyasının üretim/düzeltme loglarından (`.claude/workflow/tasks/T-014.md`) türetildi;
+> her satırın kaynağı yazılıdır. Vade satır başına değişir, bu yüzden bölüm başlığı borcun
+> **doğduğu** sürümü taşıyor. Biçim: satır metinleri tek bir tablo hücresine sığmadığı için bu
+> bölüm kardeş bölümlerin emsaline uyularak **liste** olarak yazıldı; her madde aynı alanları
+> taşır (önem · konum · açıklama · sorumlu · vade · kaynak).
+>
+> ⚠ **Vade değerleri gate'lerin ÖNERİSİDİR, `docs` onları yeniden kararlaştırmadı.** İki
+> öneride ROADMAP sürüm konusuyla uyumsuzluk **ölçüldü** ve satırın içine yazıldı: `v0.0.18`
+> _çoklu dil ve para birimi_ sürümüdür (alan bazlı doğrulama sözleşmesi oraya **oturuyor**,
+> istemci IP doğrulaması **oturmuyor**) ve `v0.0.19` _test altyapısıdır_ — hesap/veri silme
+> yüzeyi değil. Veri silme yüzeyi için bugün ROADMAP'te **tanımlı bir sürüm yok** (KVKK veri
+> indirme/hesap silme akışı `v0.12.0`'ın kapsamında ve oradaki özne **vitrin müşterisidir**).
+>
+> ⚠ **Sayım notu (ölçüldü, Task dosyasının özetinden FARKLI):** Task dosyası açık `low` sayısını
+> **15** diye yazıyor ve ifadesi `9 + 9 − 5 + 3`. İfade **aritmetik olarak 16** veriyor, üstelik
+> çıkarılan beş kapanıştan **yalnızca ikisi** (`solid` L-4 ve L-5) o on sekizin üyesidir; kalan
+> üçü bir alt görev riski, bir devredilen karar ve `qa`'nın kendi yeni bulgusudur. `security`
+> L6 ise düzeltme turunda kapandı. Satır satır sayıldığında: **18 açık `low`** (7 `solid` + 8
+> `security` + L-10 + L-11 + L-12) ve **3 kapanmış** gate `low`'u. ⚠ Bu on sekizden **biri**
+> (`security` L8, bağımlılık denetimi) **yeni bir borç satırı değil**, mevcut bir satırın
+> teyidi → **yeni açık borç satırı 17**. Aşağıdaki liste bu sayımı izliyor; kapananlar da
+> **silinmedi**, işaretlendi.
+
+**Kullanıcı onaylı iki taşıma (sessizce düşmeleri yasaktı):**
+
+- **low** · `ROADMAP.md` → v0.0.14 kapsam maddesi 3 — **`@RequirePermission()` NestJS dekoratörü bu sürümde YAZILMADI.** Ölçülmüş gerekçe: üretimdeki REST controller'ların tamamı sağlık probu, kimlik delegasyonu, kullanıcının kendi oturumları ve tRPC taşıma katmanıdır → izinle kapılanacak **tek bir iş ucu yok**; dekoratör sıfır tüketiciyle doğar ve kabul kriterinin _"katalog ↔ kullanım tutarlılığı"_ maddesini **boş küme üzerinde** doğrular. İş değeri `permissionProcedure` üzerinden **tamamen** karşılandı. Yön: REST iş yüzeyi açıldığında **aynı kataloğu** tüketen bir dekoratör yaz; katalog o gün iki tüketici arasında paylaşılacağı için fiziksel yeri yeniden değerlendirilmeli (ADR-0016 gözden geçirme koşulu 2). **Sorumlu:** `architect` + `backend` · **Vade:** v0.0.20 (ufuk; REST iş yüzeyinin açıldığı sürüm) · **Kaynak:** `pm` R1, kullanıcı onayı 2026-11-04
+- **low** · `packages/db/prisma/schema.prisma` (`TenantRole` enum'unun üstündeki yazılı karar) — **`platform_admin` BU SÜRÜMDE EKLENMEDİ.** Üç bağımsız ölçüm: şema bu rolü **yazılı bir kararla** reddediyor (_"platform yetkisi, üyelik değildir"_) ve eklemek kararı **sessizce ters çevirip** kiracı rolü enum'una kiracı dışı anlam yüklerdi; tüketecek panel **yok** (süper admin uygulaması tek bir giriş dosyasından oluşuyor); **oturum kiracı taşımıyor** → platform yetkisi oturumda **taşınamaz**. Yön: v0.0.20'de impersonation + denetim kaydıyla, kiracı rolü enum'undan **ayrı** bir mekanizma olarak. **Sorumlu:** `architect` · **Vade:** v0.0.20 · **Kaynak:** `pm` R2, kullanıcı onayı 2026-11-04
+
+**Taşınan ve kapsam dışı bırakılan iki mimari borç:**
+
+- **medium** · `packages/db/src/__tests__/helpers/migration-set.ts` (`DESTRUCTIVE_STATEMENT` kuralı) · `packages/db/prisma/schema.prisma` (`TenantMembership`'in kullanıcı yabancı anahtarı) — **sahipsiz kiracı borcunun (R-A10) VERİTABANI SEVİYESİ KAPANIŞI YAPILMADI.** Bu borç v0.0.14 vadeliydi; AC7 **kod + kapı** seviyesinde karşılandı (sahiplik değişmezi karşılaştır-ve-değiştir ile zorlanıyor; üretimde kullanıcı hard delete yolu olmadığı bir grep kapısıyla pinli) ama ⚠ **hiç kimse _"R-A10 kapandı"_ DEMEDİ** — `qa` bunu repo geneli aramayla teyit etti (**0 eşleşme**). İki ölçülmüş engel: yabancı anahtar aksiyonunu değiştirmek `ALTER TABLE … DROP CONSTRAINT` gerektiriyor ve migration kümesi linter'ının yıkıcı ifade kuralı buna bulgu üretiyor (kuralı kendi değişikliğimizi geçirmek için gevşetmek **CLAUDE.md §10 madde 6 ihlalidir**); alternatif olan `BEFORE DELETE` trigger'ı ise `FORCE ROW LEVEL SECURITY` altında kiracı GUC'u yokken **her zaman sıfır satır** gördüğü için değişmezi **sessizce onaylar**. Vasıta: yıkıcı ifade kuralının **iki yönlü testle** rafine edilmesi + yabancı anahtarın `Restrict`'e çevrilmesi. **Sorumlu:** `db` + `architect` · **Vade:** panel kullanıcısı silme yüzeyinin açıldığı sürüm — ⚠ **bugün ROADMAP'te tanımlı değil** (bkz. yukarıdaki not) · **Kaynak:** `architect` R-A2/K-A12, S1, S5, `qa` tur 1
+- **medium** · `packages/trpc/src/trpc.ts` (`errorFormatter`'ın ayrıştırma-başarısız dalı) · `packages/trpc/src/schemas/member.schema.ts` — **alan bazlı doğrulama hatası sözleşmesi tRPC yüzeyinde YOK.** Tel şeması hatası uygulama hata sınırının `AppError` dalına **hiç girmiyor**, jenerik gövdeye düşüyor ve her hatalı girdi bir uyarı kaydı üretiyor; CLAUDE.md §4'ün `{ code: 'VALIDATION_ERROR', fields: { … } }` sözleşmesi sözleşme yüzeyinde **henüz yok**. ⚠ Platformun ilk dört mutation'ı bu dalı **ilk kez yoğun** kullanıyor. Bu sürümde bilinçli olarak açılmadı (hata yüzeyi ADR'sini yeniden açardı) ve ⚠ `backend` **yeni bir gövde şekli icat etmedi**. **Sorumlu:** `architect` + `backend` · **Vade:** v0.0.18 (mesaj kataloğu sürümü — alan anahtarları katalogtan gelmek zorunda), tüketici **v0.1.0** · **Kaynak:** `architect` K-A10/R-A4
+
+**Düzeltme turundan (FIX 1 + FIX 1b) doğan dört borç:**
+
+- **low** · `packages/errors/src/app-error.ts` (izleme kimliği alanını v0.0.17'ye bağlayan yorum) · tüm log üreticileri — **izleme kimliği (`traceId`) platformda HİÇ YOK** (ölçüldü: uygulama ve paket ağacında **0 eşleşme**) → CLAUDE.md §4'ün log alan listesi **bugün hiçbir kayıt** tarafından tam karşılanamıyor. ⚠ T-014'ün gerilemesi **değil**; FIX 1'in eklediği yeni kayıt da aynı eksiği taşıyor. **Sorumlu:** `architect` + `devops` · **Vade:** v0.0.17 (gözlemlenebilirlik) · **Kaynak:** FIX 1 bulgu 3
+- **low** · `apps/api/src/logging/request-logging.interceptor.ts` — **istek kimliği NDJSON satırında iki kez görünüyor:** alan, alt logger bağlamasına **ek olarak** ayrıca geçiriliyor. ⚠ FIX 1'in yeni kaydı bu hatayı **tekrarlamıyor** (alanlar alt logger'dan geliyor, ikinci kez geçirilmiyor) → desen doğru, kalıntı eski. **Sorumlu:** `backend` · **Vade:** v0.0.17 · **Kaynak:** FIX 1 bulgu 5
+- **low** · `apps/api/vitest.config.ts` · `.prettierignore:44` · `.gitignore:50` — **test raporu dizininin kaynağı belgelenmemiş:** repoda **hiçbir** reporter yapılandırması yok (ölçüldü), dolayısıyla JSON çıktısı **ad-hoc bir komut koşumundan** düşmüş olmalı (bu bir **çıkarımdır**, ölçüm değil). Dizin artık iki ignore dosyasında da listeli, ama _"bu dosyayı kim üretiyor"_ sorusunun yazılı cevabı yok. **Sorumlu:** `devops` · **Vade:** v0.0.15 · **Kaynak:** FIX 1b
+- **low** · `.prettierignore:13-15,44` · `.gitignore:50` — **iki ignore dosyasının bağımsızlık kararı tek yerde toplanmalı.** Ölçüldü (üç deney): biçim kapısı **iki dosyayı birlikte** okuyor, dolayısıyla satırlardan **herhangi biri tek başına** kapıyı yeşile alıyor; `.prettierignore` satırı buna rağmen **bilinçli** (o dosyanın kendi emsal yorumu _"`.gitignore`'dan bağımsız olarak"_ diyor). Gerekçe bugün **iki dosyaya dağılmış** durumda. ⚠ Ders `docs/development.md` → _Ölçüm disiplini_ (h)'ye **yazıldı**; kalan iş kararın tek bir yerde toplanması. **Sorumlu:** `devops` · **Vade:** v0.0.15 · **Kaynak:** FIX 1b
+
+**`solid` tur 1 ve tur 2 — dokuz artı bir `low`:**
+
+- **low** · `packages/trpc/src/authz/permission-usage.ts:28` — bağlayıcı kısıt **var olmayan** bir test dosyasına atıf veriyor (`permission-procedure.test.ts`; repo geneli arama → **1 eşleşme, o da bu satırın kendisi**); gerçek dosya `member-procedures.test.ts` ve **kardeş dosya aynı kısıtı doğru dosya adıyla yazıyor** → aynı kuralın iki ifadesi çelişiyor. Yön: tek kelime. **Sorumlu:** `backend` · **Vade:** v0.0.15 · **Kaynak:** `solid` tur 1 (L-1)
+- **low** · `packages/db/prisma/schema.prisma:427-429` ↔ `apps/api/src/member/member.service.ts:572-574` — _"davet son kullanma kolonu üzerinde indeks YOK: süresi geçmiş davet SORGULANMAZ, tablo taranmaz"_ iddiası, **aynı sürümde yazılan** aralık `count()` sorgusuyla **çelişiyor** (bekleyen davet üst sınırı her yeni davette bir aralık taraması koşuyor). ⚠ Üstüne süresi geçmiş satırlar **hiç temizlenmiyor** → kiracı başına taranan küme **sınırsız** büyüyor (üst sınır yalnızca **bekleyen** daveti sayıyor). Bugün ölçülebilir maliyet yok. Yön: yorumu gerçek sorguya çek; saklama/temizlik kararını denetim kaydının saklama politikasıyla **birlikte** ele al. **Sorumlu:** `db` + `docs` · **Vade:** v0.0.17 · **Kaynak:** `solid` tur 1 (L-2)
+- **low** · `apps/api/src/errors/domain/already-member.error.ts:24` — `context?: Record<string, unknown>`: dosyanın _"yalnızca kullanıcı kimliği taşınır, E-POSTA YOK"_ taahhüdü **tip düzeyinde zorlanmıyor** (kardeş **beş** hata sınıfı dar tipli parametre kullanıyor). İki çağrı yeri de doğru değeri geçiyor, yani garantiyi bugün **disiplin** sağlıyor, **tip** sağlamıyor. ⚠ Dosyanın emsal gösterdiği hata sınıfı **farklı bir durumdur**: orada parametrenin **sıfır** çağrı yeri var. Yön: `{ readonly userId: string }`. **Sorumlu:** `backend` · **Vade:** v0.0.17 · **Kaynak:** `solid` tur 1 (L-3)
+- **low** · `apps/api/src/__tests__/production-write-path-grep.qa.test.ts:238-243` — **✅ KAPANDI (`qa`, T-014).** Üretim yazma yolu kapısının üçüncü ayağı yalnızca `import` ile **başlayan** satırı tarıyordu → çok satırlı bir logger import'u kapıdan **görünmez** geçiyordu. `qa` kusuru **ölçtü** (statik kapılar yeşil, kapı yine de kör) ve **kendi dosyasında** kapattı: tarama ifade bazlı hâle geldi ve bir regresyon testi eklendi. **Sorumlu:** `qa` · **Vade:** ✅ v0.0.14 (kapandı) · **Kaynak:** `solid` tur 1 (L-4) → `qa` tur 1
+- **low** · `apps/api/src/__tests__/production-write-path-grep.qa.test.ts:79,196-203` — **✅ KAPANDI (`qa`, T-014).** Append-only sözleşmesi yalnızca **yazma** çağrısı için kapılıydı; kiracı kapsamlı işlem istemcisi denetim tablosunun **tüm** delege yüzeyini taşıdığı için bir serviste güncelleme/silme çağrısı yazmak **derleniyor ve hiçbir kapıya çarpmıyordu**. `qa` dördüncü kapıyı ekledi (aynı boşa-çıkmama kontrolüyle). ⚠ **Veritabanı seviyesi sertleştirme hâlâ yok** — aşağıdaki `security` L2 satırı o yarıyı taşıyor. **Sorumlu:** `qa` · **Vade:** ✅ v0.0.14 (kapandı) · **Kaynak:** `solid` tur 1 (L-5) → `qa` tur 1
+- **low** · `apps/api/src/__tests__/member-invite-flow.test.ts:74,165-173` (kanonik kaynak: `apps/api/src/__tests__/helpers/create-test-app.ts`'in oran sınırı temizleyicisi) — **üretime ait Redis anahtar uzayı ÜÇÜNCÜ kez kopyalandı.** Anahtar öneki değişirse kopyalar **sessizce hiçbir şey temizlemez** ve kayıt ucu saatlik sınıra çarptığı için süit **flaky** olur. T-014'ün kendi kuralı bu sınıfı zaten yasaklıyor (_"sabitler kopyalanmayacak, import edilecek"_). ⚠ **Dördüncü kopya doğarsa bu bulgu `medium` olur.** Yön: anahtar önekini (veya temizleyiciyi) **tek** yerden dışa aç. **Sorumlu:** `backend` + `qa` · **Vade:** v0.0.17 · **Kaynak:** `solid` tur 1 (L-6)
+- **low** · `apps/api/src/member/member.service.ts:144-147` — kullanıcı aramasında `orderBy` **yok** ve karşılaştırma büyük/küçük harf **duyarsız**: kullanıcı tablosunun benzersizliği harf duyarlı olduğu için yalnızca harf büyüklüğüyle ayrılan **iki** hesap var olabilir ve o durumda _"zaten üye mi"_ ön kontrolü **belirsiz satırı** sınar. Güvenlik açığı **değil** — gerçek savunma kabuldeki benzersizlik kısıtı; sonuç yalnızca gereksiz bir davet e-postası ve kabulde 409. Yön: deterministik sıra ver veya yorumdaki garantiyi sınırla. **Sorumlu:** `backend` · **Vade:** v0.0.17 · **Kaynak:** `solid` tur 1 (L-7)
+- **low** · `packages/trpc/src/context/trpc-context.types.ts:101` — doküman _"beş alan"_ diyor, **altı** madde sayıyor. Sayı v0.0.6'dan **bayat** (T-014'ün gerilemesi değil) ama dosya bu sürümde **düzenlendi** ve ⚠ **aynı yanlış sayı mimari tasarım notuna da kopyalandı**. Çözüm bu repoda yazılı: **sayıyı kopyalama, kaynağa atıf ver** (bkz. `docs/development.md` → _Ölçüm disiplini_ (g)). **Sorumlu:** `backend` + `docs` · **Vade:** v0.0.17, bu dosyaya yapılacak ilk düzenlemede · **Kaynak:** `solid` tur 1 (L-8)
+- **low** · `packages/db/src/__tests__/type-pins/auth-model-narrowing.pin.ts:380,399-401` — doküman bloğunda **iki bayat atıf**: beklenen anahtar kümesi _"İKİ üye"_ diyor (gerçek **dört**; **aynı blok** on üç satır sonra kendini düzeltiyor) ve yapıştırılan derleyici çıktısı `:383`'e atıf veriyor — ⚠ **o satır artık bir yorum**, jenerik pinin dönüş ifadesi **`:440`**'ta. Kalıcı denetim kaydı olmak için yazılmış bir belge, **kendi kanıtının yerini yanlış gösteriyor**. ⚠ Bu, bir önceki turda `po`'nun yaptığı düzeltmenin **kendisinin bayatlaması**dır; ders `docs/development.md` → _Ölçüm disiplini_ (g)'ye yazıldı. Yön: üye sayısını kopyalamayı bırak, satır numarası yerine **fonksiyon adını** yaz. **Sorumlu:** `db` · **Vade:** v0.0.17 · **Kaynak:** `solid` tur 1 (L-9)
+- **low** · `packages/trpc/src/authz/permission-procedure.ts:84` — ⚠ **FIX 1'in kendisi, kapattığı kusur sınıfının küçük bir örneğini üretti:** M-1 için **yeniden yazılan** cümle, `backend`'in kendi ölçümüyle **terk ettiği** alan adını (`errorContext`) yazıyor; gerçek ad `context`. Arama iki kod eşleşmesi veriyor: biri terk edişi **anlatan** (doğru), biri **kullanan** (yanlış); **kardeş dört hata sınıfı doğru yazıyor** → aynı olgunun iki ifadesi çelişiyor ve bu dosyayı okuyan operatör `errorContext` sorgusunda **sıfır kayıt** bulur. `medium` **değil**: mekanizma doğru, tel değişmemiş. Yön: tek kelime. **Sorumlu:** `backend` · **Vade:** v0.0.15 · **Kaynak:** `solid` tur 2 (L-10)
+
+**`security` tur 1 ve tur 2 — dokuz artı bir `low`:**
+
+- **low** · `apps/api/src/member/member.service.ts:263-274` — **davet kabul akışı saklanan rolü yeniden doğrulamıyor:** kabul, kayıttaki rolü doğrudan üyelik satırına geçiriyor. `owner`'ın davetle verilememesi **yalnızca** yazma yolundaki şema dışlamasına dayanıyor; davet tablosunun rol kolonu enum olduğu için `owner` değerini **fiziksel olarak kabul ediyor** (veritabanında `CHECK` yok) ve kabul yolunda bir doğrulama **yok**. Bugün sömürülemez (tek yazıcı davet ucu, şema `owner`'ı yapısal reddediyor), ama ileride bir seed, bir veri taşıma veya ikinci bir davet ucu `owner` yazarsa kabul akışı **ikinci bir sahip** yaratır ve sahiplik değişmezi **sessizce** düşer — devir mekanizması bu yolu **hiç görmez**. Yön: kabul yolunda rolü davet edilebilir rol şemasından geçir **veya** migration'a `CHECK` ekle. **Sorumlu:** `backend` · **Vade:** v0.0.17 · **Kaynak:** `security` tur 1 (L1)
+- **low** · `packages/db/src/client.ts:238-255` · `packages/db/src/catalog-lint.ts:405-434` — ⚠ **denetim izi tamper-evident DEĞİL ve veritabanı sertleştirmesini KENDİ linter'ımız engelliyor.** Canlı ölçüm: uygulama rolü denetim tablosunda **dört DML yetkisinin dördüne** de sahip; kiracı kapsamlı işlem istemcisi tablonun **tüm** delege yüzeyini açtığı için bir üretim kod yolunun denetim izini silmesi veya değiştirmesi **derlemeyi kırmaz** (tek bekçi yazma çağrısını sayan grep kapısı). ⚠ Veritabanı seviyesinde `REVOKE UPDATE, DELETE` **bugün uygulanamaz**, çünkü katalog linter'ının rol yetkisi kuralı her kiracı tablosu için dört DML'i **şart koşuyor** → sertleştirmenin önündeki engel bir dış kısıt değil, **platformun kendi kuralı**. Denetim kaydı bu sürümde ürünün **ayrışma noktası** olarak sunuluyor, ama tamper-evident değil. Yön: ya denetim tablosu için yazma-only daraltma, ya linter kuralına **tablo başına beklenen yetki kümesi** kavramı; hangisi olursa **iki yönlü mutasyonla** kanıtlanmalı. ⚠ Gerilim ADR-0016'nın _"Olumsuz ve kabul edilen maliyetler"_ bölümüne **yazıldı**. **Sorumlu:** `architect` + `db` · **Vade:** v0.0.20 (süper admin / denetim okuma yüzeyiyle) · **Kaynak:** `security` tur 1 (L2)
+- **low** · `apps/api/src/member/member.service.ts:551-561` · `apps/api/src/member/member.constants.ts:19-24` — **davet edilen kişinin e-postası süresiz saklanıyor; temizlik ve silme yolu yok (KVKK).** Satır **yalnızca kabul anında** siliniyor; hiç kabul edilmeyen bir davetin adresi yaşam süresi dolduktan sonra da **süresiz** duruyor ve platformda davet **iptal/silme ucu yok**. KVKK madde 4 (_ilgili, sınırlı ve ölçülü_) ve madde 7 (_silme_) karşısında savunulamaz; ⚠ üstelik bu kişiler Arkesoft'un kullanıcısı **bile değil**. Yön: süresi geçmiş davetleri temizleyen bir kuyruk işi **veya** bir davet iptal ucu; saklama süresi `docs/`'a yazılmalı. **Sorumlu:** `architect` + `db` · **Vade:** veri silme yüzeyiyle birlikte — ⚠ **bugün ROADMAP'te tanımlı değil** (bkz. bölüm başındaki not) · **Kaynak:** `security` tur 1 (L3)
+- **low** · `apps/api/src/member/member.constants.ts:30-41` · `apps/api/src/auth/rate-limit/rate-limit.policy.ts` — **davet ucunun sürdürülebilir kötüye kullanım yüzeyi kapatılmadı.** İş kuralı üçlüsü **burst'ü** kapatıyor ama tazeleme üst sınırı **tetiklemiyor** (bilinçli: aksi hâlde sınıra ulaşmış kiracı mevcut davetlerini de yenileyemezdi) → bekleyen davetlerin **her birini** bekleme süresi dolduğunda tazelemek mümkün; aritmetik sonuç **saatte ~3000 e-posta** (hedef posta kutusu başına 60). E-postalar Arkesoft'un **kendi SMTP kimliğinden** çıkar → hedefli taciz + gönderen itibarının kara listeye düşmesi. ⚠ **İstismar eşiği bugün yüksek:** aktörün bir kiracının sahibi/yöneticisi olması gerekiyor ve **self servis kiracı açma ucu YOK** (ölçüldü). ⚠ Hiçbir tRPC prosedürü oran sınırlı değil (v0.0.6'dan beri taşınan boşluk). Yön: v0.1.0'ın oran sınırı mekanizması davet ucunu **kiracı + aktör** bazında kapsasın. ⚠ **Self servis kiracı açma ucundan ÖNCE kapanmalı** — o an eşik sıfıra düşer. **Sorumlu:** `architect` + `backend` · **Vade:** v0.1.0 · **Kaynak:** `security` tur 1 (L4)
+- **low** · `apps/api/src/audit/audit-log.writer.ts:86` · `apps/api/src/auth/rate-limit/client-ip.ts:95-105` — **denetim kaydındaki istemci IP'si uzunluk/biçim doğrulaması taşımıyor; tarayıcı dizesi kırpılıyor → asimetri.** Yazma kapısı tarayıcı dizesini sabit bir üst sınıra kırpıyor ve gerekçesini yazıyor (_"istemci kontrolünde ve uzunluk sınırı yok"_); **aynı gerekçe IP için de geçerli** ama IP **ham** yazılıyor. Vekil sayısı yapılandırması gerçek vekil sayısından **büyük** ayarlanırsa istemcinin **kendi yazdığı** başlık hop'u seçilir ve saldırgan denetim izine **istediği dizeyi** yazdırır. ⚠ **Bugün sömürülemez:** varsayılan ve örnek yapılandırma değeri **sıfır**, o dalda başlık **tamamen yok sayılıyor**. Yön: IP'yi de kapıda kırp **ve** doğrula; doğrulanmazsa `null` yaz (_"bir değer gibi görünen yalan"_ yazılmaz). **Sorumlu:** `backend` · **Vade:** gate önerisi **v0.0.18**; ⚠ konu olarak **v0.0.17**'ye (gözlemlenebilirlik) daha yakın — `architect` karar verecek · **Kaynak:** `security` tur 1 (L5)
+- **low** · `packages/trpc/src/schemas/member.schema.ts:172,196` — **✅ KAPANDI (FIX 1).** Rol değiştirme ve çıkarma girdilerindeki kullanıcı kimliği alanının **üst sınırı yoktu**, oysa aynı dosya e-postayı ve belirteci sınırlıyor ve gerekçesini yazıyordu. Bulgu **M-2 ile aynı dosyada ve aynı düzenlemede** kapandı (_"yolu üstündeyse kapat"_ istisnası): alan artık sınırlı ve ⚠ sınırın **kimseyi kilitlemediği canlı veriden ölçüldü** (mevcut kullanıcı kimliklerinin **tamamı** sınırın altında, uzun satır **sıfır**). Mutasyonla da pinlendi. **Sorumlu:** `backend` · **Vade:** ✅ v0.0.14 (kapandı) · **Kaynak:** `security` tur 1 (L6) → FIX 1
+- **low** · `packages/db/src/__tests__/helpers/tenant-isolation-suite.ts:61-64` · `packages/db/src/__tests__/tenant-membership.isolation.test.ts` — **izolasyon süitinin ikinci senaryosu `WITH CHECK` yarısını BAĞIMSIZ ölçmüyor** (adı o yarıya atıf veriyor): veri katmanı oluşturma çağrısı `RETURNING` ürettiği için çapraz kiracı reddi **`USING` yarısından** geliyor. ⚠⚠ **Kontrolün kendisi CANLI ve çalışıyor** — `security` bunu geri alınan bir transaction'da, `RETURNING`'siz bir INSERT ile ölçtü (`new row violates row-level security policy`); bir alt görevin aksi yöndeki gözlemi **mutasyonlu politikaya özgüydü**. Yani savunma derinliği **yeterli** (ikinci bekçi katalog linter'ının kanonik politika kuralı ve sapmayı üç mutasyonda **gerçekten yakaladı**); kalan şey yalnızca **süit senaryosunun adının kapsamından geniş olması** → **test kapsamı borcu**. Yön: senaryo adını gerçeğe çek **veya** prob sözleşmesine `RETURNING`'siz bir yazma yolu ekle (motor değişikliği → `architect` kararı). **Sorumlu:** `qa` + `db` · **Vade:** v0.0.17 · **Kaynak:** `security` tur 1 (L7), S3 M6
+- **low** · `pnpm-lock.yaml` (geçişli) · `apps/api/package.json` — ⚠ **YENİ SATIR DEĞİL, MEVCUT BİR BORCUN T-014 ÖLÇÜMÜYLE TEYİDİDİR** (çift sayım hijyeni): bağımlılık denetiminin bildirdiği 1 `high` + 1 `moderate`, aşağıdaki [Vadesi v0.0.16 — Medya ve dosya servisi](#teknik-borç) bölümünde **zaten `medium` olarak kayıtlı** ve sahibi/vadesi orada belirlenmiş. T-014'ün katkısı iki ölçüm: ⚠ **bu sürüm getirmedi** (bağımlılık manifestoları ve kilit dosyası diff'i **BOŞ**) ve ⚠ **bugün ulaşılamaz** (çoklu parça/dosya yükleme ara katmanı kaydı → **0 eşleşme**; o kütüphane yalnızca böyle bir ara katman kaydedildiğinde istek ayrıştırır). `moderate` yalnızca lint geliştirme zincirinde, üretim çıktısında **yok**. **Sorumlu:** `devops` · **Vade:** v0.0.16 (mevcut satırda; en geç ilk yükleme ucu) · **Kaynak:** `security` tur 1 (L8)
+- **low** · `apps/api/src/__tests__/helpers/auth-fixture.ts` · `apps/api/src/__tests__/helpers/create-test-app.ts` — **geliştirme veritabanında test fixture'ı kaynaklı PII birikimi:** oturum fixture'ı kullanıcı satırlarını **temizlemiyor** ve bu **T-006'dan beri böyle**; satırlar e-posta taşıdığı için kişisel veri sınıfı bir birikim (yalnızca yerel/CI ortamı, üretim verisi değil). Sayım **doğru rolle** yapıldı ve ⚠ **boşa çıkmadığı** aynı oturumda dolu başka tabloların görülmesiyle kanıtlandı. ⚠ **İyi haber:** iki yeni tabloda **sıfır artık satır** → diskte bayat bir davet belirteci özeti veya denetim izi kalmamış. Yön: fixture teardown'ına kullanıcı temizliği ekle (kayıt yolu oran sınırlı olduğu için _"asılları bir kez aç"_ deseni korunmalı). **Sorumlu:** `qa` + `devops` · **Vade:** v0.0.17 · **Kaynak:** `security` tur 1 (L9)
+- **low** · `packages/trpc/src/trpc.ts:101-106` · `packages/errors/src/redaction.ts:58-82` — **hata bağlamı artık koşulsuz loglanıyor, ama iddia edilen ikinci savunma hattı 22 redaction yolunun yalnızca DÖRDÜNÜ kapsıyor.** FIX 1 bu alanı loglanan bir alan yaptı ve gerekçesinde _"somut logger'ın joker redaction yollarının kapsamına girer"_ dedi; ⚠ gerçek pino ve gerçek yapılandırmayla ölçüldü: yalnızca `*.` önekli **dört** yol maskeleniyor, geri kalan sır adları (ve **derinlik-3**) **düz metin sızar**. Oysa hata sınıfının sözleşmesi bu alan için _"PII içerebilir"_ **diyor**. ⚠ **Bugün ulaşılamaz** (tRPC'den erişilebilen **24** bağlam yerinin hiçbiri bu anahtarları taşımıyor) **ve aynı boşluk REST yolunda FIX 1'den ÖNCE de vardı** → FIX 1 boşluğu **yaratmadı**, tüketen yol sayısını **artırdı**. Yön: ya kalan sır adları için joker varyantlar (+ e-posta maskeleme), ya loglanan bağlamın **izin listesi projeksiyonuna** çevrilmesi; hangisi olursa sözleşme cümlesi onunla **hizalanmalı** ve **iki yönlü mutasyonla** kanıtlanmalı. **Sorumlu:** `architect` + `backend` · **Vade:** v0.0.17 (aynı dosyadaki izleme kimliği borcuyla birlikte) · **Kaynak:** `security` tur 2 (L-11)
+
+**`qa` tur 1 — bir açık `low` (beşini kendi dosyalarında kapattı):**
+
+- **low** · `apps/api/src/__tests__/audit-log-no-log-leak.test.ts:210-217` — **yasaklı alan taraması yalnızca ÜST SEVİYEDE çalışıyor.** ⚠ FIX 1, hata bağlamını **nestelenmiş** bir loglanan alan yaptı → ileride bağlamında denetim `diff`i (veya başka bir yasaklı alan) taşıyan bir hata sınıfı bu kapıdan **görünmez geçer**. Bugün ulaşılamaz (yukarıdaki L-11 ile **aynı aile**). Yön: taramayı derinlemesine yap. **Sorumlu:** `backend` · **Vade:** v0.0.17 · **Kaynak:** `qa` tur 1 (L-12)
+
+**`qa`'nın KENDİ dosyalarında kapattığı, bu listede satır olarak TUTULMAYAN üç kalem**
+(çift sayım hijyeni; kapanış kayıtları yukarıdaki v0.0.14 bölümünde ve `qa` tur 1 raporunda):
+tarayıcı girişinin transitif kapanışının **hiçbir testte mekanik olmaması** (S2'nin R-S2-2'si;
+kapı yazıldı ve ilgili mutasyon **yeniden üretilip kırmızı görüldü**) · HTTP seviyesindeki
+çapraz kiracı **yazma** ölçümünün bir izolasyon süitinde **olmaması** (terfi ettirildi, beş
+test; ⚠ `qa` bu arada bir alt görevin **iki mekanizmayı karıştırdığını** ölçtü: prob kaydının
+tekliği kısıtı **veri katmanı** süitine aittir, uygulama tarafında zaten üç bağımsız izolasyon
+dosyası vardı) · bekleyen davet üst sınırının ve _"zaten üye"_ hatasının **hiç
+çalıştırılmamış** olması (dört test yazıldı, davranış **doğru** çıktı).
+
+**Bilerek YAZILMAYAN bir satır (çift sayım olmasın):** `security` tur 2'nin bağımsız olarak
+yeniden ürettiği `errorContext` kalıntısı, `solid` tur 2'nin L-10'u olarak **zaten** yukarıda
+kayıtlı — `security` de bunu kendi bulgusu olarak raporlamadı.
+
 ## Vadesi v0.0.12 (CI geldiğinde)
 
 | SEV | Konum                                                                | Açıklama                                                                                                                                                                       | Sorumlu                   | Vade    | Kaynak gate |
@@ -2420,6 +2763,23 @@ tırnak içinde tire). (`security` T-012'nin üç `low`'unun ortak kökü — bk
 | --- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------- | ----------- |
 | low | `packages/db/prisma/schema.prisma:79-80`  | **R-A10** — `onDelete: Cascade` çifti, kullanıcı hard delete'inde tenant'ın **son `owner` üyeliğini sessizce siliyor** → sahibi olmayan tenant. v0.0.14 "son owner silinemez" kuralı + owner devri. | db      | v0.0.14 | security    |
 | low | `packages/db/prisma/schema.prisma` `slug` | **R-A11** — `slug` tekilliği harf duyarlı; `Demo` ve `demo` birlikte var olabilir. Normalizasyon v0.1.0 uygulama katmanı sorumluluğu.                                                               | backend | v0.1.0  | architect   |
+
+**Durum notu (`docs`, 2026-11-04 — v0.0.14 kapanışı; yukarıdaki tablo BİLEREK
+DEĞİŞTİRİLMEDİ):** `R-A10`'un **ürün yarısı KAPANDI**, **veritabanı yarısı TAŞINDI**.
+v0.0.14 _"son `owner` silinemez"_ kuralını ve sahiplik devrini teslim etti: değişmez
+_"her kiracının **tam olarak bir** sahibi vardır"_ biçiminde seçildi ve uygulama kodunda
+karşılaştır-ve-değiştir deseniyle zorlanıyor → davet/çıkarma/rol değiştirme yollarından
+**sahipsiz kiracı üretmek imkânsız** (ampirik olarak ölçüldü: canlı Postgres'te iki eşzamanlı
+devir **tam biri 200, tam biri 409**; kontrol etkisizleştirildiğinde sonuç `[200, 200]`'e
+düşüyor). ⚠ **Ama satırın kendisi _"kapandı"_ diye işaretlenmedi ve işaretlenmemelidir:**
+sahipsiz kiracı üretebilecek **tek** yol kullanıcı hard delete'idir, bu yol **üretimde yok**
+(grep kapısıyla pinli) ve yabancı anahtar aksiyonu **değiştirilmedi**. Yani karşılanma
+**kod + kapı** seviyesindedir, **veritabanı garantisi değildir**. Yabancı anahtar yarısı
+[v0.0.14 kaynaklı borçlar](#teknik-borç) bölümünde **`medium`** olarak, vasıtasıyla (yıkıcı
+ifade kuralının **iki yönlü testle** rafine edilmesi) ve _"vade sürümü bugün ROADMAP'te
+tanımlı değil"_ ölçümüyle birlikte kayıtlıdır. Gerekçenin tamamı
+[ADR-0016](./docs/adr/0016-yetki-modeli-izin-katalogu-ve-yetenek-tabanli-kiraci-baglami.md)
+Karar 4'te.
 
 ## Vadesi v0.0.16 — Medya ve dosya servisi
 

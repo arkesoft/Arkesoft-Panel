@@ -11,6 +11,8 @@
 
 import type { TenantStatusWire } from '../schemas/tenant-summary.schema.js'
 import type { JobReadPort } from '../ports/job-read.port.js'
+import type { MemberWritePort } from '../ports/member-write.port.js'
+import type { MembershipReadPort } from '../ports/membership-read.port.js'
 import type { TenantReadPort } from '../ports/tenant-read.port.js'
 import type { StorefrontTenantReadPort } from '../ports/storefront-tenant-read.port.js'
 import type { TrpcErrorFactoryPort } from '../ports/trpc-error-factory.port.js'
@@ -71,11 +73,27 @@ export interface TrpcLoggerPort {
  * prosedür çalışma zamanında `undefined` üzerinde patlardı. Zorunluluk bu
  * sapmayı DERLEME HATASINA çevirir; bu üyeyi `?` ile gevşetmek bir typecheck
  * hatasını susturmak için YAPILMAZ, doğru çözüm portu DOLDURMAKTIR.
+ *
+ * ⚠⚠ AYNI KURAL ÜYELİK OKUMA ve ÜYE YAZMA PORTLARI İÇİN DE BAĞLAYICIDIR
+ * (ROADMAP v0.0.14, T-014/S2, po R-PM5): ikisi de ZORUNLU üyedir. Bunları
+ * eklemek bu nesneyi elle kuran YEDİ yerde (üretimde bir, testlerde altı)
+ * derleme hatası üretir ve bu İSTENEN davranıştır — "typecheck hatasını
+ * susturmak için opsiyonel yapmak" bu dosyanın yazılı yasağıdır.
+ * ⚠ Yasağı DENETLEYEN grep bu iki üye adının hemen ardından bir soru
+ * işareti+iki nokta arar; bu yorum o dizgiyi BİTİŞİK YAZMAZ (AGENT_BASELINE.md
+ * §5 literal-jeton kuralı) — aksi hâlde kapı kalıcı yanlış pozitif verirdi.
  */
 export interface TrpcPorts {
   readonly tenantRead: TenantReadPort
   readonly storefrontTenantRead: StorefrontTenantReadPort
   readonly jobRead: JobReadPort
+  /**
+   * ROADMAP v0.0.14, T-014/S2 — ZORUNLU üye. `permissionProcedure`'ün rol
+   * okuduğu TEK yol; port TOTAL'dır (üyelik yoksa `AppError` fırlatır).
+   */
+  readonly membershipRead: MembershipReadPort
+  /** ROADMAP v0.0.14, T-014/S2 — ZORUNLU üye. `member.*` mutation'larının iş mantığı. */
+  readonly memberWrite: MemberWritePort
 }
 
 /**

@@ -25,6 +25,56 @@ pnpm changeset
 
 <!-- Changesets bu çizginin altına yazar. Elle girdi eklemeyin. -->
 
+## 0.4.0 — 2026-11-04
+
+- Ekip yönetimi geldi: mağaza sahibi artık ekibini panele davet edebiliyor, davet e-posta ile
+  gidiyor, davet edilen kişi kabul ettiğinde üyeliği oluşuyor; üyelerin rolü değiştirilebiliyor ve
+  üyeler ekipten çıkarılabiliyor.
+
+  Beş mağaza rolü (`owner`, `admin`, `staff`, `support`, `readonly`) bu sürümle gerçekten
+  uygulanmaya başladı. Bir rolün ne yapabileceği tek bir izin kataloğundan okunuyor; izni olmayan
+  istek, isteği yapan kişi mağazanın üyesi olsa bile 403 ile reddediliyor. Salt okunur bir üye
+  hiçbir yazma ucunu çağıramaz. Yeni bir rol eklendiğinde rolün izinleri yazılmadan proje
+  derlenmiyor, yani bir rolün yanlışlıkla izinsiz (ya da fazla izinli) kalması mümkün değil.
+
+  Her yetki değişikliği denetim kaydına yazılıyor: kim, hangi mağazada, hangi zaman, kimi davet
+  etti, kimin rolünü değiştirdi, kimi çıkardı. Denetim kaydı yalnızca eklenir — güncellenmez ve
+  silinmez; her kaydın içeriği kapalı bir sözlükten geçtiği için parola, oturum belirteci veya
+  e-posta adresi gibi veriler kayda sızamıyor. İstek IP'si ve tarayıcı bilgisi denetim kaydında
+  saklanıyor ama hiçbir log satırına geçmiyor.
+
+  Her mağazanın her zaman tam olarak bir sahibi var: son sahip ekipten çıkarılamıyor, sahiplik
+  devri iki adım yerine tek bir atomik işlemde yapılıyor ve eşzamanlı iki devir denemesinden
+  yalnızca biri başarılı oluyor. Böylece sahipsiz mağaza oluşması engellendi.
+
+  Davet, kabul ve denetim kayıtları mağazaya kapsamlı: bir mağazanın davetleri ve denetim izi
+  başka bir mağazadan ne okunabiliyor ne yazılabiliyor (veritabanı seviyesinde RLS ile
+  zorlanıyor). Mağaza başına bekleyen davet sayısı sınırlı ve aynı davet çok kısa aralıkla tekrar
+  gönderilemiyor.
+
+  Operatör notu: bu sürüm yeni bir ortam değişkeni veya yeni bir kurulum adımı getirmiyor; mevcut
+  kurulumlar yalnızca veritabanı göçünü uygular. [v0.0.14]
+
+- Public API'ye `member` namespace'i eklendi: `member.invite` bir e-posta adresini belirli bir
+  role davet eder, `member.acceptInvitation` daveti kabul edip üyeliği oluşturur,
+  `member.updateRole` bir üyenin rolünü değiştirir, `member.remove` üyeyi ekipten çıkarır. Bunlar
+  sözleşmenin ilk yazma uçlarıdır; dördü de mağaza bağlamını zorunlu kılar.
+
+  Sözleşmeye ayrıca izin kataloğu (`job:read`, `member:write`) ve rol → izin eşlemesi girdi. İzin
+  gerektiren prosedürler yeni `permissionProcedure` basamağından geçiyor; yetkisi olmayan çağrı
+  tele `PERMISSION_DENIED` ve 403 olarak dönüyor, istenen iznin adı ve çağıranın rolü yanıta
+  **girmiyor** (yalnızca sunucu logunda görünüyor). Hangi prosedürün hangi izni istediği kapalı
+  bir yüzey tablosunda tutuluyor, yani izin istemeyi unutmuş yeni bir prosedür eklemek mümkün
+  değil.
+
+  `job.get` ve `job.list` de izinli basamağa taşındı; `job:read` izni beş rolün beşine de
+  verildiği için dün bu uçları çağırabilen her istemci bugün de çağırabiliyor — hiçbir yetenek
+  kaldırılmadı.
+
+  Bu bir **yalnızca ekleme** sürümüdür: var olan dört namespace'in hiçbir prosedürü, alanı veya
+  tipi değişmedi, zorunlu hâle gelmedi, kaldırılmadı. Mevcut istemciler değişiklik yapmadan
+  çalışmaya devam eder. [v0.0.14]
+
 ## 0.3.0 — 2026-11-03
 
 - Arka plan iş altyapısı kuruldu: uzun süren işler artık HTTP isteğinin dışına taşınabiliyor.

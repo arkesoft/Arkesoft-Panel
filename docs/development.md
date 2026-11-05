@@ -426,6 +426,63 @@ v0.0.13'ten itibaren yeni bir tenant'a bağlı tablo eklendiğinde şema linter'
 
 Linter 20 kuralla tüm izolasyon şartlarını kontrol eder: tenant_id tipi, indeks, RLS, politika, rol yetkileri vb.
 
+#### Taksonomiye tablo eklemenin DÖRT mekanizması (v0.0.14+)
+
+⚠ Yukarıdaki adımlar **tek başına yeterli değildir.** `TENANT_SCOPED_TABLES`'a bir satır
+eklemek, kaynak kodu başka hiçbir yerde değiştirilmeyen **dört** mekanizmayı birden devreye
+sokar. Dizi v0.0.3'te `tenant_membership` ile açıldı, v0.0.11'de `job`, v0.0.14'te `audit_log`
+ve `tenant_invitation` eklendi. ⚠ **Güncel üye listesi ve sayısı burada TEKRAR EDİLMİYOR:**
+kanonik liste `packages/db/src/tenancy.ts`'te yaşıyor ve v0.0.14'te **kaynak ağacında dört ayrı
+yere** kopyalanmış bir taksonomi sayısının dördü birden bayatlamış olarak bulundu (bkz. _Ölçüm
+disiplini_ (g)).
+
+1. **Canlı katalog linter'ı** (`packages/db/src/catalog-lint.ts`, 20 kural) — yeni tablo için `tenant_id` kolonunu/tipini/`NOT NULL`'ını, RLS `ENABLE` + `FORCE`'unu, kanonik `USING`/`WITH CHECK` politikasını ve uygulama rolünün DML yetkisini arar.
+2. **Migration kümesi linter'ı** (`packages/db/src/__tests__/helpers/migration-set.ts`) — `"tenant_id" TEXT NOT NULL` kolonunu **ve** `tenant_id` **öncü kolonlu** bir `CREATE UNIQUE INDEX`'i şart koşar. ⚠ Bu şart, tablonun doğal bir bileşik benzersizliği olup olmadığına göre iki farklı sonuç verir — aşağıdaki ayrım.
+3. **Prob tamlığı kapısı** (`packages/db/src/__tests__/helpers/tenant-isolation-suite.ts`) — tablo için bir `TenantScopedProbe` yazılmasını **zorlar**; eksikse `skip` değil, gerçek bir `expect` başarısızlığı üretir.
+4. **Yedi zorunlu izolasyon senaryosu** — prob kaydedildiği an yeni tablo için de koşar (çapraz okuma, `WITH CHECK` INSERT reddi, "bulunamadı" semantiği, varlık/yetki oracle'ı, hata gövdesi, havuz sızıntısı).
+
+**Prob kaydı TEK yerdedir:** `packages/db/src/__tests__/tenant-membership.isolation.test.ts` —
+repoda `createTenantIsolationSuite()`'in **tek** çağrı noktası. İkinci bir çağrı noktası açmak
+**iki dosyayı da kırar**, çünkü her çağrı kendi taksonomisini kendi problarıyla karşılaştırır.
+Yeni tablo için yapılacak iş: `tenancy.ts`'e tablo adı + `__tests__/helpers/<tablo>.probe.ts`
+dosyası + o tek çağrı noktasının `probes` dizisine **bir satır**. Taksonomiyi elle daraltmak
+yasaktır.
+
+⚠ **Doğal benzersizlik ayrımı (v0.0.14'te ölçüldü, iki yöne de örnek var):**
+
+- **`job` ve `audit_log`'un doğal bileşik benzersizliği YOKTU** → migration linter'ının öncü `tenant_id` şartını karşılamak için `@@unique([tenantId, id])` **açıkça** yazılmak zorunda kaldı. Bu indeks **dekoratif değildir**: migration'dan satırı çıkarmak linter'ı `MISSING_TENANT_ID_LEADING_UNIQUE_INDEX` ile kırmızıya düşürüyor (mutasyonla ölçüldü).
+- **`tenant_invitation`'ın doğal benzersizliği VARDI** (`(tenantId, email)` — bir kiracıya aynı adrese iki bekleyen davet olamaz) → yapay `(tenantId, id)` indeksi **gerekmedi**. İkinci bir benzersizlik (`(tenantId, tokenHash)`) kabul sorgusunun ideal indeksidir.
+
+Yani yeni tablo için sorulacak soru şudur: _"bu tablonun kiracı kapsamında zaten bir iş
+anlamı taşıyan bileşik benzersizliği var mı?"_ Varsa onu kullanın; yoksa `(tenantId, id)`'yi
+**gerekçesiyle** yazın.
+
+#### Append-only tablo ile izolasyon probu arasındaki gerilim
+
+`audit_log` **append-only**'dir: şemada `updatedAt` kolonu yok ve uygulama katmanında UPDATE
+yolu bulunmuyor. Buna karşın `TenantScopedProbe` sözleşmesi `updateRowById` **ve**
+`deleteRowById`'ı **zorunlu** tutar, çünkü süitin 3., 4. ve 5. senaryoları tam olarak bu iki
+yol üzerinden ölçülür. Probun yazdığı UPDATE/DELETE yolunun üretimde karşılığı yoktur ve bu
+gerekçe `packages/db/src/__tests__/helpers/audit-log.probe.ts`'in dosya başında dört maddeyle
+yazılıdır. Özü şudur ve burada tekrar edilmesi gerekiyor, çünkü aynı soru **her append-only
+tabloda** yeniden sorulacak:
+
+> Append-only, _"bu tabloya hangi SQL fiillerinin FİZİKSEL olarak uygulanabileceği"_ hakkında
+> bir iddia **değildir** — uygulama rolü dört DML yetkisinin dördüne de sahiptir ve katalog
+> linter'ı bunu **zorunlu tutar** — **uygulama katmanının hangi yazma yollarını AÇTIĞI**
+> hakkında bir iddiadır. Prob o yolu açmıyor; onun **yokluğunda ölçülemeyecek** bir güvenlik
+> özelliğini (RLS'in UPDATE/DELETE'i de filtrelediğini) ölçüyor.
+
+İki katman çelişmiyor, **farklı şeyler hakkında konuşuyorlar** — ama bu ancak açıkça yazılırsa
+denetlenebilir. ⚠ `tenant_invitation`'da bu gerekçenin karşılığı **bilerek yazılmadı ve bunun
+kendisi yazıldı**: o tablo gerçekten güncellenir (tekrar davet) ve kabulde satır silinir, yani
+iki yolun da üretimde **gerçek** karşılığı var.
+
+⚠ İki kalıntı borç olarak kayıtlıdır (ROADMAP → Teknik Borç): append-only'nin **üretim yarısı**
+yalnızca yazma çağrısı için kapılıydı (düzeltildi, dördüncü kapı eklendi) ve süitin ikinci
+senaryosu `WITH CHECK` yarısını **bağımsız** ölçmüyor (kontrolün kendisi canlı ve çalışıyor;
+bekçisi katalog linter'ının kanonik politika kuralı).
+
 ### Mevcut volume üzerinde geçiş (AC8)
 
 Postgres container'ı mevcut verilerle yeniden başlatıldığında (eski `arkesoft` volume'u var) `/docker-entrypoint-initdb.d` script'leri **çalışmaz** (Postgres sadece boş veri dizininde init script'lerini çalıştırır).
@@ -1072,8 +1129,14 @@ düzeltmez** — kırmızı, kodun kusuru değil tasarımdır.
 
 ### İş durumunu okuyan tRPC uçları: `job.get` ve `job.list`
 
-İkisi de **salt okunurdur** ve ikisi de `tenantProcedure` kullanır (kimlik doğrulaması **ve**
-kiracı bağlamı zorunlu; `publicProcedure` **değil**). Kiracı kimliği **her zaman** oturum
+İkisi de **salt okunurdur**. ⚠ **Builder v0.0.14'te değişti:** ikisi de artık
+`permissionProcedure('job:read')` kullanıyor (v0.0.11'de `tenantProcedure`'dü). Kimlik
+doğrulaması **ve** kiracı bağlamı hâlâ zorunlu — izinli builder `tenantProcedure`'ün
+**üzerine** biniyor, `publicProcedure` **değil**. ⚠ **Davranış birebir korundu:** `job:read`
+izni **beş rolün beşine de** verilidir, yani dün çağırabilen her asıl bugün de çağırabiliyor;
+bir rolden `job:read`'i çıkarmak ileride **ayrı ve MAJOR** bir karardır (bkz.
+[ADR-0016](./adr/0016-yetki-modeli-izin-katalogu-ve-yetenek-tabanli-kiraci-baglami.md)
+Karar 7). Kiracı kimliği **her zaman** oturum
 bağlamından gelir, girdiden **asla** okunmaz (ADR-0009 madde 7). Şemalar:
 `packages/trpc/src/schemas/job-summary.schema.ts`, router:
 `packages/trpc/src/routers/job.router.ts`.
@@ -1112,7 +1175,73 @@ bilinçli olarak **yazılmadı**; bir işin durumunu değiştiren tek şey kuyru
 
 ---
 
-## Ölçüm disiplini (v0.0.11+) — beş kural
+## Üyelik ve davet uçları (v0.0.14+)
+
+Platformun **ilk dört mutation'ı** bu sürümde geldi: `member.invite`, `member.acceptInvitation`,
+`member.updateRole`, `member.remove`. Tasarım kararlarının tamamı
+[ADR-0016](./adr/0016-yetki-modeli-izin-katalogu-ve-yetenek-tabanli-kiraci-baglami.md)'da;
+burada yalnızca **geliştirirken bilinmesi gerekenler** var.
+
+### Topoloji: hangi uç hangi orijinden erişilebilir
+
+⚠ **Üç yazma ucu (`invite`/`updateRole`/`remove`) panel host'undan erişilemez — 404 döner.**
+Sebep yeni bir kısıt değil: kiracı kapsamlı prosedürler panel orijininden çözümlenmiyor
+([ADR-0011](./adr/0011-panel-orijin-topolojisi-ve-kiraci-muafiyeti.md) madde 4) ve panelde
+kiracı seçimi **v0.1.0**'da. Ulaşılabilir yüzey: **kiracı host'u** + sunucu/entegrasyon
+istemcisi. Testler kiracıyı geliştirici başlığıyla seçiyor (mevcut tRPC testlerinin deseni),
+yani gerçek host çözümleme dalını **kullanmıyorlar**; host üzerinden ölçüm `test:e2e`
+yüzeyinin işidir.
+
+⚠ **`member.acceptInvitation` bir istisnadır ve kiracı muafiyet listesine bu sürümde eklenen
+yeni üyedir** (kanonik sayı, listeyi saymak zorunda olan kardinalite assertion'ındadır —
+`apps/api/src/__tests__/tenant-exempt-paths.test.ts`; assertion `toContain`'e
+**düşürülemez**). Kabul eden kişi tanım gereği henüz üye değildir, dolayısıyla kiracı bağlamını
+host'tan alamaz; bağlamı **belirteçten** türetir. Pratik sonuçlar:
+
+- **Oturum zorunludur** — oturumsuz istek **401** alır (kimlik muafiyet listesi büyümedi).
+- **Kiracı başlığı gerekmez** ve panel orijininden erişilebilir.
+- **Çıktıda kiracıya ait hiçbir alan yoktur** (tek bir `accepted` alanı) ve resolver kiracı bağlamına erişemez — kısıt tip düzeyinde pinlidir.
+- **Belirteç tek kullanımlıktır:** ikinci kullanım **404**, uydurma belirteç de **404**. Tüm başarısızlık modları **tek** hata sınıfına indirgenir.
+
+⚠ **Tüketici UI'si yok:** davet e-postasındaki bağlantının karşılığı olan panel rotası
+**v0.1.0**'da gelecek. Yani bugün bağlantı **karşılıksızdır**; akışı elle denemek için
+belirteci Mailpit gövdesinden okuyup isteği doğrudan atmak gerekir.
+
+### Belirteç e-posta bağlantısının FRAGMAN'ındadır
+
+Kabul URL'i `.../invitations/accept#token=<belirteç>` biçimindedir. **Fragman bilinçli bir
+seçimdir:** belirteç sunucuya, erişim loglarına ve `Referer` başlığına **hiç gitmez**.
+⚠ Pratik tuzak: Mailpit gövdesinden belirteci ayıklarken **sorgu dizesi okuyan yardımcılar
+çalışmaz** (sorgu dizesi boştur ve o yardımcı fırlatır) — URL'i alıp `#token=` sonrasını
+ayıklamak gerekir.
+
+### Dışa açık kod sabitleri — kopyalamayın, import edin
+
+Davet akışının üç iş kuralı sabiti **ortam değişkeni değildir**, `apps/api/src/member/member.constants.ts`
+içinde dışa açık kod sabitidir: bekleyen davet üst sınırı, tekrar davet bekleme süresi ve
+belirteç yaşam süresi. Denetim kaydının `userAgent` kırpma sınırı
+`apps/api/src/audit/audit-log.writer.ts`'te. ⚠ Testler bu değerleri **import eder**; sayıyı
+test dosyasına kopyalamak bu repoda yazılı olarak yasaktır.
+
+### Operatör notu: bu sürüm HİÇBİR kırılma getirmiyor
+
+⚠ **Yeni ortam değişkeni yok, yeni altyapı servisi yok, yeni bootstrap adımı yok.** Mailpit
+`pnpm infra:up`'ta zaten ayakta ve kabul URL'inin taban adresi mevcut ortam şemasında zaten
+tanımlı. Yani v0.0.13'ün iki değişkenlik kırılmasının bir benzeri **bu sürümde yaşanmıyor**.
+
+⚠ **İkinci operatör kırılması `v0.0.14.1`'de gelecek** (`DATABASE_AUTH_URL` + ikinci Prisma
+havuzu — ADR-0008'in borcu). Geçiş ve **geri alma** adımları, üç kademeli geri alma
+runbook'una eklenecek **dördüncü kademe** ile birlikte **o sürümün işidir**; burada şimdiden
+yazılmadı, çünkü yazılmış ama gerçekleşmemiş bir prosedür, hiç yazılmamış olandan daha
+tehlikelidir (ADR-0008'in kendi dersi).
+
+---
+
+## Ölçüm disiplini (v0.0.11+)
+
+⚠ **Başlık bilinçli olarak kural sayısı taşımıyor.** v0.0.11 beş kural yazdı (a–e), v0.0.14
+üçünü ekledi (f–h) ve başlıktaki _"beş kural"_ ifadesini **kaldırdı**: bir sayıyı iki yere
+yazmak, ikinci yerin bayatlaması demektir — gerekçesi (g) maddesinde.
 
 Bu bölümdeki kuralların hepsi **fiilen yaşanmış** yanlış ölçümlerden türetildi. v0.0.11'de aynı
 kusur sınıfı — _beyan ile gerçeklik arasındaki boşluk_ — **üç farklı aktör** tarafından yeniden
@@ -1220,5 +1349,56 @@ dizileri tarif et, yazma.
 - **`pnpm --filter <paket> lint typecheck build` TEK KOMUT OLARAK ÇALIŞMAZ.** pnpm ikinci ve
   üçüncü argümanı eslint'e **dosya deseni** olarak geçirir ve komut
   `No files matching the pattern "typecheck"` ile düşer. Üçü **ayrı ayrı** koşturulmalıdır.
+
+### (f) `medium` bulgular, gate sonucu PASS olsa bile DÜZELTME TURU AÇAR
+
+`AGENT_BASELINE.md` §4'te iki ayrı tablo var ve karıştırılmaları kolay: birincisi **FAIL/PASS**
+kararını verir (üç veya daha fazla `medium` → FAIL; bir-iki `medium` → PASS), ikincisi
+**düzeltme turu açılıp açılmayacağını** söyler. İkinci tablonun `medium` satırı birebir
+_"Evet (sayısı kaç olursa olsun)"_ diyor ve bölümün girişi _"FAIL/PASS kararı ile düzeltme
+turu açılması **ayrı şeylerdir**"_ cümlesiyle başlıyor.
+
+⚠ **T-013'te Orkestratör bunu _"§4 otomatik tur açmıyor"_ diye okumuştu**; o Task'ta turu
+kendi kararıyla açtığı için **sonuç doğru çıktı, ama gerekçe yanlıştı**. T-014'te `security`
+tabloyu doğru okudu ve düzeltti → kayda geçti. **Kural:** PASS almış bir gate raporunda tek
+bir `medium` varsa, düzeltme turu **koşar**; `low`'lar için **koşmaz** (onlar doğrudan ROADMAP
+borç tablosuna gider).
+
+### (g) Bir ajanın düzeltmesi KENDİSİ bayatlayabilir — çapraz referansta sembol adı kullan
+
+T-014'te iki mertebeli bir bayatlama **ölçüldü**: bir alt görev, bir tip pininin derleme
+hatasının **yanlış satıra** atıf verdiğini bulup düzeltti; düzeltme o gün doğruydu, ama aynı
+alt görev doküman bloğunu büyüttüğü için **işaret ettiği satır bir yorum satırına kaydı** ve
+gerçek kod **57 satır aşağıya** indi. Yani _düzeltmenin kendisi_ aynı kusur sınıfını yeniden
+üretti.
+
+**Kural** ([ADR-0014](./adr/0014-pnpm-dev-env-yuklemesi-ve-gelistirme-ortami-guvenilirligi.md)
+Karar 8'in uzantısı): kalıcı bir belgede (yorum, ADR, ROADMAP, bu dosya) başka bir yere atıf
+verirken **sembol adı** yaz — fonksiyon, sabit, tip, test adı. Satır numarası yalnızca
+**geçici** bir gate raporunda veya handoff'ta geçerlidir. Aynı disiplinin ikinci yarısı:
+**sayıyı kopyalama, kaynağa atıf ver.** T-014'te bir taksonomi sayısı dört ayrı yerde
+kopyalanmış ve dördü birden bayatlamıştı; çözüm sayıları güncellemek değil, _"kanonik liste şu
+dosyada yaşıyor"_ demek oldu. ⚠ Bir grep kapısıyla bayat metni avlamayı planlıyorsan kalıbını
+**ölç**: T-014'te bir denetim kalıbı ters tırnaklı metni kaçırdığı için **boşa çıkmıştı** ve
+kapıyı geçmek düzeltmenin yapıldığını **kanıtlamıyordu**.
+
+### (h) `format:check` İKİ ignore dosyasını BİRLİKTE okur
+
+⚠ Prettier 3.9, varsayılan olarak `.prettierignore` **ve** `.gitignore`'u birlikte dikkate
+alır. Bir yolu kapıdan çıkarmak için iki satırdan **herhangi biri tek başına** yeterlidir;
+dolayısıyla _"satırı kaldırdım, kapı yine yeşil"_ ölçümü **hiçbir şey kanıtlamaz**. T-014'te
+bu **üç deneyle** ölçüldü: yalnızca `.prettierignore` satırı kaldırıldığında exit 0, yalnızca
+`.gitignore` satırı kaldırıldığında exit 0, **ikisi birden** kaldırıldığında exit 1.
+
+Buna rağmen `.prettierignore` satırı **bilinçli olarak** yazıldı: o dosyanın kendi emsal
+yorumu _"`.gitignore`'dan bağımsız olarak Prettier burada da açıkça hariç tutulmalı"_ diyor.
+⚠ İkinci yarısı yalnızca bir biçim sorunu da değildi: izlenmeyen, üretilmiş bir test raporu
+`git status`'u kirletiyordu ve bir sonraki `git add -A` ile **yanlışlıkla commit'lenebilir**
+durumdaydı.
+
+**Kural:** bir yolun biçim kapısından muaf olduğunu kanıtlamak için **iki ignore dosyasını da**
+devre dışı bırakan bir deney kurun; ve üretilmiş bir dosyayı biçimlendirmek yerine **ignore
+edin** — başka bir ajanın (veya aracın) ürettiği dosyada `prettier --write` çalıştırmak
+`AGENT_BASELINE.md` §5 ihlalidir.
 
 ---

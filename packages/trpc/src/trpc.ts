@@ -14,6 +14,13 @@
 //   protectedProcedure     = base.use(requireAuth)                   // kimlik ZORUNLU · kiracı YOK
 //   tenantProcedure        = protectedProcedure.use(requireTenant)   // kimlik ZORUNLU · kiracı ZORUNLU
 //
+// ⚠ BEŞİNCİ BASAMAK BU DOSYADA DEĞİL (ROADMAP v0.0.14, T-014/S2, ADR-0016):
+// `permissionProcedure(permission)` — kimlik ZORUNLU · kiracı ZORUNLU · İZİN
+// ZORUNLU — `authz/permission-procedure.ts`'te yaşar ve aşağıdaki
+// `tenantProcedure`'ün ÜZERİNE kurulur. Ayrı dosyada olmasının gerekçesi o
+// dosyanın başında yazılıdır; merdiven bu yorumla TAMDIR (beşinci basamağın
+// varlığı burada SUSTURULMAZ — "beyan ≠ gerçeklik" borcu doğmasın).
+//
 // BATCHING KAPALI BAĞLAYICI DEĞİŞMEZLİK (architect riski 5, ADR-0009 madde 8):
 // bu dosyanın KENDİSİ batching'i kapatmaz (bu `handler/create-trpc-request-
 // handler.ts`'nin işi, `allowBatching: false`) — ama burada tanımlanan
@@ -37,6 +44,91 @@ import type { TrpcErrorData } from './schemas/trpc-error-data.schema.js'
 
 /** `ctx` oluşturulamadığında (çerçeve kaynaklı hata) kullanılan son çare istek kimliği. */
 const FALLBACK_REQUEST_ID = 'unknown'
+
+/**
+ * Hata sınırının yazdığı TEK yapılandırılmış kaydın olay adı (ROADMAP v0.0.14,
+ * T-014 düzeltme turu 1 — `solid` M-1 + `security` medium #1).
+ *
+ * ⚠ Bir log olayının adı TEL SÖZLEŞMESİ DEĞİLDİR ve bu sabit `index.ts`/
+ * `server.ts`'ten EXPORT EDİLMEZ: public yüzeye bir log olayı adı eklemek onu
+ * semver olayına çevirirdi. Tüketiciler (testler, operatör sorguları) adı
+ * literal olarak kullanır — platformun yerleşik deseni bu.
+ */
+const APP_ERROR_LOG_EVENT = 'trpc.error-boundary.app-error'
+
+/** `httpStatus` bu değerin ALTINDAysa kayıt `warn`, DEĞİLSE `error` seviyesindedir. */
+const SERVER_ERROR_STATUS_THRESHOLD = 500
+
+/**
+ * Hata sınırından geçen bir `AppError` için YAPILANDIRILMIŞ TEK kaydı yazar.
+ *
+ * ⚠⚠ BU FONKSİYONUN VARLIK SEBEBİ ÖLÇÜLMÜŞ BİR BOŞLUKTUR (`solid` M-1 ve
+ * `security` medium #1 BAĞIMSIZ olarak buldu). `PERMISSION_DENIED`'ın
+ * `details`'ini BOŞ bırakma kararının yazılı TEK gerekçesi "izin adı ve rol
+ * yalnızca `AppError.context`'e girer ve hata SINIRI onu LOGLAR"dı; ikinci
+ * yarısı GERÇEKLEŞMİYORDU — dört halkanın hiçbiri loglamıyordu: (1) bu
+ * middleware sessizdi, (2) `errorFormatter`'ın `cause` parse-EDİLEBİLİR dalı
+ * sessizdi, (3) `handler/create-trpc-request-handler.ts`'in `onError`'ı parse
+ * edilebilir `cause`'da ERKEN DÖNÜYORDU, (4) `apps/api`'nin Nest hata filtresi
+ * ise `fetchRequestHandler` her hatayı `Response`'a çevirdiği için HİÇ
+ * tetiklenmiyordu. Sonuç: yeni yetki yüzeyinde BAŞARI denetim kaydına
+ * yazılırken RED tamamen görünmezdi (OWASP A09) ve `AuthGuard`'ın aynı sınıf
+ * üyelik reddi `warn` yazarken bu yol sessiz kalıyordu — ÖLÇÜLEBİLİR bir
+ * asimetri.
+ *
+ * ⚠ KAYIT BURADA, `onError`'da DEĞİL: `AppError.context` bu noktadan SONRA
+ * KAYBOLUR — `toErrorBody` `context`'i HİÇ OKUMAZ (tel sızdırmazlığının
+ * yapısal garantisi), dolayısıyla `onError`'a ulaşan `TRPCError` yalnızca tel
+ * gövdesini taşır. Bağlamı loglamanın TEK yeri, gerçek `AppError`'ın elde
+ * olduğu bu satırlardır.
+ *
+ * ⚠ TEK KAYIT GARANTİSİ: bu middleware `base`'e TEK KEZ bağlanır (merdivenin
+ * tüm basamakları `base`'den türer) ve batching KAPALI olduğu için bir HTTP
+ * isteği TEK prosedür taşır; ayrıca buradan fırlatılan `TRPCError`'ın `cause`'u
+ * `trpcErrorDataSchema` ile PARSE EDİLEBİLİR olduğu için `onError` erken döner
+ * ve İKİNCİ bir satır YAZMAZ.
+ *
+ * ⚠ SEVİYE EŞLEMESİ (CLAUDE.md §4): 5xx → `error` ("müdahale gerekir"),
+ * diğer her durum → `warn` ("beklenen ama anormal"). Eşiğin ALTINDA kalan
+ * bilinmeyen bir durum (teorik olarak <400) da `warn`'a düşer — fail-safe
+ * yön, sessizlik DEĞİL.
+ *
+ * ⚠ ALAN SEÇİMİ (CLAUDE.md §4 "asla loglanmaz" listesi):
+ *   · `requestId`/`tenantId`/`userId` BURADA TEKRARLANMAZ — enjekte edilen
+ *     logger `apps/api`'nin child logger'ıdır ve üçünü ZATEN bağlamıştır;
+ *     ikinci kez geçirilen bir alan NDJSON satırında İKİ KEZ görünür
+ *     (`apps/api`'nin üyelik reddi bu dersi yazılı olarak taşıyor).
+ *   · `AppError.context` TEK BİR ANAHTARIN ALTINA (`context`) NESTELENİR,
+ *     üst seviyeye SPREAD EDİLMEZ. Gerekçe fail-closed: bir hata sınıfının
+ *     bağlam anahtarı (ör. `userId`) logger'ın BAĞLADIĞI bir alanı GÖLGELEYEMEZ
+ *     ve denetim izi aktörü yanlış atfedemez. Nesteleme ayrıca somut logger'ın
+ *     joker redaction yollarının (`*.token` vb.) kapsamına girer — ikinci
+ *     savunma hattı.
+ *   · ⚠ ALAN ADI İCAT EDİLMEDİ, HİZALANDI (ölçüldü): `apps/api`'nin REST hata
+ *     filtresi AYNI bilgiyi ZATEN `{code, isRetryable, context}` biçiminde
+ *     yazıyor (`errors/error-mapping.ts`'in `logContext`'i). İlk taslak
+ *     `errorContext` adını kullanıyordu; aynı olgu için İKİNCİ bir alan adı,
+ *     operatör sorgularını her iki adı da bilmek zorunda bırakırdı. Üç alan
+ *     birebir aynı, `httpStatus` ise tRPC yolunun EKİDİR (seviye seçiminin
+ *     girdisi — kaydı tek başına okunabilir yapar).
+ *   · `AppError.publicDetails`/`httpHeaders` OKUNMAZ; ham mesaj ve yığın izi
+ *     BU kayda GİRMEZ (onlar yalnızca sınıflandırılamayan hata dalının işidir).
+ */
+function logAppError(appError: AppError, ctx: TrpcContext): void {
+  const payload = {
+    code: appError.code,
+    httpStatus: appError.httpStatus,
+    isRetryable: appError.isRetryable,
+    context: appError.context,
+  }
+
+  if (appError.httpStatus >= SERVER_ERROR_STATUS_THRESHOLD) {
+    ctx.logger.error(APP_ERROR_LOG_EVENT, payload)
+    return
+  }
+
+  ctx.logger.warn(APP_ERROR_LOG_EVENT, payload)
+}
 
 /**
  * Bir `AppError`'ı doğru `TRPC_ERROR_CODE_KEY`'e sahip bir `TRPCError`'a
@@ -150,6 +242,15 @@ const t = initTRPC.context<TrpcContext>().create({
  *     güvenli, sızdırmaz bir jenerik gövdeye çevirir (ham mesaj/yığın izi
  *     gövdeye asla girmez — `shape.message` hiç okunmaz, ADR-0010 madde 3.2).
  *
+ * **EKLEME (ROADMAP v0.0.14, T-014 düzeltme turu 1 — `solid` M-1 +
+ * `security` medium #1):** bu middleware artık tanıdığı her `AppError` için
+ * {@link logAppError} ile SINIRDA TEK bir yapılandırılmış kayıt yazar
+ * (4xx → `warn`, 5xx → `error`). ⚠ TEL GÖVDESİ DEĞİŞMEDİ: `toTrpcError`'un
+ * ürettiği `TRPCError`/`TrpcErrorData` ve dolayısıyla `errorFormatter`'ın
+ * çıktısı BİREBİR aynıdır — log yolu ile tel yolu BAĞIMSIZDIR ve bu ekleme
+ * yalnızca gözlemlenebilirlik eklemiştir. Gerekçenin tamamı `logAppError`'ın
+ * dokümanındadır.
+ *
  * **Doğrulama (ölçülerek, varsayılmadan):** `pnpm --filter @arkesoft/trpc test`
  * ile hem gerçek `appRouter` üzerinden (procedures.test.ts — AC3 + port
  * totalliği, artık GERÇEK istemciyle 401/404 gözleniyor) hem de
@@ -165,7 +266,11 @@ const appErrorBoundary = t.middleware(async ({ ctx, next }) => {
   }
 
   if (isAppError(result.error.cause)) {
-    throw toTrpcError(result.error.cause, ctx)
+    const appError = result.error.cause
+    // ROADMAP v0.0.14, düzeltme turu 1: `logAppError` ÖNCE koşar —
+    // `toTrpcError` fırlatacağı için sonrasına kod koymak ulaşılamaz olurdu.
+    logAppError(appError, ctx)
+    throw toTrpcError(appError, ctx)
   }
 
   throw result.error

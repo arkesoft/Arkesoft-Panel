@@ -13,7 +13,7 @@
 // typecheck` yalnızca onun TİP düzeyindeki ikiz pinini — pin 1'in ilk yarısı —
 // denetler, saf değer karşılaştırmasını çalışma zamanında `pnpm test` yapar).
 //
-// Yedi pin:
+// On pin:
 //   1. `TenantStatusWire` ≡ `TenantStatus` (@arkesoft/db) — tip EŞİTLİĞİ +
 //      çalışma zamanı değer eşitliği (sıralanmış).
 //   2. `keyof TenantSummary` ⊂ `keyof Tenant`; `'planId'`/`'deletedAt'` ∉
@@ -30,6 +30,16 @@
 //      `'tenantId'` ∉ `keyof JobSummary` (architect K7'nin derleyici-zorunlu
 //      hâli — "tele çıkmaz" iddiası bir yorum değil, bir derleme kapısı).
 //   7. `JobReadPortAdapter satisfies JobReadPort`.
+//   8. ⚠ `TenantRoleWire` ≡ `TenantRole` (@arkesoft/db) — pin 1/5'in ÜÇÜNCÜ
+//      ikizi (ROADMAP v0.0.14, T-014/S4, AC4). Yetki modelinin tamamı bu
+//      sözlüğün üzerinde duruyor: rol → izin eşlemesi sözleşme paketinde TAM
+//      bir `Record<TenantRoleWire, …>`'dır, yani tele sözlüğe rol eklemek
+//      eşlemeyi derlenemez kılar (fail-closed, "yeni rolün izinsiz kalması
+//      İMKÂNSIZ"). O garantinin DEĞERİ, tele sözlüğün veri katmanının
+//      enum'uyla AYNI olmasına bağlıdır — bu pin tam o bağı kurar. Tip
+//      EŞİTLİĞİ + çalışma zamanı değer eşitliği (sıralanmış).
+//   9. `MembershipReadPortAdapter satisfies MembershipReadPort`.
+//  10. `MemberWritePortAdapter satisfies MemberWritePort`.
 //
 // PİN KANITI (DoD): `TenantSummary`'ye `planId` ekleyerek TEK kasıtlı mutasyon
 // yapılıp `pnpm --filter @arkesoft/api typecheck`'in KIRILDIĞI ölçüldü (çıktı
@@ -44,19 +54,31 @@
 //        `TS2322 … '["FAZLA DURUM — …", "cancelled"]'` verdi.
 
 import type { Job, Tenant } from '@arkesoft/db'
-import { JobStatus as JobStatusValue, TenantStatus as TenantStatusValue } from '@arkesoft/db'
+import {
+  JobStatus as JobStatusValue,
+  TenantRole as TenantRoleValue,
+  TenantStatus as TenantStatusValue,
+} from '@arkesoft/db'
 import type {
   JobStatusWire,
   JobSummary,
   SessionIdentity,
+  TenantRoleWire,
   TenantStatusWire,
   TenantSummary,
 } from '@arkesoft/trpc'
-import { jobStatusSchema, tenantStatusSchema } from '@arkesoft/trpc'
-import type { JobReadPort, TenantReadPort } from '@arkesoft/trpc/server'
+import { jobStatusSchema, tenantRoleSchema, tenantStatusSchema } from '@arkesoft/trpc'
+import type {
+  JobReadPort,
+  MemberWritePort,
+  MembershipReadPort,
+  TenantReadPort,
+} from '@arkesoft/trpc/server'
 
 import type { CurrentUserIdentity } from '../../auth/auth-resolution.types.js'
 import type { JobReadPortAdapter } from '../../trpc/ports/job-read.port.adapter.js'
+import type { MemberWritePortAdapter } from '../../trpc/ports/member-write.port.adapter.js'
+import type { MembershipReadPortAdapter } from '../../trpc/ports/membership-read.port.adapter.js'
 import type { TenantReadPortAdapter } from '../../trpc/ports/tenant-read.port.adapter.js'
 
 // ---------------------------------------------------------------------------
@@ -303,4 +325,88 @@ export function pinJobReadPortAdapterSatisfiesPort(
   adapter: JobReadPortAdapter,
 ): JobReadPortAdapter {
   return adapter satisfies JobReadPort
+}
+
+// ---------------------------------------------------------------------------
+// PİN 8 — TenantRoleWire ≡ TenantRole (tip) + çalışma zamanı değer eşitliği
+// (ROADMAP v0.0.14, T-014/S4 — AC4)
+// ---------------------------------------------------------------------------
+
+/**
+ * PİN 1'in gerekçesi BİREBİR geçerli: veri katmanının `TenantRole`'ü bir
+ * Prisma string enum'udur ve ham bir string literal birleşimiyle `extends`
+ * üzerinden karşılaştırılamaz (string enum'lar NOMİNAL'dir). Karşılaştırma
+ * enum'un KENDİ anahtarları üzerinden yapılır — Prisma string enum'larında
+ * anahtar adı HER ZAMAN değerle birebir aynıdır.
+ */
+type TenantRoleKeys = keyof typeof TenantRoleValue
+
+type ExtraWireRoles = Exclude<TenantRoleWire, TenantRoleKeys>
+type MissingWireRoles = Exclude<TenantRoleKeys, TenantRoleWire>
+
+type AssertNoExtraWireRoles = ExtraWireRoles extends never
+  ? true
+  : ['FAZLA ROL — tenantRoleSchema içinde olup TenantRole içinde olmayan', ExtraWireRoles]
+
+type AssertNoMissingWireRoles = MissingWireRoles extends never
+  ? true
+  : ['EKSİK ROL — TenantRole içinde olup tenantRoleSchema içinde olmayan', MissingWireRoles]
+
+/**
+ * ⚠ TİP PİNİ 8 — `TenantRoleWire` ve `TenantRole`'ün anahtar kümesi TAM
+ * eşleşmeli (AC4). Tele sözlüğe elle bir değer EKLEMEK veya ÇIKARMAK bu pini
+ * `pnpm typecheck`'te KIRAR.
+ *
+ * ⚠ NEDEN BU PİN YETKİ MODELİNİN TEMEL TAŞI: rol → izin eşlemesi sözleşme
+ * paketinde TAM bir `Record<TenantRoleWire, …>`'dır → veri katmanına yeni bir
+ * rol eklendiğinde bu pin kırılır → tele sözlük güncellenir → eşleme EKSİK
+ * ANAHTARLA derlenmez → yeni rolün izinsiz (ve dolayısıyla sessizce yetkisiz
+ * veya sessizce TAM yetkili) kalması İMKÂNSIZ hâle gelir. Zincirin ilk halkası
+ * bu dosyadır.
+ */
+export function pinTenantRoleWireKeysExactlyMatchTenantRole(): {
+  noExtra: AssertNoExtraWireRoles
+  noMissing: AssertNoMissingWireRoles
+} {
+  return { noExtra: true, noMissing: true }
+}
+
+/**
+ * ÇALIŞMA ZAMANI PİNİ 8 — `tenantStatusWireValuesMatchPrismaAtRuntime`'ın
+ * birebir ikizi. `pnpm typecheck` tarafından DEĞİL, `../trpc-http.test.ts`
+ * tarafından GERÇEKTEN ÇAĞRILIR (`pnpm test`): tip pininin yakalayamayacağı
+ * bir sapmayı (aynı anahtar kümesi ama Prisma'nın DEĞER tarafı farklı
+ * yazılmış) yakalar.
+ */
+export function tenantRoleWireValuesMatchPrismaAtRuntime(): boolean {
+  const wireValues = [...tenantRoleSchema.options].sort()
+  const prismaValues = Object.values(TenantRoleValue).sort()
+
+  return (
+    wireValues.length === prismaValues.length &&
+    wireValues.every((value, index) => value === prismaValues[index])
+  )
+}
+
+// ---------------------------------------------------------------------------
+// PİN 9/10 — iki yeni port adaptörü `satisfies` kendi portu
+// (ROADMAP v0.0.14, T-014/S4)
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠ TİP PİNİ 9 — PİN 4/7'nin ikizi. `implements` ZATEN adaptörün kendi
+ * dosyasında yazılı; bu pin ONA EK bir savunmadır: `implements` kaldırılırsa
+ * (veya sınıf bir fabrika fonksiyonuna dönüşürse) uyum sessizce kaybolurdu.
+ */
+export function pinMembershipReadPortAdapterSatisfiesPort(
+  adapter: MembershipReadPortAdapter,
+): MembershipReadPortAdapter {
+  return adapter satisfies MembershipReadPort
+}
+
+/** ⚠ TİP PİNİ 10 — PİN 9'un ikizi, platformun ilk YAZMA portu için. */
+export function pinMemberWritePortAdapterSatisfiesPort(
+  adapter: MemberWritePortAdapter,
+): MemberWritePortAdapter {
+  return adapter satisfies MemberWritePort
 }

@@ -29,3 +29,16 @@ apps/admin/src/routeTree.gen.ts
 .claude/workflow/tasks/**
 .changeset/**
 docs/adr/**
+
+# Vitest JSON reporter'ının çıktısı (`apps/api/.vitest/json/output.json`,
+# T-014/FIX 1b'de bulundu). Repoda kalıcı bir `reporters` yapılandırması YOK —
+# dosya ad-hoc bir CLI koşumundan (`--reporter=json`) düşmüş. Üretilmiş çıktı:
+# katı Prettier kurallarımıza uymuyor ve biçimlendirilse bile bir sonraki test
+# koşumunda yeniden bozulur; çözüm biçimlendirme değil, hariç tutmak. Hariç
+# tutulmazsa `prettier --check .` kapısı (v0.0.14 AC8) kırılır.
+# Desen `.turbo/`/`.astro/`/`coverage/` gibi bilinçli olarak çıplak: Vitest koşan
+# her paket (`apps/*`, `packages/*`) aynı dizini üretebilir, `apps/api`'ye
+# sabitlemek ilk başka pakette aynı kırılmayı tekrar ettirir.
+# .gitignore KARŞILIĞI aynı Task'ta eklendi (dosya `git status`'ta izlenmeyen
+# kirlilik olarak da görünüyordu) — iki taraf birbirinden bağımsız.
+.vitest/

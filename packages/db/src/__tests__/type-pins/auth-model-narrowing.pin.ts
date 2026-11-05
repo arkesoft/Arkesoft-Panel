@@ -59,10 +59,17 @@
 //   1. POZİTİF  — allowlist'in üç üyesinin (`AppPrismaDatabase`: `tenant`/
 //                 `user`/`tenantMembership`) HEPSİ erişilebilir.
 //   2. NEGATİF  — `account`/`session`/`verification`/`$transaction`/
-//                 `$extends`/`$disconnect`/`$queryRaw` ERİŞİLEMEZ
-//                 (`@ts-expect-error` ×12, her biri GERÇEK `TS2339`/
-//                 `TS2578` üretir) — isim bazlı, YALNIZCA bilinen kaçış
-//                 kapılarını/dışarıda bırakılan üyeleri kapsar.
+//                 `$extends`/`$disconnect`/`$queryRaw` VE kiracıya bağlı
+//                 delegeler (`job`, v0.0.11; `auditLog`/`tenantInvitation`,
+//                 v0.0.14) `AppPrismaDatabase` üzerinde ERİŞİLEMEZ
+//                 (`@ts-expect-error` ×15 — SAYILDI, `rg -c
+//                 "^\s+// @ts-expect-error —"`; her biri GERÇEK `TS2339`
+//                 üretir, üretmezse `TS2578` ile kırmızıya döner) — isim
+//                 bazlı, YALNIZCA bilinen kaçış kapılarını/dışarıda
+//                 bırakılan üyeleri kapsar. ⚠ Bu sayı T-014/S1'den önce
+//                 "×12" yazıyordu ve bayattı (gerçek değer 13'tü, v0.0.11'in
+//                 `job` pini sayıma işlenmemişti) — sayı artık ölçülerek
+//                 yazılıyor.
 //   3. JENERİK  — `AppPrismaDatabase`'in (ve `TenantTransactionClient`'ın)
 //                 anahtar kümesi beklenenle TAM denk (`Exclude<>` İKİ YÖNLÜ
 //                 `never`). İSİM BAZLI DEĞİL — ama bunun anlamı "Prisma'nın
@@ -237,6 +244,39 @@ export function pinAppPrismaDatabaseDropsJob(db: AppPrismaDatabase): unknown {
 }
 
 /**
+ * NEGATİF PİN (ROADMAP v0.0.14, T-014/S1, architect K-A3 — `pinAppPrismaDatabaseDropsJob`
+ * emsalinin BİREBİR uygulaması) — `auditLog` delegesi `AppPrismaDatabase`
+ * üzerinde ERİŞİLEMEZ OLMALIDIR.
+ *
+ * K-A3 iki tipi ZIT yönde ilerletir: `auditLog` `TenantTransactionClient`'a
+ * EKLENİR (orada allowlist'tedir), `AppPrismaDatabase`'e EKLENMEZ. Sonuç:
+ * `prisma.db.auditLog.create(...)` `apps/api`'de DERLENMEZ → denetim kaydı
+ * yazmanın TEK DERLENEBİLİR yolu `withTenant()`'tır ve dolayısıyla denetim
+ * kaydı HER ZAMAN iş yazmasıyla aynı transaction'da, kiracı bağlamı KURULMUŞ
+ * hâlde yazılır. Bu satır derlenirse (hata ÜRETMEZSE) o garanti SESSİZCE
+ * kaybolmuş demektir ve K-A3'ün "EKLENMEZ" kararı mekanik kanıtsız kalır.
+ */
+export function pinAppPrismaDatabaseDropsAuditLog(db: AppPrismaDatabase): unknown {
+  // @ts-expect-error — "auditLog" Pick<> allowlist'inde YOK (BİLEREK, K-A3), AppPrismaDatabase'de erişilemez; AuditLog'a erişim YALNIZCA withTenant() üzerinden.
+  return db.auditLog
+}
+
+/**
+ * NEGATİF PİN (ROADMAP v0.0.14, T-014/S1, architect K-A3) — `tenantInvitation`
+ * delegesi `AppPrismaDatabase` üzerinde ERİŞİLEMEZ OLMALIDIR. Gerekçe
+ * `pinAppPrismaDatabaseDropsAuditLog` ile AYNI; ⚠ davet tablosu için EK bir
+ * gerekçe daha var: davet kaydı `token_hash` taşır ve kabul sorgusu
+ * `(tenant_id, token_hash)` üzerinden gider — bu sorgunun kiracı bağlamı
+ * DIŞINDA koşturulabilmesi, bir kiracının belirteç özetini başka bir kiracının
+ * bağlamında aramasına kapı açardı. RLS bunu zaten engeller; bu pin AYNI
+ * kısıtı DERLEME ZAMANINDA ikinci bir katman olarak kurar.
+ */
+export function pinAppPrismaDatabaseDropsTenantInvitation(db: AppPrismaDatabase): unknown {
+  // @ts-expect-error — "tenantInvitation" Pick<> allowlist'inde YOK (BİLEREK, K-A3), AppPrismaDatabase'de erişilemez; TenantInvitation'a erişim YALNIZCA withTenant() üzerinden.
+  return db.tenantInvitation
+}
+
+/**
  * NEGATİF PİN (A-G3, `TenantTransactionClient` için) — `account`/`session`/
  * `verification` delegeleri burada da ERİŞİLEMEZ OLMALIDIR.
  */
@@ -349,8 +389,25 @@ export function pinAppPrismaDatabaseKeysExactlyMatchAllowlist(): {
  * ⚠ `ExpectedAppPrismaDatabaseKeys` (yukarıda) BİLEREK ÜÇ ÜYEDE KALDI —
  * `'job'` oraya eklenirse bu dosya YİNE kırmızıya döner. R-A2'nin üçüncü
  * savunma katmanı budur.
+ *
+ * GÜNCELLEME (ROADMAP v0.0.14, T-014/S1, architect K-A3 — AÇIK mimari karar):
+ * `'auditLog'` ve `'tenantInvitation'` EKLENDİ, küme İKİ üyeden DÖRT üyeye
+ * çıktı. ⚠ Bu güncelleme bir "gevşetme" DEĞİLDİR: kapı GERÇEKTEN kapandı ve
+ * ÖLÇÜLDÜ — `client.ts`'in `Pick<>` listesine iki üye eklendiği an, bu satır
+ * HENÜZ güncellenmemişken `pnpm --filter @arkesoft/db typecheck` şu TEK hatayı
+ * verdi (gerçek çıktı, iddia değil):
+ *   `src/__tests__/type-pins/auth-model-narrowing.pin.ts(383,12): error TS2322:
+ *    Type 'boolean' is not assignable to type '["FAZLA ANAHTAR — Pick<>
+ *    listesine izinsiz eklenmiş üye", TenantTransactionClientExtraKeys]'.`
+ * Yani kararın İKİNCİ bir yerde kayda geçirilmesi mekanik olarak ZORLANDI.
+ * ⚠ `ExpectedAppPrismaDatabaseKeys` HÂLÂ ÜÇ ÜYEDE — K-A3'ün iki tipi ZIT yönde
+ * ilerletme kararı gereği `'auditLog'`/`'tenantInvitation'` oraya EKLENMEZ;
+ * eklenirse bu dosya yine kırmızıya döner (R-A2'nin üçüncü savunma katmanı,
+ * bu sürümde de GEÇERLİ). Mekanik karşılıkları:
+ * `pinAppPrismaDatabaseDropsAuditLog` / `pinAppPrismaDatabaseDropsTenantInvitation`.
  */
-type ExpectedTenantTransactionClientKeys = 'tenantMembership' | 'job'
+type ExpectedTenantTransactionClientKeys =
+  'tenantMembership' | 'job' | 'auditLog' | 'tenantInvitation'
 
 type TenantTransactionClientExtraKeys = Exclude<
   keyof TenantTransactionClient,

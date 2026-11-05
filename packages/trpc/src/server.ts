@@ -25,6 +25,8 @@ export type {
 } from './context/trpc-context.types.js'
 
 export type { JobReadPort } from './ports/job-read.port.js'
+export type { MemberWritePort } from './ports/member-write.port.js'
+export type { MembershipReadPort } from './ports/membership-read.port.js'
 export type { TenantReadPort } from './ports/tenant-read.port.js'
 export type { StorefrontTenantReadPort } from './ports/storefront-tenant-read.port.js'
 export type { TrpcErrorFactoryPort } from './ports/trpc-error-factory.port.js'
@@ -36,3 +38,10 @@ export {
   router,
   tenantProcedure,
 } from './trpc.js'
+
+// Merdivenin BEŞİNCİ basamağı (ROADMAP v0.0.14, T-014/S2) — SUNUCU tarafı
+// yüzeyinde, `./trpc.js`'in dördünün yanında. ⚠ Bu satır `index.ts`'e
+// TAŞINAMAZ: `permissionProcedure` zinciri `./trpc.js`'i (sunucu tarafı modül
+// grafiği) çeker ve tarayıcı girişinin yazılı sözleşmesini kırardı.
+export { permissionProcedure } from './authz/permission-procedure.js'
+export type { PermissionGatedProcedureBuilder } from './authz/permission-procedure.js'

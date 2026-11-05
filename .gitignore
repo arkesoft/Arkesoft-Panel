@@ -43,6 +43,12 @@ playwright-report/
 test-results/
 blob-report/
 
+# Vitest JSON reporter çıktısı (`--reporter=json` → `<paket>/.vitest/json/output.json`).
+# T-014/FIX 1b'de ÖLÇÜLDÜ: dosya git'te izlenmiyordu ama hiçbir ignore kuralına da
+# girmediği için `git status`'ta `?? apps/api/.vitest/` olarak kirlilik üretiyordu.
+# Üretilmiş test artefaktı, commit edilmez. Prettier KARŞILIĞI .prettierignore'da.
+.vitest/
+
 # Loglar
 *.log
 npm-debug.log*

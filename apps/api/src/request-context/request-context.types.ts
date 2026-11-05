@@ -62,6 +62,34 @@ export type TenantResolution =
   | { readonly kind: 'failed'; readonly cause: unknown }
 
 /**
+ * İsteğin İSTEMCİ kimlikleri (ROADMAP v0.0.14, T-014/S4, architect K-A2 ·
+ * po R-PO2).
+ *
+ * ⚠ VARLIK SEBEBİ TEK: denetim kaydının `ip`/`user_agent` kolonları. Bu iki
+ * alan kişisel veri sınıfındadır AMA denetim kaydının VARLIK SEBEBİDİR —
+ * CLAUDE.md §4'ün "asla loglanmaz" listesinde YOKTUR: **SAKLANIR, LOGLANMAZ**.
+ * Bu tipin hiçbir tüketicisi onları bir log çağrısına geçirmez; tek tüketici
+ * denetim kaydı yazma kapısıdır (`audit/audit-log.writer.ts`, logger'ı HİÇ
+ * import etmez).
+ *
+ * ⚠ `ip` NEDEN NULLABLE: oran sınırı yolu HER ZAMAN tanımlı bir anahtar
+ * ister ve bu yüzden IP çözümü bir sentinel'e düşer
+ * (`auth/rate-limit/client-ip.ts`). Denetim kaydında o sentinel'i bir DEĞER
+ * gibi saklamak yanıltıcı olurdu → ara yazılım onu `null`'a eşler. İki yolun
+ * aynı çözümleyiciyi (ve aynı güvenilir vekil semantiğini) paylaşması
+ * bilinçli: ikinci bir IP çözümleyicisi yazmak iki farklı "istemci IP'si"
+ * tanımı üretirdi.
+ *
+ * ⚠ `userAgent` NEDEN KIRPILMAZ BURADA: uzunluk sınırı veritabanı kolonunun
+ * sözleşmesidir ve yazma KAPISINDA uygulanır — bağlam ham değeri taşır,
+ * böylece sınır tek yerde yaşar.
+ */
+export type RequestClientContext = {
+  readonly ip: string | null
+  readonly userAgent: string | null
+}
+
+/**
  * `AsyncLocalStorage<RequestContext>`'in taşıdığı tek depo nesnesi (K-A5).
  *
  * - `requestId`/`receivedAt`: değişmez (readonly), istek ömrü boyunca sabit.
@@ -79,6 +107,13 @@ export type TenantResolution =
  *   deseni — `RequestContextMiddleware` `pending` ile başlatır,
  *   `AuthContextMiddleware` (`TenantContextMiddleware`'DEN SONRA koşar)
  *   sonucu yazar; `AuthGuard` EXHAUSTIVE switch ile okur.
+ * - `client` (ROADMAP v0.0.14, T-014/S4 EKLEMESİ, additive): {@link
+ *   RequestClientContext}. ⚠ `tenant`/`auth`'un MUTABLE desenini TAKLİT
+ *   ETMEZ — `readonly`, TEK yazıcısı `RequestContextMiddleware` ve o da
+ *   `requestId`/`receivedAt` ile AYNI anda, istek ömrünün başında yazar.
+ *   Gerekçe: iki alan HAM İSTEKTEN okunur, hiçbir çözümleme (tenant/auth)
+ *   gerektirmez → sonradan güncellenecek bir "pending" hâli YOKTUR. Mutable
+ *   yapmak var olmayan bir ikinci yazıcıya kapı açardı.
  */
 export type RequestContext = {
   readonly requestId: string
@@ -86,4 +121,5 @@ export type RequestContext = {
   logger: Logger
   tenant: TenantResolution
   auth: AuthResolution
+  readonly client: RequestClientContext
 }

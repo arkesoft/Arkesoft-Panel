@@ -363,12 +363,31 @@ describe('JobReadPortAdapter (ROADMAP v0.0.11, T-013/S8)', () => {
             findPublicTenant: () => Promise.reject(new Error('çağrılmamalı')),
           },
           jobRead,
+          // ROADMAP v0.0.14, T-014/S4 — `TrpcPorts`'un ZORUNLU iki yeni üyesi.
+          // ⚠ `?` ile OPSİYONEL YAPILMASI YASAK (po R-PM5); doğru çözüm
+          // DOLDURMAK. Bu probe `member.*`'ı çağırmaz, ama `job.list`'in izin
+          // kapısı `membershipRead`'i ÇAĞIRIR — bu yüzden o stub çağrılınca
+          // FIRLATMAZ, beş rolün hepsinde `job:read` taşıyan bir rol döner
+          // (aşağıdaki testlerin konusu sayfa boyutu sınırı, yetki DEĞİL).
+          membershipRead: { requireRole: () => Promise.resolve('owner') },
+          memberWrite: {
+            invite: () => Promise.reject(new Error('çağrılmamalı')),
+            acceptInvitation: () => Promise.reject(new Error('çağrılmamalı')),
+            updateRole: () => Promise.reject(new Error('çağrılmamalı')),
+            remove: () => Promise.reject(new Error('çağrılmamalı')),
+          },
         },
         errors: {
           unauthenticated: () => {
             throw new Error('çağrılmamalı')
           },
           tenantContextRequired: () => {
+            throw new Error('çağrılmamalı')
+          },
+          // ⚠ `owner` rolü `job:read` iznini TAŞIR → izin kapısı bu fabrikayı
+          // ÇAĞIRMAZ. Fırlatması o iddianın mekanik kanıtıdır: çağrılırsa
+          // test gürültülü biçimde kırılır.
+          permissionDenied: () => {
             throw new Error('çağrılmamalı')
           },
         },

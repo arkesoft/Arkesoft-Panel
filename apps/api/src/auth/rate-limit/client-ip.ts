@@ -33,8 +33,19 @@ export interface ClientIpSourceRequest {
   readonly socket?: { readonly remoteAddress?: string }
 }
 
-/** Soket adresi de YOKSA (test ortamı, Unix soketi vb.) düşülecek sentinel. */
-const UNKNOWN_IP = 'unknown'
+/**
+ * Soket adresi de YOKSA (test ortamı, Unix soketi vb.) düşülecek sentinel.
+ *
+ * ⚠ `export` (ROADMAP v0.0.14, T-014/S4 — ADDITIVE, davranış DEĞİŞMEDİ):
+ * oran sınırı anahtarının HER ZAMAN tanımlı bir dize taşıması gerektiği için
+ * {@link resolveClientIp} `null` DÖNMEZ ve bu sentinel'e düşer. Ama denetim
+ * kaydının `ip` kolonu NULLABLE'dır ve oraya `'unknown'` dizesini yazmak
+ * BİR DEĞER GİBİ GÖRÜNEN bir yalan olurdu ("IP şuydu: unknown"). İstek
+ * bağlamını kuran ara yazılım bu sentinel'i `null`'a eşler; eşlemenin
+ * sentinel'i KOPYALAMADAN yapılabilmesi için sabit buradan dışa açıldı
+ * (kopyalanmış bir literal sessizce sapardı).
+ */
+export const UNKNOWN_IP = 'unknown'
 
 function readForwardedForHeader(headers: ClientIpSourceRequest['headers']): string | undefined {
   const value = headers['x-forwarded-for']

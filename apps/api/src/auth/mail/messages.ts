@@ -109,6 +109,48 @@ const MAIL_MESSAGE_CATALOG = {
       ].join(''),
     }
   },
+  /**
+   * Kiracıya üye daveti (ROADMAP v0.0.14, T-014/S4, architect K-A9).
+   * Değişken: `url` (kabul bağlantısı, tam URL).
+   *
+   * ⚠ BAĞLANTI BELİRTECİ URL'İN FRAGMAN (`#`) KISMINDADIR ve bu bilinçli
+   * (K-A9): fragman sunucuya GÖNDERİLMEZ — ne erişim loglarına ne `Referer`
+   * başlığına düşer. Bu katalog bağlantıyı OLDUĞU GİBİ gömer, ayrıştırmaz.
+   *
+   * ⚠ METİN KİRACI ADI/SLUG'I TAŞIMAZ: adı yazmak bu zarfı üretmek için
+   * kiracı tablosundan bir okuma daha gerektirirdi ve davet e-postasını
+   * kiracı kimliğinin bir sızma yüzeyi yapardı (davet yanlış adrese
+   * gitmişse alıcı hangi mağazaya davet edildiğini öğrenir). Alıcı kabul
+   * ekranında o bilgiyi oturum açtıktan sonra görür.
+   *
+   * ⚠ DAVET EDENİN ADI/E-POSTASI DA YOK (CLAUDE.md §4 "tam e-posta"): bir
+   * üçüncü kişinin adresini başka bir posta kutusuna taşımak davet akışının
+   * gerektirdiği bir şey değil.
+   */
+  'tenant.memberInvitation': (variables: MailMessageVariables): MailContent => {
+    const url = requireVariable(variables, 'url')
+
+    return {
+      subject: 'Ekip daveti',
+      text: [
+        'Merhaba,',
+        '',
+        'Bir Arkesoft hesabına ekip üyesi olarak davet edildiniz.',
+        'Daveti kabul etmek için aşağıdaki bağlantıyı açın:',
+        url,
+        '',
+        'Bu davetin süresi dolmadan kabul etmeniz gerekir.',
+        'Bu isteği beklemiyorsanız bu e-postayı görmezden gelebilirsiniz.',
+      ].join('\n'),
+      html: [
+        '<p>Merhaba,</p>',
+        '<p>Bir Arkesoft hesabına ekip üyesi olarak davet edildiniz.</p>',
+        `<p>Daveti kabul etmek için <a href="${escapeHtml(url)}">bu bağlantıyı</a> açın.</p>`,
+        '<p>Bu davetin süresi dolmadan kabul etmeniz gerekir.</p>',
+        '<p>Bu isteği beklemiyorsanız bu e-postayı görmezden gelebilirsiniz.</p>',
+      ].join(''),
+    }
+  },
 } satisfies Record<string, MailMessageRenderer>
 
 /** Katalogdaki geçerli anahtarların derleme zamanı birleşimi. */

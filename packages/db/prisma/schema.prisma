@@ -31,6 +31,13 @@
 // İLE korunamaz (giriş/oturum arama asıldan ÖNCE gelir, `current_setting`'e
 // dayalı yüklem tanımlanamaz) — koruma `src/client.ts` → `AUTH_SECRET_BEARING_MODELS`
 // derleme zamanı daraltmasındadır, bu şema dosyası seviyesinde YOKTUR.
+//
+// GÜNCELLEME (ROADMAP v0.0.14, T-014/S1 — RBAC): `AuditLog` ve
+// `TenantInvitation` EKLENDİ, ikisi de KİRACIYA BAĞLI → `src/tenancy.ts`'teki
+// `TENANT_SCOPED_TABLES` İKİ üyeden DÖRT üyeye çıktı. `TenantRole` enum'u
+// v0.0.3'ten beri beş rolü taşıyor, bu sürümde DEĞİŞMEDİ; yeni enum yalnızca
+// `AuditAction`. `TenantInvitation` HAM BELİRTEÇ SAKLAMAZ (yalnızca sha256
+// özeti) → `src/client.ts` → `AUTH_SECRET_BEARING_MODELS` ÜÇ üyede KALIR.
 
 // `output = "../generated"` iki farklı "generated" konumunun KAYNAĞIDIR:
 //   1. packages/db/generated/     — `prisma generate`'in ham TS çıktısı (KÖK, .gitignore'da)
@@ -86,6 +93,13 @@ model Tenant {
   // doğrulama hatasıyla durur (emsal: yukarıdaki `memberships`). DDL ÜRETMEZ
   // (FK kolonu `job` tarafındadır).
   jobs        Job[]
+  // ROADMAP v0.0.14 (T-014/S1): `AuditLog.tenant` ve `TenantInvitation.tenant`
+  // ilişkilerinin ZORUNLU karşı tarafları — `jobs` ile AYNI gerekçe (Prisma
+  // ilişkileri iki taraflıdır; bu iki satır olmadan `prisma generate` doğrulama
+  // hatasıyla durur ve hata `Tenant` tarafını işaret eder). İkisi de DDL
+  // ÜRETMEZ (FK kolonları `audit_log`/`tenant_invitation` tarafındadır).
+  auditLogs   AuditLog[]
+  invitations TenantInvitation[]
 
   @@map("tenant")
 }
@@ -210,7 +224,9 @@ model Verification {
   @@map("verification")
 }
 
-/// Tenant'a bağlı tablo (`TENANT_SCOPED_TABLES` üyesi; ikincisi `Job`, v0.0.11).
+/// Tenant'a bağlı tablo — `TENANT_SCOPED_TABLES`'ın BİRİNCİ üyesi. Taksonominin
+/// kanonik listesi `src/tenancy.ts`'tedir ve v0.0.14'ten itibaren DÖRT üyelidir
+/// (`tenant_membership`, `job`, `audit_log`, `tenant_invitation`).
 /// RLS zemini: `tenant_id` kolonu tam olarak bu adla, `text`, NOT NULL ve
 /// `(tenant_id, user_id)` bileşik benzersizlik kısıtının öncü kolonu; politika
 /// `<ts>_rls_tenant_isolation/migration.sql`'de.
@@ -224,6 +240,19 @@ model TenantMembership {
   updatedAt DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // ⚠ KURAL (ROADMAP v0.0.14, T-014/S1, architect K-A12 — R-A10'un BU SÜRÜMDEKİ
+  // karşılanma biçimi): aşağıdaki `onDelete: Cascade` BİLEREK DEĞİŞTİRİLMEDİ.
+  // INV-OWNER ("her kiracının tam olarak bir `owner`'ı var") KODDA zorlanır
+  // (`apps/api`, CAS deseni) → `member.remove`/`member.updateRole` yoluyla
+  // sahipsiz kiracı üretmek İMKÂNSIZ. Sahipsiz kiracı üretebilecek TEK yol
+  // `app_user` hard delete'idir ve ÜRETİMDE O YOL YOKTUR (ölçüldü: kullanıcı
+  // hard delete'i yalnızca `packages/db/src/__tests__/**` içinde; kimlik
+  // doğrulama yüzeyinde kullanıcı silme ucu yok). Bu kuralın GÜÇLÜ (veritabanı)
+  // biçimi — FK aksiyonunu `Restrict`'e çevirmek — v0.0.19'a (hesap silme/GDPR
+  // yüzeyi) SIRALANDI, düşürülmedi: bugün çevirmek migration'da kısıt kaldırma
+  // ifadesi gerektirir, migration linter'ının yıkıcı-ifade kuralı kırmızıya
+  // döner ve kuralı gevşetme baskısı doğar (CLAUDE.md §10 md 6). ⚠ Borç satırı
+  // KAPANMADI, TAŞINDI.
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, userId])
@@ -232,7 +261,10 @@ model TenantMembership {
 }
 
 /// Kiracıya bağlı arka plan işi kaydı (ROADMAP v0.0.11, T-013/S2, architect K3
-/// birebir). `TENANT_SCOPED_TABLES`'ın İKİNCİ üyesi — `tenant_membership`'in
+/// birebir). `TENANT_SCOPED_TABLES`'ın İKİNCİ üyesi — ⚠ dizinin KENDİSİ
+/// v0.0.14'ten (T-014/S1) itibaren DÖRT üyelidir (`audit_log` ve
+/// `tenant_invitation` eklendi); bu sıra numarası eklenme sırasıdır, dizinin
+/// uzunluğu DEĞİL. `tenant_membership`'in
 /// taşıdığı tüm değişmezleri (CLAUDE.md §7 md 1-3) taşır: `tenant_id` `text`
 /// NOT NULL, RLS `ENABLE`+`FORCE`, kanonik `USING`/`WITH CHECK` politikası
 /// (bkz. `<ts>_job_table/migration.sql`) ve `tenant_id` öncü bileşik indeksler.
@@ -281,6 +313,138 @@ model Job {
   @@map("job")
 }
 
+/// Kiracıya bağlı denetim kaydı (ROADMAP v0.0.14, T-014/S1, architect K-A1
+/// birebir). `TENANT_SCOPED_TABLES`'ın ÜÇÜNCÜ üyesi — `tenant_membership` ve
+/// `job`'un taşıdığı tüm değişmezleri (CLAUDE.md §7 md 1-3) taşır: `tenant_id`
+/// `text` NOT NULL, RLS `ENABLE`+`FORCE`, kanonik `USING`/`WITH CHECK`
+/// politikası (bkz. `<ts>_rbac_audit_log_and_invitation/migration.sql`) ve
+/// `tenant_id` öncü bileşik indeksler.
+///
+/// APPEND-ONLY. `updatedAt` BİLEREK YOK: satır yazıldıktan sonra DEĞİŞMEZ,
+/// bir UPDATE yolu yoktur. `@updatedAt` eklemek "bu satır güncellenebilir"
+/// anlamı taşır ve yanlış bir sözleşme beyan eder. Soft delete de YOK —
+/// denetim izinin silinmesi bir saklama (retention) politikası kararıdır,
+/// v0.0.17 kapsamındadır.
+///
+/// ⚠ `actorUserId` için YABANCI ANAHTAR YOKTUR ve bu bilinçli: denetim izi
+/// aktörden UZUN YAŞAR. `Cascade` olsaydı bir kullanıcı silindiğinde onun
+/// yaptığı her yetki değişikliğinin kaydı da giderdi (denetim izinin varlık
+/// sebebini yok eder); `Restrict` olsaydı kullanıcı silmek denetim kaydı
+/// yüzünden kilitlenirdi. Kolon bu yüzden ilişkisiz bir `text`'tir —
+/// "o anda aktör kimdi" olgusunu saklar, canlı bir referans TUTMAZ.
+///
+/// `action` Prisma `enum`'u (`Job.status` emsali): geçersiz değer veritabanı
+/// seviyesinde mekanik olarak imkânsız. ⚠ `revoked` gibi TÜKETİCİSİ OLMAYAN bir
+/// değer BİLEREK YOKTUR ("ölü sözlük = ölü iznin kardeşi"); değer EKLEMEK
+/// `ALTER TYPE … ADD VALUE` ile additive'dir. Bu enum TELE HİÇ ÇIKMAZ
+/// (denetim kaydını okuyan bir prosedür bu sürümde yok) → `TenantStatus`/
+/// `TenantRole` için gereken tele-enum parite pini BU enum için GEREKMEZ.
+///
+/// `subject` TEK kolondur ve anlamı KAPALI ve YAZILIDIR: `member_invited` →
+/// `invitationId`; diğer üç değer → `userId`. Zincir `diff.invitationId`
+/// üzerinden kurulur. ⚠ E-POSTA `audit_log`'a HİÇ GİRMEZ — beklemedeki adres
+/// `tenant_invitation.email`'de yaşar.
+///
+/// `diff` → `Json` (Prisma+PG varsayılanı `jsonb`; `@db.Json` YAZILMAZ).
+/// Okunurken Zod ile parse edilir (CLAUDE.md §4) ve YAZILIRKEN de bir Zod
+/// kapısından geçer — şemalar `apps/api` tarafında yaşar (eylem başına ayrı
+/// şema; fazla anahtar DÜŞÜRÜLÜR). Bu kolon bu yüzden sır/PII TAŞIMAZ.
+///
+/// `ip`/`userAgent` kişisel veri sınıfındadır AMA denetim kaydının VARLIK
+/// SEBEBİDİR — CLAUDE.md §4'ün "asla loglanmaz" listesinde yoktur: SAKLANIR,
+/// LOGLANMAZ.
+///
+/// `@@unique([tenantId, id])` DEKORATİF DEĞİL, ZORUNLU (`Job`'un birebir aynı
+/// durumu): bu tablonun doğal bir bileşik benzersizliği YOKTUR (aynı aktör aynı
+/// özneye aynı eylemi iki kez uygulayabilir — denetim kaydı bunu İKİ SATIR
+/// olarak tutmak zorundadır), ama CLAUDE.md §7 md 3 her kiracı tablosundan
+/// `tenant_id` öncü BİLEŞİK indeks istiyor ve migration linter'ı
+/// (`__tests__/helpers/migration-set.ts`,
+/// `MISSING_TENANT_ID_LEADING_UNIQUE_INDEX`) bunu mekanik olarak zorluyor.
+model AuditLog {
+  id          String      @id @default(cuid(2))
+  tenantId    String      @map("tenant_id")
+  actorUserId String      @map("actor_user_id")
+  action      AuditAction
+  subject     String
+  diff        Json
+  ip          String?
+  userAgent   String?     @map("user_agent")
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@map("audit_log")
+}
+
+/// Kiracıya bağlı, HENÜZ KABUL EDİLMEMİŞ üyelik daveti (ROADMAP v0.0.14,
+/// T-014/S1, architect K-A1 + K-A0). `TENANT_SCOPED_TABLES`'ın DÖRDÜNCÜ üyesi.
+///
+/// NEDEN AYRI BİR TABLO: davet kabul edilirken kullanıcı HENÜZ VAR OLMAYABİLİR
+/// (`TenantMembership.userId` NOT NULL + `app_user`'a FK) → üyeliği "beklemede"
+/// olarak önceden yazmak imkânsız. Better Auth'un `verification` tablosu da
+/// kullanılamaz (sır taşıyan üç tablodan biri; erişimi derleme zamanında
+/// `AuthModule`'e daraltılmış — bkz. `src/client.ts`).
+///
+/// ⚠ HAM BELİRTEÇ SAKLANMAZ — yalnızca `tokenHash` (sha256 özeti). İki sonucu
+/// var ve ikisi de bağlayıcı: (1) bu model `src/client.ts`'in
+/// `AUTH_SECRET_BEARING_MODELS` listesine GİRMEZ (o liste ÜÇ üyede kalır) ve
+/// (2) kimlik bilgisi taşıyan kolonların sayısını büyütmediği için v0.0.14.1'in
+/// (kimlik doğrulama rolü ayrımı) kapsamını BÜYÜTMEZ.
+///
+/// `email` KÜÇÜK HARFE NORMALİZE EDİLEREK yazılır ve karşılaştırılır. Bu bir
+/// veritabanı kısıtı DEĞİL, yazma/okuma yolunun sözleşmesidir (uygulaması
+/// `apps/api`, T-014/S4) — `@@unique([tenantId, email])` ancak normalize
+/// edilmiş değerlerle anlamlıdır: aksi halde `A@x.com` ve `a@x.com` İKİ ayrı
+/// bekleyen davet üretir ve "zaten davet edilmiş mi" kontrolü atlanır.
+///
+/// SOFT DELETE YOK: davet kabul edildiğinde satır SİLİNİR (belirteç tek
+/// kullanımlık; ikinci kabul denemesi "geçersiz davet" alır). `updatedAt` VAR
+/// — tekrar davet aynı satırı günceller (`upsert`), yani bu tablo `AuditLog`'un
+/// aksine GERÇEKTEN güncellenir.
+///
+/// ⚠ İLİŞKİ/FK KARARI (T-014/S1, `db` ajanının kararı — architect K-A1 bu satırı
+/// BELİRTMEMİŞTİ, `po` R-PO6 ile işaretledi):
+///   - `tenant` → `onDelete: Cascade`. Gerekçe MEKANİK: kiracı silindiğinde
+///     bekleyen davetler YETİM kalırsa izolasyon süitinin kiracı temizliği
+///     (`cleanupTenant`) satır bırakır ve çapraz kiracı okuma senaryosu
+///     SIZDIRIR. `TenantMembership`/`Job`'un birebir aynı kararı.
+///   - `invitedByUserId` → FK YOK. Gerekçe `AuditLog.actorUserId` ile AYNI:
+///     "daveti kim gönderdi" bir OLGUDUR; davet eden kullanıcının silinmesi ne
+///     bekleyen daveti geçersiz kılmalı (Cascade) ne de kullanıcı silmeyi
+///     kilitlemeli (Restrict). Kolon ilişkisiz bir `text`'tir.
+///
+/// İNDEKS GEREKÇESİ (yalnızca iki, üçüncüsü BİLEREK yok):
+///   - `@@unique([tenantId, email])` — DOĞAL benzersizlik. Bu yüzden `Job`/
+///     `AuditLog`'un ihtiyaç duyduğu yapay `@@unique([tenantId, id])`
+///     GEREKMEZ (migration linter'ının `tenant_id` öncü UNIQUE INDEX şartı
+///     bu kısıtla zaten karşılanıyor).
+///   - `@@unique([tenantId, tokenHash])` — kabul sorgusunun İDEAL indeksi
+///     (RLS her sorguya `tenant_id = …` yüklemini zaten EKLER, dolayısıyla
+///     fiili yüklem `(tenant_id, token_hash)`'tir).
+///   - `expiresAt` üzerinde indeks YOK: süresi geçmiş davet SORGULANMAZ,
+///     yalnızca tek satır okunurken kontrol edilir. Gereksiz indeks yazma
+///     yüküne maliyettir — bu tablo davet başına yazılır, taranmaz.
+model TenantInvitation {
+  id              String     @id @default(cuid(2))
+  tenantId        String     @map("tenant_id")
+  email           String
+  role            TenantRole
+  tokenHash       String     @map("token_hash")
+  invitedByUserId String     @map("invited_by_user_id")
+  expiresAt       DateTime   @map("expires_at") @db.Timestamptz(3)
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, email])
+  @@unique([tenantId, tokenHash])
+  @@map("tenant_invitation")
+}
+
 /// Kiracı durumu. `deleted` değeri YOKTUR (A-V8) — silinmişliğin tek doğruluk
 /// kaynağı `Tenant.deletedAt`'tir.
 enum TenantStatus {
@@ -323,4 +487,26 @@ enum JobStatus {
   failed
 
   @@map("job_status")
+}
+
+/// Denetim kaydı eylemi (ROADMAP v0.0.14, T-014/S1, architect K-A1). Bu sürümün
+/// kapsamındaki TEK olay sınıfı "yetki değişikliği"dir ve dört değerin DÖRDÜ DE
+/// tüketilir (davet et → kabul → rol değiştir → çıkar).
+///
+/// ⚠ `revoked` (daveti geri çekme) gibi TÜKETİCİSİ OLMAYAN bir değer BİLEREK
+/// YOKTUR — "ölü sözlük, ölü iznin kardeşidir": tüketilmeyen bir enum değeri
+/// tıpkı tüketilmeyen bir izin gibi, var olmayan bir yeteneği var gibi gösterir.
+/// Değer EKLEMEK `ALTER TYPE … ADD VALUE` ile additive bir migration'dır;
+/// ÇIKARMAK kolon kaldırmakla aynı iki-sürüm kuralına tabidir.
+///
+/// Bu enum TELE HİÇ ÇIKMAZ → tele-enum parite pini GEREKMEZ (karşılaştır:
+/// `TenantStatus`/`TenantRole`, ikisi de tel sözleşmesinde kopyası olduğu için
+/// pinli).
+enum AuditAction {
+  member_invited
+  member_invitation_accepted
+  member_role_changed
+  member_removed
+
+  @@map("audit_action")
 }

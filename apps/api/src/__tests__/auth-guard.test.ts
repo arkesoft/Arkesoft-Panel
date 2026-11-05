@@ -51,17 +51,44 @@ function uniqueEmail(): string {
 }
 
 /**
+ * Bu dosyadaki ALTI senaryonun paylaştığı sabit istemci bağlamı (ROADMAP
+ * v0.0.14, T-014/S4). Senaryoların konusu kimlik/kiracı dallarıdır; istemci
+ * alanları ilgisizdir.
+ */
+const GUARD_TEST_CLIENT = { ip: null, userAgent: null } as const satisfies RequestContext['client']
+
+/**
  * ALS deposunu elle kurar ve `callback`'i o bağlam İÇİNDE çalıştırır —
  * `tenant-guard.test.ts`/`error-mapping.test.ts`'in AYNI deseni, ASENKRON
  * `callback` DESTEKLER (`AsyncLocalStorage.run()` dönüşü AYNEN taşır) —
  * `AuthGuard.canActivate()` `async` olduğu için (R2'nin `withTenant()`
  * çağrısı) senkron `toThrow()` DEĞİL, `rejects`/`resolves` kullanılır.
+ *
+ * ROADMAP v0.0.14, T-014/S4 (additive, po R-PO2) — `client` alanı `Omit`
+ * listesine EKLENDİ ve bu yardımcı onu KENDİSİ doldurur.
+ *
+ * ⚠⚠ BU, ALANI OPSİYONEL YAPMAK DEĞİLDİR ve ayrım ölçülebilir:
+ * `RequestContext.client` tip tanımında ZORUNLU (`?` YOK) ve ÜRETİM
+ * kurucusunda (`request-context.middleware.ts`) DOLDURULUYOR — bu `Omit`
+ * yalnızca BU TEST YARDIMCISININ parametre şeklini daraltıyor, tam nesneyi
+ * aşağıda kendisi tamamlıyor. Zaten `requestId`/`receivedAt` de BİREBİR aynı
+ * sebeple (sabit değer, senaryonun konusu değil) listede.
+ *
+ * ⚠ ALTERNATİF ÖLÇÜLDÜ: altı çağrı yerinin her birine `client` yazmak da
+ * derlerdi, ama o altı senaryonun KONUSU kimlik/kiracı dallarıdır — istemci
+ * alanlarını altı kez tekrarlamak hiçbir iddiayı güçlendirmez ve bir alan
+ * eklendiğinde yine altı yerin güncellenmesini gerektirirdi.
  */
 function runWithStore<T>(
-  store: Omit<RequestContext, 'requestId' | 'receivedAt'>,
+  store: Omit<RequestContext, 'requestId' | 'receivedAt' | 'client'>,
   callback: () => T,
 ): T {
-  const fullStore: RequestContext = { requestId: REQUEST_ID, receivedAt: Date.now(), ...store }
+  const fullStore: RequestContext = {
+    requestId: REQUEST_ID,
+    receivedAt: Date.now(),
+    client: GUARD_TEST_CLIENT,
+    ...store,
+  }
   return requestContextStorage.run(fullStore, callback)
 }
 

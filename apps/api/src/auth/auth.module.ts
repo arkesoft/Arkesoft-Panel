@@ -18,12 +18,22 @@
 // `MailTransport` DI kablolanması (S4'ün devir notu — S4 bilerek env
 // okumadı): `SmtpMailTransportConfig`'i `ApiEnv`'den (`SMTP_HOST`/
 // `SMTP_PORT`/`SMTP_SECURE`/`MAIL_FROM_NAME`/`MAIL_FROM_ADDRESS`, zaten
-// `infraEnvSchema`'da mevcut) eşleyen TEK yer burasıdır.
+// `infraEnvSchema`'da mevcut) eşleyen TEK yer burasıydı.
 //
-// Yaşam döngüsü: hem ham Prisma istemcisi hem SMTP taşıyıcısı KENDİ
-// kaynaklarını açar; `OnModuleDestroy` ile kapanışta serbest bırakılır
-// (`PrismaService`'in AC11 desenine paralel — sarkan bağlantı/soket
-// bırakmaz, test teardown'ı temiz kalır).
+// GÜNCELLEME (ROADMAP v0.0.14, T-014/S4, po R-PO3): taşıyıcı sağlayıcısı
+// `mail/mail.module.ts`'E TAŞINDI ve bu modül onu `imports` ile tüketir.
+// Sebep: üye davet akışı bu dizinin DIŞINDA yaşıyor ve aynı taşıyıcıya
+// ihtiyaç duyuyor. ⚠ ALTERNATİF — bu modülün `exports` dizisine ikinci bir
+// token eklemek — DEĞERLENDİRİLDİ VE REDDEDİLDİ: aşağıdaki `exports`
+// satırının yazılı iddiası ("dışa açılan yüzey TEK token'a DARALTILDI")
+// bayatlardı. ⚠ Tam kimlik örneği token'ı YENİDEN AÇILMADI; `exports`
+// dizisi bu sürümde DEĞİŞMEDİ. Taşıma BİREBİR — davranış, yaşam döngüsü ve
+// tek örnek garantisi aynen korundu (SMTP soketi hâlâ bir tane).
+//
+// Yaşam döngüsü: ham Prisma istemcisi KENDİ kaynağını açar; `OnModuleDestroy`
+// ile kapanışta serbest bırakılır (`PrismaService`'in AC11 desenine paralel —
+// sarkan bağlantı bırakmaz, test teardown'ı temiz kalır). SMTP soketinin aynı
+// sözleşmesi artık `MailModule`'ün sorumluluğunda.
 
 import { Inject, Injectable, Module } from '@nestjs/common'
 import type { OnModuleDestroy, Provider } from '@nestjs/common'
@@ -47,7 +57,8 @@ import { AUTH_INSTANCE, AUTH_SESSION_READER } from './auth.tokens.js'
 import type { AuthSessionReader } from './auth.tokens.js'
 import { MAIL_TRANSPORT } from './mail/mail-transport.types.js'
 import type { MailTransport } from './mail/mail-transport.types.js'
-import { SmtpMailTransport } from './mail/smtp-mail-transport.js'
+// T-014/S4 EKLEMESİ (po R-PO3): taşıyıcı sağlayıcısının YENİ evi.
+import { MailModule } from './mail/mail.module.js'
 // T-006/S8 EKLEMESİ: `RateLimitGuard` (`APP_GUARD`, V-P2) +
 // `RateLimitAccountResetInterceptor` (`APP_INTERCEPTOR`, K3 "başarılı giriş
 // hesap sayacını sıfırlar") + `RateLimitService` (Redis sayaç deposu).
@@ -71,32 +82,6 @@ class AuthPrismaClientResource implements OnModuleDestroy {
   onModuleDestroy(): Promise<void> {
     return this.client.$disconnect()
   }
-}
-
-/** `SmtpMailTransport`'u `ApiEnv`'den kuran ve yaşam döngüsünü yöneten kaynak. */
-@Injectable()
-class AuthMailTransportResource implements OnModuleDestroy {
-  readonly transport: SmtpMailTransport
-
-  constructor(@Inject(API_ENV) env: ApiEnv) {
-    this.transport = new SmtpMailTransport({
-      host: env.SMTP_HOST,
-      port: env.SMTP_PORT,
-      secure: env.SMTP_SECURE,
-      fromName: env.MAIL_FROM_NAME,
-      fromAddress: env.MAIL_FROM_ADDRESS,
-    })
-  }
-
-  onModuleDestroy(): void {
-    this.transport.close()
-  }
-}
-
-const mailTransportProvider: Provider = {
-  provide: MAIL_TRANSPORT,
-  useFactory: (resource: AuthMailTransportResource): MailTransport => resource.transport,
-  inject: [AuthMailTransportResource],
 }
 
 const authInstanceProvider: Provider = {
@@ -169,6 +154,10 @@ const rateLimitResetInterceptorProvider: Provider = {
 }
 
 @Module({
+  // T-014/S4 EKLEMESİ (po R-PO3): `MAIL_TRANSPORT` token'ı artık `MailModule`
+  // tarafından sağlanıyor; `authInstanceProvider` onu BU import üzerinden
+  // görür. Sağlayıcı tekildir — ikinci bir SMTP soketi açılmaz.
+  imports: [MailModule],
   // T-006/S6 EKLEMESİ: `SessionsController` `AuthController`'DAN ÖNCE
   // listelenir — `AuthController`'ın `@All('auth/*path')` joker rotası KAYIT
   // SIRASINA göre eşleşir (Express özgüllüğe göre ÖNCELİKLENDİRMEZ); ters
@@ -177,8 +166,6 @@ const rateLimitResetInterceptorProvider: Provider = {
   controllers: [SessionsController, AuthController],
   providers: [
     AuthPrismaClientResource,
-    AuthMailTransportResource,
-    mailTransportProvider,
     authInstanceProvider,
     // FIX turu 1, madde 3 (F1(b)):
     authSessionReaderProvider,
