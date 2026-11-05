@@ -1,5 +1,5 @@
 // @arkesoft/db — `catalog-lint.ts`'in SAF birim testleri (ROADMAP v0.0.13,
-// T-005/S4, architect K-E5)
+// T-005/S4, architect K-E5; ROADMAP v0.0.14.1, T-015/ST-C genişletmesi)
 //
 // Bu dosya `*.isolation.test.ts` DEĞİLDİR — DB'ye dokunmaz, normal
 // `pnpm --filter @arkesoft/db test` hattında koşar (`vitest.config.ts`'in
@@ -10,32 +10,82 @@
 // durumunu (RLS+FORCE+politika+öncü indeks+yetkiler) birebir modeller; her
 // test taban üzerinden TEK bir sapma uygular ve o sapmanın BEKLENEN kuralı
 // (ve YALNIZCA o kuralı, ilgisiz tabloda) ürettiğini doğrular.
+//
+// T-015/ST-C GENİŞLETMESİ: taban artık ÜÇ sır taşıyan tabloyu (`account`/
+// `session`/`verification`, ST-D'nin DDL'inin HEDEF DURUMU — kolon bazlı
+// SELECT/INSERT/UPDATE + tablo bazlı DELETE) ve `app_user`'ı (tablo bazlı
+// SELECT/INSERT/UPDATE, DELETE YOK) de modeller. `lintCatalog`'un çıktısı
+// her assert'te TAM karşılaştırılır (`toEqual`, `some()` YOK — K-E5/AC9).
 
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 
 import type { CatalogSnapshot } from '../catalog-snapshot.js'
-import { lintCatalog, type LintCatalogOptions, type TenantIsolationRule } from '../catalog-lint.js'
+import {
+  lintCatalog,
+  TENANT_ISOLATION_RULES,
+  type LintCatalogOptions,
+  type LintFinding,
+  type TenantIsolationRule,
+} from '../catalog-lint.js'
 
 const TENANT_CONTEXT_SETTING = 'app.tenant_id'
 const APP_ROLE_NAME = 'arkesoft_app'
 const MIGRATOR_ROLE_NAME = 'arkesoft_migrator'
+// T-015/ST-B: `CatalogSnapshot.roles[]`'un ikinci üyesi.
+const AUTH_ROLE_NAME = 'arkesoft_auth'
+// Beklenen tek grantee kümesinin DIŞINDA, γ senaryosu için "adlandırılmış
+// üçüncü rol" — gerçek bir rol değil, saf fixture verisi.
+const THIRD_PARTY_ROLE_NAME = 'some_other_role'
+
+const SECRET_TABLE_NAMES = ['account', 'session', 'verification'] as const
+
+// FIX turu 1 (qa Tur 1 [medium] QA-1 bulgusu) — üç ayrı opsiyonel alan TEK
+// `authRole` nesnesine indi; tip burada `NonNullable<LintCatalogOptions['authRole']>`
+// üzerinden türetilir (literal yeniden tanım YOK).
+type AuthRoleLintInput = NonNullable<LintCatalogOptions['authRole']>
+
+const AUTH_ROLE_TABLE_EXPECTATIONS: AuthRoleLintInput['tablePrivilegeExpectations'] = [
+  { tableName: 'account', columnLevel: true, expectsTableDelete: true },
+  { tableName: 'session', columnLevel: true, expectsTableDelete: true },
+  { tableName: 'verification', columnLevel: true, expectsTableDelete: true },
+  { tableName: 'app_user', columnLevel: false, expectsTableDelete: false },
+]
 
 const BASE_OPTIONS: LintCatalogOptions = {
   taxonomy: {
     tenantScopedTables: ['tenant_membership'],
-    platformLevelTables: ['tenant', 'app_user'],
+    platformLevelTables: ['tenant', 'app_user', 'session', 'account', 'verification'],
   },
   tenantContextSetting: TENANT_CONTEXT_SETTING,
   appRoleName: APP_ROLE_NAME,
+  authRole: {
+    roleName: AUTH_ROLE_NAME,
+    secretBearingTables: SECRET_TABLE_NAMES,
+    tablePrivilegeExpectations: AUTH_ROLE_TABLE_EXPECTATIONS,
+  },
+}
+
+/** Her sır taşıyan tablonun kolonları — δ senaryosu için `account` ÜÇ kolon taşır. */
+const SECRET_TABLE_COLUMNS: Readonly<Record<string, readonly string[]>> = {
+  account: ['id', 'email', 'password'],
+  session: ['id', 'token'],
+  verification: ['id', 'value'],
 }
 
 function healthySnapshot(): CatalogSnapshot {
+  const secretTableColumns = Object.entries(SECRET_TABLE_COLUMNS).flatMap(([tableName, columns]) =>
+    columns.map((columnName) => ({ tableName, columnName })),
+  )
+
   return {
     tables: [
       { tableName: 'tenant', tableOwner: MIGRATOR_ROLE_NAME },
       { tableName: 'app_user', tableOwner: MIGRATOR_ROLE_NAME },
       { tableName: 'tenant_membership', tableOwner: MIGRATOR_ROLE_NAME },
       { tableName: '_prisma_migrations', tableOwner: MIGRATOR_ROLE_NAME },
+      { tableName: 'account', tableOwner: MIGRATOR_ROLE_NAME },
+      { tableName: 'session', tableOwner: MIGRATOR_ROLE_NAME },
+      { tableName: 'verification', tableOwner: MIGRATOR_ROLE_NAME },
     ],
     columns: [
       { tableName: 'tenant', columnName: 'id', dataType: 'text', isNullable: false },
@@ -53,6 +103,11 @@ function healthySnapshot(): CatalogSnapshot {
         dataType: 'text',
         isNullable: false,
       },
+      ...secretTableColumns.map((column) => ({
+        ...column,
+        dataType: 'text',
+        isNullable: false,
+      })),
     ],
     rowSecurity: [
       {
@@ -82,11 +137,29 @@ function healthySnapshot(): CatalogSnapshot {
         columns: ['user_id'],
       },
     ],
-    appRole: { roleName: APP_ROLE_NAME, isSuperuser: false, canBypassRls: false },
+    roles: [
+      { roleName: APP_ROLE_NAME, isSuperuser: false, canBypassRls: false, canCreateDb: false },
+      { roleName: AUTH_ROLE_NAME, isSuperuser: false, canBypassRls: false, canCreateDb: false },
+    ],
     privileges: [
-      { tableName: 'tenant', canSelect: true, canInsert: true, canUpdate: true, canDelete: true },
-      { tableName: 'app_user', canSelect: true, canInsert: true, canUpdate: true, canDelete: true },
       {
+        roleName: APP_ROLE_NAME,
+        tableName: 'tenant',
+        canSelect: true,
+        canInsert: true,
+        canUpdate: true,
+        canDelete: true,
+      },
+      {
+        roleName: APP_ROLE_NAME,
+        tableName: 'app_user',
+        canSelect: true,
+        canInsert: true,
+        canUpdate: true,
+        canDelete: true,
+      },
+      {
+        roleName: APP_ROLE_NAME,
         tableName: 'tenant_membership',
         canSelect: true,
         canInsert: true,
@@ -94,42 +167,160 @@ function healthySnapshot(): CatalogSnapshot {
         canDelete: true,
       },
       // FIX turu 2 (B3): `_prisma_migrations`'ın SAĞLIKLI hedef durumu artık
-      // yalnızca SELECT — bootstrap'ın yeni daraltılmış `REVOKE`si (bkz.
+      // yalnızca SELECT — bootstrap'ın daraltılmış `REVOKE`si (bkz.
       // `sql/bootstrap-roles.sql` bölüm 6) bu üçünü `false`a yakınsatır.
       {
+        roleName: APP_ROLE_NAME,
         tableName: '_prisma_migrations',
         canSelect: true,
         canInsert: false,
         canUpdate: false,
         canDelete: false,
       },
+      // T-015/ST-C/ST-D'nin HEDEF DURUMU: `arkesoft_app` üç sır taşıyan
+      // tabloda HİÇBİR yetkiye sahip DEĞİL (tablo bazlı REVOKE uygulandı).
+      ...SECRET_TABLE_NAMES.map((tableName) => ({
+        roleName: APP_ROLE_NAME,
+        tableName,
+        canSelect: false,
+        canInsert: false,
+        canUpdate: false,
+        canDelete: false,
+      })),
+      // `arkesoft_auth`: üç sır taşıyan tabloda TABLO bazlı SELECT/INSERT/
+      // UPDATE YOK (kolon bazlı veriliyor, aşağıdaki `columnPrivileges`), TABLO
+      // bazlı DELETE VAR.
+      ...SECRET_TABLE_NAMES.map((tableName) => ({
+        roleName: AUTH_ROLE_NAME,
+        tableName,
+        canSelect: false,
+        canInsert: false,
+        canUpdate: false,
+        canDelete: true,
+      })),
+      // `arkesoft_auth`: `app_user` üzerinde TABLO bazlı SELECT/INSERT/UPDATE
+      // VAR, DELETE YOK (A-N1 — en az yetki).
+      {
+        roleName: AUTH_ROLE_NAME,
+        tableName: 'app_user',
+        canSelect: true,
+        canInsert: true,
+        canUpdate: true,
+        canDelete: false,
+      },
     ],
+    // T-015/ST-C, Kaynak A: her sır taşıyan tablonun HER kolonu için
+    // `arkesoft_auth`ın sağlıklı (columnOnly) durumu — tablo bazlı YOK, kolon
+    // bazlı SELECT/INSERT/UPDATE VAR (ST-A0①'in ampirik ölçtüğü ayırt
+    // edilebilir sinyal).
+    columnPrivileges: secretTableColumns.map((column) => ({
+      roleName: AUTH_ROLE_NAME,
+      ...column,
+      hasTableSelect: false,
+      hasColumnSelect: true,
+      hasTableInsert: false,
+      hasColumnInsert: true,
+      hasTableUpdate: false,
+      hasColumnUpdate: true,
+    })),
+    // T-015/ST-C, Kaynak B: her sır taşıyan tablonun HER kolonu için tek
+    // alıcı `arkesoft_auth` (beklenen küme — ST-A0③: tablo sahibi `grantee`
+    // olarak ASLA görünmez, bu yüzden beklenen kümeye EKLENMEDİ).
+    columnGrants: secretTableColumns.map((column) => ({
+      ...column,
+      grantor: MIGRATOR_ROLE_NAME,
+      grantee: AUTH_ROLE_NAME,
+      privilegeType: 'SELECT',
+      isGrantable: false,
+    })),
+    // FIX turu 1 (security Tur 1 [medium] S-1), Kaynak C — canlı Postgres'te
+    // ÖLÇÜLMÜŞ şekil (bkz. handoff raporu): her sır taşıyan tabloda
+    // `arkesoft_auth` TABLO bazlı DELETE taşır; `app_user`de HEM
+    // `arkesoft_app` (tam DML) HEM `arkesoft_auth` (DELETE HARİÇ) TABLO
+    // seviyesi hibe taşır. Tablo SAHİBİNİN (`arkesoft_migrator`) `relacl`de
+    // `grantee` olarak GÖRÜNMESİ (attacl'in TERSİ — dosya başı notu) BİLEREK
+    // fixture'a EKLENMEDİ: `lintTableGrantGrantees` sahibi `table.tableOwner`
+    // ALANINDAN okur (bu fixture'da `MIGRATOR_ROLE_NAME`), `tableGrants`
+    // satırı OLMASA bile beklenen kümenin bir üyesidir — eksik satır sağlıklı
+    // taban için yanlış pozitif ÜRETMEZ.
+    tableGrants: [
+      ...SECRET_TABLE_NAMES.map((tableName) => ({
+        tableName,
+        grantor: MIGRATOR_ROLE_NAME,
+        grantee: AUTH_ROLE_NAME,
+        privilegeType: 'DELETE',
+        isGrantable: false,
+      })),
+      ...(['SELECT', 'INSERT', 'UPDATE'] as const).map((privilegeType) => ({
+        tableName: 'app_user',
+        grantor: MIGRATOR_ROLE_NAME,
+        grantee: AUTH_ROLE_NAME,
+        privilegeType,
+        isGrantable: false,
+      })),
+      ...(['SELECT', 'INSERT', 'UPDATE', 'DELETE'] as const).map((privilegeType) => ({
+        tableName: 'app_user',
+        grantor: MIGRATOR_ROLE_NAME,
+        grantee: APP_ROLE_NAME,
+        privilegeType,
+        isGrantable: false,
+      })),
+    ],
+    // FIX turu 2 (security Tur 2 [high] S-7), Kaynak D — sağlıklı tabanda
+    // `public`te view/matview/foreign table YOK (bugün canlı veritabanında
+    // ÖLÇÜLEN olgu: SIFIR). Boş dizi burada "kural hiç bakmadı" DEMEK
+    // DEĞİLDİR — `UNEXPECTED_RELATION_KIND: Kaynak D'de satır varsa ateşlenir`
+    // testi (aşağıda) kuralın GERÇEKTEN değerlendirildiğini kanıtlar.
+    unexpectedRelations: [],
+    // FIX turu 2 (security Tur 2 [medium] S-8), Kaynak E — sağlıklı tabanda
+    // `public`te fonksiyon YOK (bugün canlı veritabanında ÖLÇÜLEN olgu:
+    // SIFIR). Boş dizi burada da "kural hiç bakmadı" DEMEK DEĞİLDİR —
+    // aşağıdaki `UNEXPECTED_FUNCTION_EXECUTE_PRIVILEGE` fixture'ı kuralın
+    // GERÇEKTEN değerlendirildiğini kanıtlar.
+    functionPrivileges: [],
+    // FIX turu 3 (security Tur 3 [medium] S-15), Kaynak E'nin hibe ekseni —
+    // sağlıklı tabanda fonksiyon YOK, dolayısıyla hibe satırı da YOK.
+    functionExecuteGrantees: [],
   }
 }
 
-/** Verilen kuralı taşıyan bulguları (varsa tabloya göre süzülmüş) döner. */
+/** `TENANT_ISOLATION_RULES`'ın HER üyesinin en az bir fixture'da üretildiğini mekanik olarak kaydeder (R-PM7). */
+const observedRules = new Set<TenantIsolationRule>()
+
+/** `lintCatalog`'u çağırır VE üretilen kuralları `observedRules`'a kaydeder — bu dosyadaki TEK çağrı noktası. */
+function lint(snapshot: CatalogSnapshot, options: LintCatalogOptions): readonly LintFinding[] {
+  const findings = lintCatalog(snapshot, options)
+  for (const finding of findings) {
+    observedRules.add(finding.rule)
+  }
+  return findings
+}
+
+/** Verilen kuralı taşıyan bulguları döner. */
 function findingsOf(
-  findings: readonly { readonly rule: TenantIsolationRule; readonly tableName?: string }[],
+  findings: readonly LintFinding[],
   rule: TenantIsolationRule,
-): readonly { readonly rule: TenantIsolationRule; readonly tableName?: string }[] {
+): readonly LintFinding[] {
   return findings.filter((finding) => finding.rule === rule)
 }
 
 describe('catalog-lint — sağlıklı durum', () => {
   it('taban anlık görüntü hiçbir bulgu üretmez', () => {
-    expect(lintCatalog(healthySnapshot(), BASE_OPTIONS)).toEqual([])
+    expect(lint(healthySnapshot(), BASE_OPTIONS)).toEqual([])
   })
 })
 
-describe('catalog-lint — taksonomi→katalog (13 kural, FIX turu 1 güncellendi)', () => {
-  it('MISSING_TABLE: taksonomideki tablo katalogda yok', () => {
+describe('catalog-lint — taksonomi→katalog (FIX turu 1 güncellendi)', () => {
+  it('MISSING_TABLE: taksonomideki tenant-scoped tablo katalogda yok', () => {
     const snapshot = healthySnapshot()
     const withoutTable: CatalogSnapshot = {
       ...snapshot,
       tables: snapshot.tables.filter((table) => table.tableName !== 'tenant_membership'),
     }
-    const findings = lintCatalog(withoutTable, BASE_OPTIONS)
-    expect(findingsOf(findings, 'MISSING_TABLE')).toHaveLength(1)
+    const findings = lint(withoutTable, BASE_OPTIONS)
+    expect(findingsOf(findings, 'MISSING_TABLE')).toEqual([
+      expect.objectContaining({ rule: 'MISSING_TABLE', tableName: 'tenant_membership' }),
+    ])
   })
 
   it('MISSING_TENANT_ID_COLUMN: tablo var ama tenant_id kolonu yok', () => {
@@ -141,7 +332,7 @@ describe('catalog-lint — taksonomi→katalog (13 kural, FIX turu 1 güncellend
           !(column.tableName === 'tenant_membership' && column.columnName === 'tenant_id'),
       ),
     }
-    const findings = lintCatalog(withoutColumn, BASE_OPTIONS)
+    const findings = lint(withoutColumn, BASE_OPTIONS)
     expect(findingsOf(findings, 'MISSING_TENANT_ID_COLUMN')).toHaveLength(1)
   })
 
@@ -155,7 +346,7 @@ describe('catalog-lint — taksonomi→katalog (13 kural, FIX turu 1 güncellend
           : column,
       ),
     }
-    const findings = lintCatalog(nullable, BASE_OPTIONS)
+    const findings = lint(nullable, BASE_OPTIONS)
     expect(findingsOf(findings, 'NULLABLE_TENANT_ID_COLUMN')).toHaveLength(1)
   })
 
@@ -169,7 +360,7 @@ describe('catalog-lint — taksonomi→katalog (13 kural, FIX turu 1 güncellend
           : column,
       ),
     }
-    const findings = lintCatalog(wrongType, BASE_OPTIONS)
+    const findings = lint(wrongType, BASE_OPTIONS)
     expect(findingsOf(findings, 'WRONG_TENANT_ID_TYPE')).toHaveLength(1)
   })
 
@@ -181,7 +372,7 @@ describe('catalog-lint — taksonomi→katalog (13 kural, FIX turu 1 güncellend
         index.tableName === 'tenant_membership' ? { ...index, columns: ['user_id'] } : index,
       ),
     }
-    const findings = lintCatalog(withoutLeadingIndex, BASE_OPTIONS)
+    const findings = lint(withoutLeadingIndex, BASE_OPTIONS)
     expect(findingsOf(findings, 'MISSING_TENANT_ID_LEADING_INDEX')).toHaveLength(1)
   })
 
@@ -195,7 +386,7 @@ describe('catalog-lint — taksonomi→katalog (13 kural, FIX turu 1 güncellend
         isRowSecurityForced: false,
       })),
     }
-    const findings = lintCatalog(disabled, BASE_OPTIONS)
+    const findings = lint(disabled, BASE_OPTIONS)
     expect(findingsOf(findings, 'RLS_NOT_ENABLED')).toHaveLength(1)
     expect(findingsOf(findings, 'RLS_NOT_FORCED')).toHaveLength(0)
   })
@@ -206,7 +397,7 @@ describe('catalog-lint — taksonomi→katalog (13 kural, FIX turu 1 güncellend
       ...snapshot,
       rowSecurity: snapshot.rowSecurity.map((row) => ({ ...row, isRowSecurityForced: false })),
     }
-    const findings = lintCatalog(notForced, BASE_OPTIONS)
+    const findings = lint(notForced, BASE_OPTIONS)
     expect(findingsOf(findings, 'RLS_NOT_FORCED')).toHaveLength(1)
     expect(findingsOf(findings, 'RLS_NOT_ENABLED')).toHaveLength(0)
   })
@@ -214,7 +405,7 @@ describe('catalog-lint — taksonomi→katalog (13 kural, FIX turu 1 güncellend
   it('MISSING_TENANT_POLICY: politika hiç yok (AC3 vaka b)', () => {
     const snapshot = healthySnapshot()
     const withoutPolicy: CatalogSnapshot = { ...snapshot, policies: [] }
-    const findings = lintCatalog(withoutPolicy, BASE_OPTIONS)
+    const findings = lint(withoutPolicy, BASE_OPTIONS)
     expect(findingsOf(findings, 'MISSING_TENANT_POLICY')).toHaveLength(1)
   })
 
@@ -224,7 +415,7 @@ describe('catalog-lint — taksonomi→katalog (13 kural, FIX turu 1 güncellend
       ...snapshot,
       policies: snapshot.policies.map((policy) => ({ ...policy, withCheckExpression: null })),
     }
-    const findings = lintCatalog(withoutCheck, BASE_OPTIONS)
+    const findings = lint(withoutCheck, BASE_OPTIONS)
     expect(findingsOf(findings, 'POLICY_MISSING_WITH_CHECK')).toHaveLength(1)
   })
 
@@ -237,17 +428,16 @@ describe('catalog-lint — taksonomi→katalog (13 kural, FIX turu 1 güncellend
         usingExpression: "(tenant_id = current_setting('app.other_setting'::text, true))",
       })),
     }
-    const findings = lintCatalog(wrongUsing, BASE_OPTIONS)
+    const findings = lint(wrongUsing, BASE_OPTIONS)
     expect(findingsOf(findings, 'POLICY_USING_NOT_CANONICAL')).toHaveLength(1)
     expect(findingsOf(findings, 'POLICY_WITH_CHECK_NOT_CANONICAL')).toHaveLength(0)
   })
 
   // FIX turu 1 — bu test solid/security Tur 1 [high] bulgusunun BİREBİR
   // tekrarıdır: USING doğru GUC'u okur, WITH CHECK `(true)`dur (çapraz
-  // tenant YAZMA açık). Eski `||` birleşimi bunu 19 kuralın TAMAMINDAN
-  // GEÇİRİYORDU (`[]` dönüyordu) — artık `POLICY_WITH_CHECK_NOT_CANONICAL`
-  // ile YAKALANIYOR (FIX turu 2'de yeniden adlandırıldı, eski ad
-  // `POLICY_WITH_CHECK_WRONG_SETTING`).
+  // tenant YAZMA açık). Eski `||` birleşimi bunu TÜM kuralların
+  // TAMAMINDAN GEÇİRİYORDU (`[]` dönüyordu) — artık
+  // `POLICY_WITH_CHECK_NOT_CANONICAL` ile YAKALANIYOR.
   it('POLICY_WITH_CHECK_NOT_CANONICAL: WITH CHECK (true) — ÇAPRAZ TENANT YAZMA deliği (FIX turu 1)', () => {
     const snapshot = healthySnapshot()
     const withCheckTrue: CatalogSnapshot = {
@@ -257,7 +447,7 @@ describe('catalog-lint — taksonomi→katalog (13 kural, FIX turu 1 güncellend
         withCheckExpression: '(true)',
       })),
     }
-    const findings = lintCatalog(withCheckTrue, BASE_OPTIONS)
+    const findings = lint(withCheckTrue, BASE_OPTIONS)
     expect(findingsOf(findings, 'POLICY_WITH_CHECK_NOT_CANONICAL')).toHaveLength(1)
     expect(findingsOf(findings, 'POLICY_USING_NOT_CANONICAL')).toHaveLength(0)
     expect(findingsOf(findings, 'POLICY_MISSING_WITH_CHECK')).toHaveLength(0)
@@ -269,7 +459,7 @@ describe('catalog-lint — taksonomi→katalog (13 kural, FIX turu 1 güncellend
       ...snapshot,
       policies: snapshot.policies.map((policy) => ({ ...policy, withCheckExpression: null })),
     }
-    const findings = lintCatalog(withoutCheck, BASE_OPTIONS)
+    const findings = lint(withoutCheck, BASE_OPTIONS)
     expect(findingsOf(findings, 'POLICY_MISSING_WITH_CHECK')).toHaveLength(1)
     expect(findingsOf(findings, 'POLICY_WITH_CHECK_NOT_CANONICAL')).toHaveLength(0)
   })
@@ -277,12 +467,9 @@ describe('catalog-lint — taksonomi→katalog (13 kural, FIX turu 1 güncellend
   // K-E5 REVİZYONU (FIX turu 2) — solid/security Tur 2 bulgusu: eski alt dize
   // kontrolü (`expressionReferencesSetting`, SİLİNDİ) yalnızca "GUC'u okuyor
   // mu" sorusunu yanıtlıyordu, "tenant_id'yi GUC'a EŞİTLİYOR mu" sorusunu
-  // YANITLAMIYORDU. `security` 14 varyant ölçtü; 19 kuralın TAMAMINDAN temiz
-  // geçen ALTI vaka (aşağıdaki ilk altı test) + kalıp-tabanlı bir ara çözümün
-  // DE atlatılabileceğini gösteren İKİ EK vaka (`NOT (…)`, `(…) IS NOT TRUE`
-  // — son iki test, KALICI REGRESYON PİNİ). Artık karşılaştırma TAM (byte-
-  // birebir) EŞİTLİK olduğu için SEKİZİNİN DE `POLICY_WITH_CHECK_NOT_CANONICAL`
-  // ürettiği burada pinlenir.
+  // YANITLAMIYORDU. ALTI vaka (aşağıdaki ilk altı test) + kalıp-tabanlı bir
+  // ara çözümün DE atlatılabileceğini gösteren İKİ EK vaka (`NOT (…)`,
+  // `(…) IS NOT TRUE` — son iki test, KALICI REGRESYON PİNİ).
   describe.each([
     {
       label:
@@ -328,15 +515,13 @@ describe('catalog-lint — taksonomi→katalog (13 kural, FIX turu 1 güncellend
           withCheckExpression: expression,
         })),
       }
-      const findings = lintCatalog(mutated, BASE_OPTIONS)
+      const findings = lint(mutated, BASE_OPTIONS)
       expect(findingsOf(findings, 'POLICY_WITH_CHECK_NOT_CANONICAL')).toHaveLength(1)
     })
   })
 
   // vaka 2 (K-E5'in altı vakasının İKİNCİSİ) — OKUMA tarafı: aynı kalıp
-  // `USING` yüklemine uygulanır. Diğer altısı WITH CHECK'te test edildi,
-  // bu TEK başına USING'i kapsar (K-E5 madde: "USING ve WITH CHECK bağımsız
-  // değerlendirilir" simetrisini de pinler).
+  // `USING` yüklemine uygulanır.
   it('vaka 2: USING (current_setting(GUC) IS NOT NULL) — okuma tarafı, POLICY_USING_NOT_CANONICAL üretir', () => {
     const snapshot = healthySnapshot()
     const mutated: CatalogSnapshot = {
@@ -346,10 +531,8 @@ describe('catalog-lint — taksonomi→katalog (13 kural, FIX turu 1 güncellend
         usingExpression: `(current_setting('${TENANT_CONTEXT_SETTING}'::text, true) IS NOT NULL)`,
       })),
     }
-    const findings = lintCatalog(mutated, BASE_OPTIONS)
+    const findings = lint(mutated, BASE_OPTIONS)
     expect(findingsOf(findings, 'POLICY_USING_NOT_CANONICAL')).toHaveLength(1)
-    // WITH CHECK taban üzerinden DEĞİŞTİRİLMEDİ — hâlâ kanonik, bu yüzden
-    // KENDİ kuralı tetiklenmemeli (USING/WITH CHECK bağımsızlığının kanıtı).
     expect(findingsOf(findings, 'POLICY_WITH_CHECK_NOT_CANONICAL')).toHaveLength(0)
   })
 
@@ -366,9 +549,7 @@ describe('catalog-lint — taksonomi→katalog (13 kural, FIX turu 1 güncellend
         { ...basePolicy, policyName: 'tenant_membership_tenant_isolation_duplicate' },
       ],
     }
-    const findings = lintCatalog(duplicated, BASE_OPTIONS)
-    // İKİ politika satırı da (ifadeleri kanonikle byte-birebir eşleşse bile)
-    // "birden fazla politika" nedeniyle NOT_CANONICAL üretir.
+    const findings = lint(duplicated, BASE_OPTIONS)
     expect(findingsOf(findings, 'POLICY_USING_NOT_CANONICAL')).toHaveLength(2)
     expect(findingsOf(findings, 'POLICY_WITH_CHECK_NOT_CANONICAL')).toHaveLength(2)
   })
@@ -379,7 +560,7 @@ describe('catalog-lint — taksonomi→katalog (13 kural, FIX turu 1 güncellend
       ...snapshot,
       policies: snapshot.policies.map((policy) => ({ ...policy, roles: [APP_ROLE_NAME] })),
     }
-    const findings = lintCatalog(restrictedToRole, BASE_OPTIONS)
+    const findings = lint(restrictedToRole, BASE_OPTIONS)
     expect(findingsOf(findings, 'POLICY_RESTRICTED_TO_ROLE')).toHaveLength(1)
   })
 
@@ -388,13 +569,62 @@ describe('catalog-lint — taksonomi→katalog (13 kural, FIX turu 1 güncellend
     const missingPrivilege: CatalogSnapshot = {
       ...snapshot,
       privileges: snapshot.privileges.map((privilege) =>
-        privilege.tableName === 'tenant_membership'
+        privilege.roleName === APP_ROLE_NAME && privilege.tableName === 'tenant_membership'
           ? { ...privilege, canUpdate: false }
           : privilege,
       ),
     }
-    const findings = lintCatalog(missingPrivilege, BASE_OPTIONS)
+    const findings = lint(missingPrivilege, BASE_OPTIONS)
     expect(findingsOf(findings, 'APP_ROLE_MISSING_DML_PRIVILEGE')).toHaveLength(1)
+  })
+
+  it('APP_ROLE_MISSING_DML_PRIVILEGE: kolon seviyesi hibe taşıyan (columnGrants dolu) bir tabloda TETİKLENMEZ — ST-D sonrası regresyon koruması', () => {
+    // T-015/ST-C'nin "tadil" kararının pozitif kanıtı: `account` sağlıklı
+    // tabanda `arkesoft_app` için SIFIR yetki taşıyor AMA `columnGrants`
+    // dolu olduğu için bu eski kural (yeni kurallar DEĞİL) onu artık
+    // DEĞERLENDİRMEZ — aksi hâlde ST-D'nin DDL'i uygulandığı AN bu eski
+    // kural `account`/`session`/`verification` için YANLIŞ POZİTİF üretirdi.
+    const findings = lint(healthySnapshot(), BASE_OPTIONS)
+    expect(findingsOf(findings, 'APP_ROLE_MISSING_DML_PRIVILEGE')).toHaveLength(0)
+  })
+
+  it('APP_ROLE_MISSING_DML_PRIVILEGE: columnGrants BOŞKEN (ST-D öncesi taban) eski davranış KORUNUR', () => {
+    const snapshot = healthySnapshot()
+    const secretTableNames = new Set<string>(SECRET_TABLE_NAMES)
+    const preStD: CatalogSnapshot = {
+      ...snapshot,
+      // ST-D öncesi: kolon hibesi yok, `arkesoft_app` hâlâ tam DML taşıyor
+      // (blanket grant henüz REVOKE edilmemiş) — ST-B'nin ölçtüğü taban.
+      columnGrants: [],
+      privileges: snapshot.privileges.map((privilege) =>
+        privilege.roleName === APP_ROLE_NAME && secretTableNames.has(privilege.tableName)
+          ? { ...privilege, canSelect: true, canInsert: true, canUpdate: true, canDelete: true }
+          : privilege,
+      ),
+    }
+    const findings = lint(preStD, BASE_OPTIONS)
+    expect(findingsOf(findings, 'APP_ROLE_MISSING_DML_PRIVILEGE')).toHaveLength(0)
+  })
+})
+
+describe('catalog-lint — platform tabloları da MISSING_TABLE öznesi (T-015/ST-C, architect bulgusu)', () => {
+  it('"session" taksonomide platformLevelTables altında listelenmiş ama katalogdan TAMAMEN kaybolmuş — artık SESSİZ KALMAZ', () => {
+    const snapshot = healthySnapshot()
+    const withoutSessionTable: CatalogSnapshot = {
+      ...snapshot,
+      tables: snapshot.tables.filter((table) => table.tableName !== 'session'),
+      columns: snapshot.columns.filter((column) => column.tableName !== 'session'),
+      privileges: snapshot.privileges.filter((privilege) => privilege.tableName !== 'session'),
+      columnPrivileges: snapshot.columnPrivileges.filter(
+        (privilege) => privilege.tableName !== 'session',
+      ),
+      columnGrants: snapshot.columnGrants.filter((grant) => grant.tableName !== 'session'),
+      tableGrants: snapshot.tableGrants.filter((grant) => grant.tableName !== 'session'),
+    }
+    const findings = lint(withoutSessionTable, BASE_OPTIONS)
+    expect(findingsOf(findings, 'MISSING_TABLE')).toEqual([
+      expect.objectContaining({ rule: 'MISSING_TABLE', tableName: 'session' }),
+    ])
   })
 })
 
@@ -405,7 +635,7 @@ describe('catalog-lint — katalog→taksonomi (3 kural)', () => {
       ...snapshot,
       tables: [...snapshot.tables, { tableName: 'orphan_table', tableOwner: MIGRATOR_ROLE_NAME }],
     }
-    const findings = lintCatalog(withExtraTable, BASE_OPTIONS)
+    const findings = lint(withExtraTable, BASE_OPTIONS)
     expect(findingsOf(findings, 'UNCLASSIFIED_TABLE')).toEqual([
       expect.objectContaining({ rule: 'UNCLASSIFIED_TABLE', tableName: 'orphan_table' }),
     ])
@@ -420,7 +650,7 @@ describe('catalog-lint — katalog→taksonomi (3 kural)', () => {
         { tableName: 'tenant', columnName: 'tenant_id', dataType: 'text', isNullable: false },
       ],
     }
-    const findings = lintCatalog(contaminated, BASE_OPTIONS)
+    const findings = lint(contaminated, BASE_OPTIONS)
     expect(findingsOf(findings, 'TENANT_ID_ON_PLATFORM_TABLE')).toEqual([
       expect.objectContaining({ rule: 'TENANT_ID_ON_PLATFORM_TABLE', tableName: 'tenant' }),
     ])
@@ -444,7 +674,7 @@ describe('catalog-lint — katalog→taksonomi (3 kural)', () => {
         },
       ],
     }
-    const findings = lintCatalog(withUntrackedTenantTable, BASE_OPTIONS)
+    const findings = lint(withUntrackedTenantTable, BASE_OPTIONS)
     expect(findingsOf(findings, 'TENANT_ID_WITHOUT_TAXONOMY_ENTRY')).toEqual([
       expect.objectContaining({
         rule: 'TENANT_ID_WITHOUT_TAXONOMY_ENTRY',
@@ -458,28 +688,46 @@ describe('catalog-lint — katalog→taksonomi (3 kural)', () => {
   })
 })
 
-describe('catalog-lint — rol (2 kural)', () => {
-  it('APP_ROLE_IS_SUPERUSER_OR_BYPASSRLS: rolbypassrls açık', () => {
+describe('catalog-lint — rol nitelikleri (T-015/ST-C: özne İKİ çalışma zamanı rolüne genişledi)', () => {
+  it('APP_ROLE_IS_SUPERUSER_OR_BYPASSRLS: arkesoft_app rolbypassrls açık', () => {
     const snapshot = healthySnapshot()
     const bypassing: CatalogSnapshot = {
       ...snapshot,
-      appRole: { ...snapshot.appRole, canBypassRls: true },
+      roles: snapshot.roles.map((role) =>
+        role.roleName === APP_ROLE_NAME ? { ...role, canBypassRls: true } : role,
+      ),
     }
-    const findings = lintCatalog(bypassing, BASE_OPTIONS)
-    expect(findingsOf(findings, 'APP_ROLE_IS_SUPERUSER_OR_BYPASSRLS')).toHaveLength(1)
+    const findings = lint(bypassing, BASE_OPTIONS)
+    expect(findingsOf(findings, 'APP_ROLE_IS_SUPERUSER_OR_BYPASSRLS')).toEqual([
+      expect.objectContaining({ rule: 'APP_ROLE_IS_SUPERUSER_OR_BYPASSRLS' }),
+    ])
   })
 
-  it('APP_ROLE_IS_SUPERUSER_OR_BYPASSRLS: rolsuper açık', () => {
+  it('APP_ROLE_IS_SUPERUSER_OR_BYPASSRLS: arkesoft_app rolsuper açık', () => {
     const snapshot = healthySnapshot()
     const superuser: CatalogSnapshot = {
       ...snapshot,
-      appRole: { ...snapshot.appRole, isSuperuser: true },
+      roles: snapshot.roles.map((role) =>
+        role.roleName === APP_ROLE_NAME ? { ...role, isSuperuser: true } : role,
+      ),
     }
-    const findings = lintCatalog(superuser, BASE_OPTIONS)
+    const findings = lint(superuser, BASE_OPTIONS)
     expect(findingsOf(findings, 'APP_ROLE_IS_SUPERUSER_OR_BYPASSRLS')).toHaveLength(1)
   })
 
-  it('APP_ROLE_OWNS_TABLE: app rolü bir tablonun sahibi', () => {
+  it('APP_ROLE_IS_SUPERUSER_OR_BYPASSRLS: ÖZNE GENİŞLEMESİNİN KANITI — arkesoft_auth rolbypassrls açık olunca DA düşer', () => {
+    const snapshot = healthySnapshot()
+    const authBypassing: CatalogSnapshot = {
+      ...snapshot,
+      roles: snapshot.roles.map((role) =>
+        role.roleName === AUTH_ROLE_NAME ? { ...role, canBypassRls: true } : role,
+      ),
+    }
+    const findings = lint(authBypassing, BASE_OPTIONS)
+    expect(findingsOf(findings, 'APP_ROLE_IS_SUPERUSER_OR_BYPASSRLS')).toHaveLength(1)
+  })
+
+  it('APP_ROLE_OWNS_TABLE: arkesoft_app bir tablonun sahibi', () => {
     const snapshot = healthySnapshot()
     const ownsTable: CatalogSnapshot = {
       ...snapshot,
@@ -487,10 +735,46 @@ describe('catalog-lint — rol (2 kural)', () => {
         table.tableName === 'tenant_membership' ? { ...table, tableOwner: APP_ROLE_NAME } : table,
       ),
     }
-    const findings = lintCatalog(ownsTable, BASE_OPTIONS)
+    const findings = lint(ownsTable, BASE_OPTIONS)
     expect(findingsOf(findings, 'APP_ROLE_OWNS_TABLE')).toEqual([
       expect.objectContaining({ rule: 'APP_ROLE_OWNS_TABLE', tableName: 'tenant_membership' }),
     ])
+  })
+
+  it('APP_ROLE_OWNS_TABLE: ÖZNE GENİŞLEMESİNİN KANITI — arkesoft_auth bir tablonun sahibi olunca DA düşer', () => {
+    const snapshot = healthySnapshot()
+    const authOwnsTable: CatalogSnapshot = {
+      ...snapshot,
+      tables: snapshot.tables.map((table) =>
+        table.tableName === 'account' ? { ...table, tableOwner: AUTH_ROLE_NAME } : table,
+      ),
+    }
+    const findings = lint(authOwnsTable, BASE_OPTIONS)
+    expect(findingsOf(findings, 'APP_ROLE_OWNS_TABLE')).toEqual([
+      expect.objectContaining({ rule: 'APP_ROLE_OWNS_TABLE', tableName: 'account' }),
+    ])
+  })
+
+  it.each([APP_ROLE_NAME, AUTH_ROLE_NAME])(
+    'ROLE_HAS_EXCESS_ATTRIBUTE: "%s" rolü CREATEDB taşıyorsa düşer (öznesi iki çalışma zamanı rolü, migrator DEĞİL)',
+    (roleName) => {
+      const snapshot = healthySnapshot()
+      const withCreateDb: CatalogSnapshot = {
+        ...snapshot,
+        roles: snapshot.roles.map((role) =>
+          role.roleName === roleName ? { ...role, canCreateDb: true } : role,
+        ),
+      }
+      const findings = lint(withCreateDb, BASE_OPTIONS)
+      expect(findingsOf(findings, 'ROLE_HAS_EXCESS_ATTRIBUTE')).toEqual([
+        expect.objectContaining({ rule: 'ROLE_HAS_EXCESS_ATTRIBUTE' }),
+      ])
+    },
+  )
+
+  it('ROLE_HAS_EXCESS_ATTRIBUTE: taban anlık görüntü (ikisi de canCreateDb=false) hiçbir bulgu üretmez', () => {
+    const findings = lint(healthySnapshot(), BASE_OPTIONS)
+    expect(findingsOf(findings, 'ROLE_HAS_EXCESS_ATTRIBUTE')).toHaveLength(0)
   })
 })
 
@@ -513,13 +797,13 @@ describe('catalog-lint — platform/ledger (1 kural, YENİ — B3)', () => {
           privilege.tableName === '_prisma_migrations' ? { ...privilege, ...override } : privilege,
         ),
       }
-      const findings = lintCatalog(excessPrivilege, BASE_OPTIONS)
+      const findings = lint(excessPrivilege, BASE_OPTIONS)
       expect(findingsOf(findings, 'APP_ROLE_EXCESS_MIGRATIONS_LEDGER_PRIVILEGE')).toHaveLength(1)
     },
   )
 
   it('taban anlık görüntü (SELECT dışı hepsi false) hiçbir bulgu üretmez', () => {
-    const findings = lintCatalog(healthySnapshot(), BASE_OPTIONS)
+    const findings = lint(healthySnapshot(), BASE_OPTIONS)
     expect(findingsOf(findings, 'APP_ROLE_EXCESS_MIGRATIONS_LEDGER_PRIVILEGE')).toHaveLength(0)
   })
 
@@ -531,8 +815,452 @@ describe('catalog-lint — platform/ledger (1 kural, YENİ — B3)', () => {
         (privilege) => privilege.tableName !== '_prisma_migrations',
       ),
     }
-    const findings = lintCatalog(withoutLedger, BASE_OPTIONS)
+    const findings = lint(withoutLedger, BASE_OPTIONS)
     expect(findingsOf(findings, 'APP_ROLE_EXCESS_MIGRATIONS_LEDGER_PRIVILEGE')).toHaveLength(0)
+  })
+})
+
+// T-015/ST-C — YEDİ YENİ KURAL (ADR-0008 borcu). α/β/γ/δ etiketleri
+// architect'in "Dört yakın-miss senaryosu" tablosunu birebir izler.
+describe('catalog-lint — auth rolü / sır taşıyan tablo yetkisi (T-015/ST-C, YENİ)', () => {
+  it('APP_ROLE_RETAINS_SECRET_TABLE_PRIVILEGE: arkesoft_app sır taşıyan tabloda HÂLÂ bir yetkiye sahip', () => {
+    const snapshot = healthySnapshot()
+    const retained: CatalogSnapshot = {
+      ...snapshot,
+      privileges: snapshot.privileges.map((privilege) =>
+        privilege.roleName === APP_ROLE_NAME && privilege.tableName === 'account'
+          ? { ...privilege, canSelect: true }
+          : privilege,
+      ),
+    }
+    const findings = lint(retained, BASE_OPTIONS)
+    expect(findingsOf(findings, 'APP_ROLE_RETAINS_SECRET_TABLE_PRIVILEGE')).toEqual([
+      expect.objectContaining({
+        rule: 'APP_ROLE_RETAINS_SECRET_TABLE_PRIVILEGE',
+        tableName: 'account',
+      }),
+    ])
+  })
+
+  it('α — AUTH_ROLE_TABLE_LEVEL_PRIVILEGE_ON_SECRET_TABLE: arkesoft_auth TABLO bazlı SELECT taşıyor (anti-vacuity bekçisi, naif kuralın sessiz kaldığı tam nokta)', () => {
+    const snapshot = healthySnapshot()
+    const tableLevel: CatalogSnapshot = {
+      ...snapshot,
+      columnPrivileges: snapshot.columnPrivileges.map((privilege) =>
+        privilege.tableName === 'account' && privilege.columnName === 'password'
+          ? { ...privilege, hasTableSelect: true }
+          : privilege,
+      ),
+    }
+    const findings = lint(tableLevel, BASE_OPTIONS)
+    // Tablo başına TEK bulgu — kolon sayısı kadar TEKRARLANMAZ.
+    expect(findingsOf(findings, 'AUTH_ROLE_TABLE_LEVEL_PRIVILEGE_ON_SECRET_TABLE')).toEqual([
+      expect.objectContaining({
+        rule: 'AUTH_ROLE_TABLE_LEVEL_PRIVILEGE_ON_SECRET_TABLE',
+        tableName: 'account',
+      }),
+    ])
+    // Tablo seviyesi bulgu düştüğü için AYNI kolon için AUTH_ROLE_MISSING_
+    // COLUMN_PRIVILEGE İKİNCİ KEZ düşmez (K-E5 madde 4 — "eksik" ile "yanlış
+    // seviyede" AYRI sorular, aynı anda İKİSİ de sorulmaz).
+    expect(findingsOf(findings, 'AUTH_ROLE_MISSING_COLUMN_PRIVILEGE')).toHaveLength(0)
+  })
+
+  it('β — sağlıklı durum: kolon var/tablo yok (columnOnly=true) hiçbir bulgu üretmez', () => {
+    // healthySnapshot()'ın KENDİSİ β'yı tüm sır taşıyan kolonlar için modeller
+    // — bu test onu AÇIKÇA isimlendirip izole eder (DoD'un "β için ayrı
+    // fixture" gereksinimi).
+    const findings = lint(healthySnapshot(), BASE_OPTIONS)
+    expect(findingsOf(findings, 'AUTH_ROLE_TABLE_LEVEL_PRIVILEGE_ON_SECRET_TABLE')).toHaveLength(0)
+    expect(findingsOf(findings, 'AUTH_ROLE_MISSING_COLUMN_PRIVILEGE')).toHaveLength(0)
+  })
+
+  it('δ — AUTH_ROLE_MISSING_COLUMN_PRIVILEGE: üç kolondan yalnızca biri (account.email) hibesiz, mesaj tablo VE kolon adını taşır', () => {
+    const snapshot = healthySnapshot()
+    const partialColumnGrant: CatalogSnapshot = {
+      ...snapshot,
+      columnPrivileges: snapshot.columnPrivileges.map((privilege) =>
+        privilege.tableName === 'account' && privilege.columnName === 'email'
+          ? {
+              ...privilege,
+              hasColumnSelect: false,
+              hasColumnInsert: false,
+              hasColumnUpdate: false,
+            }
+          : privilege,
+      ),
+    }
+    const findings = lint(partialColumnGrant, BASE_OPTIONS)
+    const missingColumnFindings = findingsOf(findings, 'AUTH_ROLE_MISSING_COLUMN_PRIVILEGE')
+    expect(missingColumnFindings).toEqual([
+      expect.objectContaining({
+        rule: 'AUTH_ROLE_MISSING_COLUMN_PRIVILEGE',
+        tableName: 'account',
+      }),
+    ])
+    expect(missingColumnFindings[0]?.message).toContain('account')
+    expect(missingColumnFindings[0]?.message).toContain('email')
+    // Diğer iki kolon (id, password) hâlâ sağlıklı — AYRI bir bulgu üretmez.
+    expect(findingsOf(findings, 'AUTH_ROLE_TABLE_LEVEL_PRIVILEGE_ON_SECRET_TABLE')).toHaveLength(0)
+  })
+
+  it('γ — UNEXPECTED_COLUMN_LEVEL_GRANTEE: kolon hibesi adlandırılmış ÜÇÜNCÜ bir role verilmiş', () => {
+    const snapshot = healthySnapshot()
+    const thirdPartyGrant: CatalogSnapshot = {
+      ...snapshot,
+      columnGrants: snapshot.columnGrants.map((grant) =>
+        grant.tableName === 'session' && grant.columnName === 'token'
+          ? { ...grant, grantee: THIRD_PARTY_ROLE_NAME }
+          : grant,
+      ),
+    }
+    const findings = lint(thirdPartyGrant, BASE_OPTIONS)
+    expect(findingsOf(findings, 'UNEXPECTED_COLUMN_LEVEL_GRANTEE')).toEqual([
+      expect.objectContaining({
+        rule: 'UNEXPECTED_COLUMN_LEVEL_GRANTEE',
+        tableName: 'session',
+      }),
+    ])
+  })
+
+  it('γ (PUBLIC varyantı): "-" (tire, PUBLIC hibesi) de beklenmeyen alıcı sayılır', () => {
+    const snapshot = healthySnapshot()
+    const publicGrant: CatalogSnapshot = {
+      ...snapshot,
+      columnGrants: snapshot.columnGrants.map((grant) =>
+        grant.tableName === 'verification' && grant.columnName === 'value'
+          ? { ...grant, grantee: '-' }
+          : grant,
+      ),
+    }
+    const findings = lint(publicGrant, BASE_OPTIONS)
+    expect(findingsOf(findings, 'UNEXPECTED_COLUMN_LEVEL_GRANTEE')).toEqual([
+      expect.objectContaining({
+        rule: 'UNEXPECTED_COLUMN_LEVEL_GRANTEE',
+        tableName: 'verification',
+      }),
+    ])
+  })
+
+  // FIX turu 1 (security Tur 1 [medium] S-1 bulgusu), YENİ — Kaynak C
+  // (`tableGrants`, `pg_class.relacl`). M1'in BİREBİR reprodüksiyonu: tablo
+  // seviyesinde adlandırılmış bir ÜÇÜNCÜ role (örn. "bi_reader" tipi bir
+  // raporlama rolü — burada THIRD_PARTY_ROLE_NAME) `SELECT` verilmesi, HİÇBİR
+  // appRoleName/authRoleName tabanlı kural tarafından GÖRÜLMEZ (Kaynak A iki
+  // adlandırılmış rolü sorgular, Kaynak B yalnızca KOLON seviyesini görür).
+  it('UNEXPECTED_TABLE_LEVEL_GRANTEE: tablo seviyesinde adlandırılmış ÜÇÜNCÜ bir role hibe verilmiş (M1 reprodüksiyonu)', () => {
+    const snapshot = healthySnapshot()
+    const thirdPartyTableGrant: CatalogSnapshot = {
+      ...snapshot,
+      tableGrants: [
+        ...snapshot.tableGrants,
+        {
+          tableName: 'account',
+          grantor: MIGRATOR_ROLE_NAME,
+          grantee: THIRD_PARTY_ROLE_NAME,
+          privilegeType: 'SELECT',
+          isGrantable: false,
+        },
+      ],
+    }
+    const findings = lint(thirdPartyTableGrant, BASE_OPTIONS)
+    expect(findingsOf(findings, 'UNEXPECTED_TABLE_LEVEL_GRANTEE')).toEqual([
+      expect.objectContaining({
+        rule: 'UNEXPECTED_TABLE_LEVEL_GRANTEE',
+        tableName: 'account',
+      }),
+    ])
+  })
+
+  // YANLIŞ POZİTİF KONTROLÜ (R-PO6'nın AYNI deseni, S-1'in bağlayıcı kısıtı):
+  // `relacl`de tablo SAHİBİ `grantee` olarak GÖRÜNÜR (ST-A0③'ün `attacl`
+  // ölçümünün TERSİ, dosya başı notu) — beklenen küme `table.tableOwner`ı
+  // İÇERMEZSE bu kural sağlıklı tabanda KALICI yanlış pozitif verirdi.
+  it('UNEXPECTED_TABLE_LEVEL_GRANTEE: tablo SAHİBİNE (arkesoft_migrator) verilen hibe YANLIŞ POZİTİF ÜRETMEZ', () => {
+    const snapshot = healthySnapshot()
+    const ownerTableGrant: CatalogSnapshot = {
+      ...snapshot,
+      tableGrants: [
+        ...snapshot.tableGrants,
+        {
+          tableName: 'account',
+          grantor: MIGRATOR_ROLE_NAME,
+          grantee: MIGRATOR_ROLE_NAME,
+          privilegeType: 'SELECT',
+          isGrantable: false,
+        },
+      ],
+    }
+    const findings = lint(ownerTableGrant, BASE_OPTIONS)
+    expect(findingsOf(findings, 'UNEXPECTED_TABLE_LEVEL_GRANTEE')).toHaveLength(0)
+  })
+
+  // S-4 (solid Tur 1 [low] bulgusu) — `isGrantable` iki kaynakta da (Kaynak B
+  // KOLON, Kaynak C TABLO) artık OKUNUYOR: `WITH GRANT OPTION` DOĞRU alıcıya
+  // verilmiş olsa bile kendisi bir bulgu üretir.
+  it('UNEXPECTED_COLUMN_LEVEL_GRANTEE: arkesoft_auth için WITH GRANT OPTION (isGrantable=true) — alıcı DOĞRU ama GRANT OPTION beklenmiyor (S-4)', () => {
+    const snapshot = healthySnapshot()
+    const grantOptionColumn: CatalogSnapshot = {
+      ...snapshot,
+      columnGrants: snapshot.columnGrants.map((grant) =>
+        grant.tableName === 'account' && grant.columnName === 'password'
+          ? { ...grant, isGrantable: true }
+          : grant,
+      ),
+    }
+    const findings = lint(grantOptionColumn, BASE_OPTIONS)
+    expect(findingsOf(findings, 'UNEXPECTED_COLUMN_LEVEL_GRANTEE')).toEqual([
+      expect.objectContaining({ rule: 'UNEXPECTED_COLUMN_LEVEL_GRANTEE', tableName: 'account' }),
+    ])
+  })
+
+  it('UNEXPECTED_TABLE_LEVEL_GRANTEE: arkesoft_auth için WITH GRANT OPTION (isGrantable=true) — alıcı DOĞRU ama GRANT OPTION beklenmiyor (S-4)', () => {
+    const snapshot = healthySnapshot()
+    const grantOptionTable: CatalogSnapshot = {
+      ...snapshot,
+      tableGrants: snapshot.tableGrants.map((grant) =>
+        grant.tableName === 'account' && grant.grantee === AUTH_ROLE_NAME
+          ? { ...grant, isGrantable: true }
+          : grant,
+      ),
+    }
+    const findings = lint(grantOptionTable, BASE_OPTIONS)
+    expect(findingsOf(findings, 'UNEXPECTED_TABLE_LEVEL_GRANTEE')).toEqual([
+      expect.objectContaining({ rule: 'UNEXPECTED_TABLE_LEVEL_GRANTEE', tableName: 'account' }),
+    ])
+  })
+
+  // FIX turu 2 (security Tur 2 [high] S-7 bulgusu), YENİ — Kaynak D
+  // (`unexpectedRelations`, `pg_class.relkind IN ('v','m','f')`). `account`
+  // üzerine yazılan sıradan bir view'in M9'un BİREBİR reprodüksiyonu: hiçbir
+  // `GRANT` yazılmadan `ALTER DEFAULT PRIVILEGES … ON TABLES` onu
+  // `arkesoft_app`'e hibeler, view `snapshot.tables`'TA YOKTUR (`readTables()`
+  // `pg_tables`'ı kullanır, `relkind IN ('r','p')`), bu yüzden
+  // `UNCLASSIFIED_TABLE` bunu HİÇ görmez — `UNEXPECTED_RELATION_KIND` bu
+  // boşluğu KENDİ bağımsız kaynağıyla kapatır.
+  it('UNEXPECTED_RELATION_KIND: public şemasında bir VIEW (M9 reprodüksiyonu, snapshot.tables YOK)', () => {
+    const snapshot = healthySnapshot()
+    const leakingView: CatalogSnapshot = {
+      ...snapshot,
+      unexpectedRelations: [{ relationName: 'acct_leak_v', relationKind: 'v' }],
+    }
+    // Anti-vacuity: view `tables` dizisinde YOK — `UNCLASSIFIED_TABLE`/
+    // `MISSING_TABLE` onu GÖRMEZ, bu KENDİSİ S-7'nin ölçtüğü boşluktur.
+    expect(leakingView.tables.some((table) => table.tableName === 'acct_leak_v')).toBe(false)
+    const findings = lint(leakingView, BASE_OPTIONS)
+    expect(findingsOf(findings, 'UNEXPECTED_RELATION_KIND')).toEqual([
+      expect.objectContaining({ rule: 'UNEXPECTED_RELATION_KIND', tableName: 'acct_leak_v' }),
+    ])
+    expect(findingsOf(findings, 'UNEXPECTED_RELATION_KIND')[0]?.message).toContain('VIEW')
+    expect(findingsOf(findings, 'UNCLASSIFIED_TABLE')).toEqual([])
+  })
+
+  // `authRole` kapısının DIŞINDA değerlendirildiğinin kanıtı — `authRole`
+  // GEÇİRİLMEDİĞİNDE (dondurulmuş eski çağrı noktası emsali) bile kural
+  // ATEŞLENİR.
+  it('UNEXPECTED_RELATION_KIND: authRole GEÇİRİLMESE bile (dondurulmuş çağrı noktası emsali) ateşlenir', () => {
+    const snapshot = healthySnapshot()
+    const leakingMatview: CatalogSnapshot = {
+      ...snapshot,
+      unexpectedRelations: [{ relationName: 'session_leak_mv', relationKind: 'm' }],
+    }
+    const optionsWithoutAuthRole: LintCatalogOptions = {
+      taxonomy: BASE_OPTIONS.taxonomy,
+      tenantContextSetting: BASE_OPTIONS.tenantContextSetting,
+      appRoleName: BASE_OPTIONS.appRoleName,
+    }
+    const findings = lint(leakingMatview, optionsWithoutAuthRole)
+    expect(findingsOf(findings, 'UNEXPECTED_RELATION_KIND')).toEqual([
+      expect.objectContaining({ rule: 'UNEXPECTED_RELATION_KIND', tableName: 'session_leak_mv' }),
+    ])
+    expect(findingsOf(findings, 'UNEXPECTED_RELATION_KIND')[0]?.message).toContain(
+      'MATERIALIZED VIEW',
+    )
+  })
+
+  // FIX turu 2 (security Tur 2 [medium] S-8 bulgusu), YENİ — Kaynak E
+  // (`functionPrivileges`). M14'ün REPRODÜKSİYONU: `SECURITY DEFINER` bir
+  // fonksiyon `proacl=NULL` ile (hiçbir GRANT yazılmadan) PUBLIC'e EXECUTE
+  // vermiş durumda.
+  it('UNEXPECTED_FUNCTION_EXECUTE_PRIVILEGE: PUBLIC bir fonksiyonu yürütebiliyor (M14 reprodüksiyonu)', () => {
+    const snapshot = healthySnapshot()
+    const leakingFunction: CatalogSnapshot = {
+      ...snapshot,
+      functionPrivileges: [
+        { functionName: 'leak_pw', hasPublicExecute: true, isSecurityDefiner: false },
+      ],
+    }
+    const findings = lint(leakingFunction, BASE_OPTIONS)
+    expect(findingsOf(findings, 'UNEXPECTED_FUNCTION_EXECUTE_PRIVILEGE')).toEqual([
+      expect.objectContaining({
+        rule: 'UNEXPECTED_FUNCTION_EXECUTE_PRIVILEGE',
+        tableName: 'leak_pw',
+      }),
+    ])
+    // İKİ YÖNLÜ AYIRT EDİLEBİLİRLİK (FIX turu 3, S-15): `prosecdef=false` +
+    // PUBLIC hibesi VAR → YALNIZCA hibe ekseni (eski kod) düşer, YENİ varlık
+    // ekseni kodu DÜŞMEZ.
+    expect(findingsOf(findings, 'UNEXPECTED_SECURITY_DEFINER_FUNCTION')).toEqual([])
+  })
+
+  it('UNEXPECTED_FUNCTION_EXECUTE_PRIVILEGE: hasPublicExecute=false YANLIŞ POZİTİF ÜRETMEZ', () => {
+    const snapshot = healthySnapshot()
+    const safeFunction: CatalogSnapshot = {
+      ...snapshot,
+      functionPrivileges: [
+        { functionName: 'safe_fn', hasPublicExecute: false, isSecurityDefiner: false },
+      ],
+    }
+    const findings = lint(safeFunction, BASE_OPTIONS)
+    expect(findingsOf(findings, 'UNEXPECTED_FUNCTION_EXECUTE_PRIVILEGE')).toEqual([])
+  })
+
+  // FIX turu 3 (security Tur 3 [medium] S-15 bulgusu), YENİ — Kaynak E'nin
+  // "varlık" ekseni. S-15'in TAM ÖLÇTÜĞÜ kaçışın fixture-seviyesi kanıtı:
+  // `REVOKE EXECUTE … FROM PUBLIC` sonrası `hasPublicExecute=false`DIR, AMA
+  // `isSecurityDefiner=true` KOŞULSUZ bulgu üretir — hibe ekseni KAPALI
+  // olsa bile.
+  it('UNEXPECTED_SECURITY_DEFINER_FUNCTION: prosecdef=true + PUBLIC hibesi YOK (S-15 kaçış yolunun fixture kanıtı)', () => {
+    const snapshot = healthySnapshot()
+    const closedButDefinerFunction: CatalogSnapshot = {
+      ...snapshot,
+      functionPrivileges: [
+        { functionName: '__fix3_probe', hasPublicExecute: false, isSecurityDefiner: true },
+      ],
+      functionExecuteGrantees: [
+        {
+          functionName: '__fix3_probe',
+          grantor: MIGRATOR_ROLE_NAME,
+          grantee: APP_ROLE_NAME,
+          privilegeType: 'EXECUTE',
+          isGrantable: false,
+        },
+      ],
+    }
+    const findings = lint(closedButDefinerFunction, BASE_OPTIONS)
+    // İKİ YÖNLÜ AYIRT EDİLEBİLİRLİK: `hasPublicExecute=false` olduğu için
+    // hibe ekseni (eski kod) DÜŞMEZ, YALNIZCA yeni varlık ekseni kodu düşer.
+    expect(findingsOf(findings, 'UNEXPECTED_FUNCTION_EXECUTE_PRIVILEGE')).toEqual([])
+    expect(findingsOf(findings, 'UNEXPECTED_SECURITY_DEFINER_FUNCTION')).toEqual([
+      expect.objectContaining({
+        rule: 'UNEXPECTED_SECURITY_DEFINER_FUNCTION',
+        tableName: '__fix3_probe',
+      }),
+    ])
+    const [finding] = findingsOf(findings, 'UNEXPECTED_SECURITY_DEFINER_FUNCTION')
+    expect(finding?.message).toContain('__fix3_probe')
+    expect(finding?.message).toContain(APP_ROLE_NAME)
+  })
+
+  it('UNEXPECTED_SECURITY_DEFINER_FUNCTION: isSecurityDefiner=false YANLIŞ POZİTİF ÜRETMEZ', () => {
+    const snapshot = healthySnapshot()
+    const invokerFunction: CatalogSnapshot = {
+      ...snapshot,
+      functionPrivileges: [
+        { functionName: 'ordinary_fn', hasPublicExecute: false, isSecurityDefiner: false },
+      ],
+    }
+    const findings = lint(invokerFunction, BASE_OPTIONS)
+    expect(findingsOf(findings, 'UNEXPECTED_SECURITY_DEFINER_FUNCTION')).toEqual([])
+  })
+
+  it('UNEXPECTED_SECURITY_DEFINER_FUNCTION: authRole GEÇİRİLMESE bile (dondurulmuş çağrı noktası emsali) ateşlenir', () => {
+    const snapshot = healthySnapshot()
+    const definerFunction: CatalogSnapshot = {
+      ...snapshot,
+      functionPrivileges: [
+        {
+          functionName: 'definer_without_auth_gate',
+          hasPublicExecute: false,
+          isSecurityDefiner: true,
+        },
+      ],
+    }
+    const optionsWithoutAuthRole: LintCatalogOptions = {
+      taxonomy: BASE_OPTIONS.taxonomy,
+      tenantContextSetting: BASE_OPTIONS.tenantContextSetting,
+      appRoleName: BASE_OPTIONS.appRoleName,
+    }
+    const findings = lint(definerFunction, optionsWithoutAuthRole)
+    expect(findingsOf(findings, 'UNEXPECTED_SECURITY_DEFINER_FUNCTION')).toEqual([
+      expect.objectContaining({
+        rule: 'UNEXPECTED_SECURITY_DEFINER_FUNCTION',
+        tableName: 'definer_without_auth_gate',
+      }),
+    ])
+  })
+
+  it('AUTH_ROLE_MISSING_TABLE_PRIVILEGE: arkesoft_auth app_user üzerinde TABLO bazlı SELECT taşımıyor', () => {
+    const snapshot = healthySnapshot()
+    const missingAppUserSelect: CatalogSnapshot = {
+      ...snapshot,
+      privileges: snapshot.privileges.map((privilege) =>
+        privilege.roleName === AUTH_ROLE_NAME && privilege.tableName === 'app_user'
+          ? { ...privilege, canSelect: false }
+          : privilege,
+      ),
+    }
+    const findings = lint(missingAppUserSelect, BASE_OPTIONS)
+    expect(findingsOf(findings, 'AUTH_ROLE_MISSING_TABLE_PRIVILEGE')).toEqual([
+      expect.objectContaining({ rule: 'AUTH_ROLE_MISSING_TABLE_PRIVILEGE', tableName: 'app_user' }),
+    ])
+  })
+
+  it('AUTH_ROLE_MISSING_TABLE_PRIVILEGE: arkesoft_auth sır taşıyan tabloda beklenen TABLO bazlı DELETE yetkisine sahip değil', () => {
+    const snapshot = healthySnapshot()
+    const missingDelete: CatalogSnapshot = {
+      ...snapshot,
+      privileges: snapshot.privileges.map((privilege) =>
+        privilege.roleName === AUTH_ROLE_NAME && privilege.tableName === 'verification'
+          ? { ...privilege, canDelete: false }
+          : privilege,
+      ),
+    }
+    const findings = lint(missingDelete, BASE_OPTIONS)
+    expect(findingsOf(findings, 'AUTH_ROLE_MISSING_TABLE_PRIVILEGE')).toEqual([
+      expect.objectContaining({
+        rule: 'AUTH_ROLE_MISSING_TABLE_PRIVILEGE',
+        tableName: 'verification',
+      }),
+    ])
+  })
+
+  it('AUTH_ROLE_EXCESS_TABLE_PRIVILEGE: arkesoft_auth app_user üzerinde beklenmeyen DELETE yetkisine sahip (A-N1 ihlali)', () => {
+    const snapshot = healthySnapshot()
+    const excessDelete: CatalogSnapshot = {
+      ...snapshot,
+      privileges: snapshot.privileges.map((privilege) =>
+        privilege.roleName === AUTH_ROLE_NAME && privilege.tableName === 'app_user'
+          ? { ...privilege, canDelete: true }
+          : privilege,
+      ),
+    }
+    const findings = lint(excessDelete, BASE_OPTIONS)
+    expect(findingsOf(findings, 'AUTH_ROLE_EXCESS_TABLE_PRIVILEGE')).toEqual([
+      expect.objectContaining({ rule: 'AUTH_ROLE_EXCESS_TABLE_PRIVILEGE', tableName: 'app_user' }),
+    ])
+  })
+
+  it('AUTH_ROLE_EXCESS_TABLE_PRIVILEGE: arkesoft_auth beklenti tablosunda OLMAYAN bir tabloda ("tenant") yetki taşıyor', () => {
+    const snapshot = healthySnapshot()
+    const unexpectedTablePrivilege: CatalogSnapshot = {
+      ...snapshot,
+      privileges: [
+        ...snapshot.privileges,
+        {
+          roleName: AUTH_ROLE_NAME,
+          tableName: 'tenant',
+          canSelect: true,
+          canInsert: false,
+          canUpdate: false,
+          canDelete: false,
+        },
+      ],
+    }
+    const findings = lint(unexpectedTablePrivilege, BASE_OPTIONS)
+    expect(findingsOf(findings, 'AUTH_ROLE_EXCESS_TABLE_PRIVILEGE')).toEqual([
+      expect.objectContaining({ rule: 'AUTH_ROLE_EXCESS_TABLE_PRIVILEGE', tableName: 'tenant' }),
+    ])
   })
 })
 
@@ -544,10 +1272,19 @@ describe('catalog-lint — fail-closed (1 kural)', () => {
       rowSecurity: [],
       policies: [],
       indexes: [],
-      appRole: { roleName: APP_ROLE_NAME, isSuperuser: false, canBypassRls: false },
+      roles: [
+        { roleName: APP_ROLE_NAME, isSuperuser: false, canBypassRls: false, canCreateDb: false },
+        { roleName: AUTH_ROLE_NAME, isSuperuser: false, canBypassRls: false, canCreateDb: false },
+      ],
       privileges: [],
+      columnPrivileges: [],
+      columnGrants: [],
+      tableGrants: [],
+      unexpectedRelations: [],
+      functionPrivileges: [],
+      functionExecuteGrantees: [],
     }
-    const findings = lintCatalog(empty, BASE_OPTIONS)
+    const findings = lint(empty, BASE_OPTIONS)
     expect(findings).toEqual([expect.objectContaining({ rule: 'EMPTY_CATALOG_SNAPSHOT' })])
   })
 })
@@ -561,9 +1298,31 @@ describe('catalog-lint — AC9 parametriklik kanıtı (taksonomi değişince kod
         tenantScopedTables: [...BASE_OPTIONS.taxonomy.tenantScopedTables, 'future_tenant_table'],
       },
     }
-    const findings = lintCatalog(healthySnapshot(), optionsWithSecondTable)
+    const findings = lint(healthySnapshot(), optionsWithSecondTable)
     expect(findingsOf(findings, 'MISSING_TABLE')).toEqual([
       expect.objectContaining({ rule: 'MISSING_TABLE', tableName: 'future_tenant_table' }),
     ])
+  })
+})
+
+// R-PM7'nin yapısal çözümünün MEKANİK doğrulaması: `TENANT_ISOLATION_RULES`
+// TEK doğruluk kaynağıdır — bu testin yeşil kalması, dizideki HER kodun bu
+// dosyadaki fixture'lardan EN AZ biri tarafından GERÇEKTEN üretildiğini
+// (ölü/asla tetiklenmeyen bir kod kalmadığını) VE dizinin eksiksiz
+// olduğunu (fixture'ların ürettiği hiçbir kod dizide YOK) kanıtlar. Bu
+// `describe` dosyanın EN SONUNDADIR — yukarıdaki TÜM testler `lint()`
+// sarmalayıcısı üzerinden `observedRules`'ı doldurmuş olmalı
+// (`vitest.config.ts`'in `sequence.concurrent:false` + `fileParallelism:
+// false` ayarı testlerin TANIM SIRASIYLA koştuğunu garanti eder).
+describe('catalog-lint — TENANT_ISOLATION_RULES tek doğruluk kaynağı (R-PM7)', () => {
+  afterAll(() => {
+    // Boyut: dizinin eleman sayısı ile üretilen BENZERSİZ kural sayısı BİREBİR
+    // eşleşmeli (ne eksik ne ölü kod).
+    expect(observedRules.size).toBe(TENANT_ISOLATION_RULES.length)
+    expect([...observedRules].sort()).toEqual([...TENANT_ISOLATION_RULES].sort())
+  })
+
+  it('bu dosyadaki fixture testleri koşana kadar bekler (gerçek doğrulama afterAll içinde)', () => {
+    expect(observedRules.size).toBeGreaterThan(0)
   })
 })

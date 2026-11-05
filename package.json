@@ -1,6 +1,6 @@
 {
   "name": "arkesoft",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "description": "Arkesoft — çok kiracılı SaaS e-ticaret ve kurumsal web sitesi platformu",
@@ -28,6 +28,8 @@
     "infra:ps": "docker compose --env-file .env -f infra/docker-compose.yml ps",
     "infra:logs": "docker compose --env-file .env -f infra/docker-compose.yml logs -f",
     "db:bootstrap": "pnpm --filter @arkesoft/db run bootstrap",
+    "db:rollback-roles": "pnpm --filter @arkesoft/db run rollback-roles",
+    "db:rollback-auth-role": "pnpm --filter @arkesoft/db run rollback-auth-role",
     "db:generate": "pnpm --filter @arkesoft/db run generate",
     "db:migrate": "pnpm --filter @arkesoft/db run migrate",
     "db:deploy": "pnpm --filter @arkesoft/db run deploy",

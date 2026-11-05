@@ -4,18 +4,23 @@
 > Her değişiklik buradaki bir versiyona bağlı olmak zorundadır. Versiyon kapanınca ilgili kutular
 > işaretlenir, changeset eklenir ve `CHANGELOG.md` güncellenir.
 
-**Durum:** Uygulanıyor — **Faz 0** sürüyor. Kapanmış sürüm girdisi: **15** (`v0.0.1` – `v0.0.14`,
-artı `v0.0.9.1` hotfix'i). Sıradaki sürüm: **v0.0.14.1** (`arkesoft_auth` rolü, hotfix deseni),
-ardından v0.0.15.
-**Gerçekleşen sürüm numaraları:** platform (kök `arkesoft` + 10 paketlik `fixed` grup) **0.4.0** ·
-`@arkesoft/trpc` (public API) **0.4.0** · `@arkesoft/theme-sdk` **0.1.1** ·
+**Durum:** Uygulanıyor — **Faz 0** sürüyor. Kapanmış sürüm girdisi: **16** (`v0.0.1` – `v0.0.14`,
+artı `v0.0.9.1` ve `v0.0.14.1` hotfix'leri). Sıradaki sürüm: **v0.0.15** (iki faktörlü
+doğrulama ve oturum güvenliği).
+**Gerçekleşen sürüm numaraları:** platform (kök `arkesoft` + 10 paketlik `fixed` grup) **0.5.0** ·
+`@arkesoft/trpc` (public API) **0.4.1** · `@arkesoft/theme-sdk` **0.1.1** ·
 `@arkesoft/themes-modern` **0.1.0**.
-**Son güncelleme:** 2026-11-04 (v0.0.14 kapanışı)
+**Son güncelleme:** 2026-11-05 (v0.0.14.1 kapanışı)
 
 > ⚠ Bu iki satır v0.0.1'den v0.0.13'e kadar **güncellenmemiş** ve _"henüz hiçbir versiyon
 > uygulanmadı"_ demeye devam etmişti; v0.0.14'ün kapanışında ölçülerek düzeltildi (sürüm
 > başlıklarının `✅` işaretleri ve `package.json` dosyaları tek tek sayıldı). Her sürüm kapanışında
-> bu bloğun da güncellenmesi `release` adımının işidir.
+> bu bloğun da güncellenmesi `release` adımının işidir. ⚠ **Başlık biçimi hâlâ tutarsız**
+> (T-014'ten devreden borç, bu sürümde düzeltilmedi — kapsam dışı): `grep -c "^## v.*✅
+(tamamlandı:"` → **14**, `grep -c "^## v.*✅"` → **16**; `v0.0.7` ve `v0.0.9` hâlâ
+> _"tamamlandı:"_ kelimesini taşımıyor (`✅ (2026-11-01)` / `✅ (2026-11-02)` biçimi). Toplam
+> **16** doğru sayımdır (`v0.0.1`–`v0.0.14` [14] + `v0.0.9.1` + `v0.0.14.1`); bu sürümün kendi
+> başlığı (`v0.0.14.1`) tutarlı desenle (`✅ (tamamlandı: 2026-11-05)`) yazıldı.
 
 ---
 
@@ -711,7 +716,9 @@ sayımı, bayat `dist`, FULL TURBO'nun ölçüm olmaması, literal-jeton kuralı
 
 **Hedef:** Rol ve izin kontrolü tüm uçlarda uygulanabilir olsun.
 
-**Devreden borç (T-006/v0.0.5, ADR-0008 "R-1 KARARI"):** parola hash'i/oturum belirteci/doğrulama belirteci taşıyan üç tablo (`account`/`session`/`verification`) veritabanı seviyesinde (RLS) **korunamıyor** — yapısal (giriş, asıldan önce hash'i okumak zorunda). v0.0.13 sonunda bu borç "platform tablolarına RLS düşün" iken, v0.0.5 sonunda **üç tablo + üç kolon** büyüdü ve çözümün şekli değişti: bu sürüm **`arkesoft_auth` rolü** + **kolon bazlı `GRANT`/`REVOKE`** + `catalog-lint`'e **kolon yetkisi kural sınıfı** + **ikinci Prisma istemcisi/havuzu** + **üçüncü zorunlu env** (ikinci operatör kırılması) teslim etmek zorunda.
+**Devreden borç (T-006/v0.0.5, ADR-0008:69-82 tarif · :91 reddedilen alternatif · :119 borcun
+kendisi — ⚠ `"R-1 KARARI"` jetonu ADR-0008'de GEÇMEZ, atıf satır aralığıyla düzeltildi):**
+parola hash'i/oturum belirteci/doğrulama belirteci taşıyan üç tablo (`account`/`session`/`verification`) veritabanı seviyesinde (RLS) **korunamıyor** — yapısal (giriş, asıldan önce hash'i okumak zorunda). v0.0.13 sonunda bu borç "platform tablolarına RLS düşün" iken, v0.0.5 sonunda **üç tablo + üç kolon** büyüdü ve çözümün şekli değişti: bu sürüm **`arkesoft_auth` rolü** + **kolon bazlı `GRANT`/`REVOKE`** + `catalog-lint`'e **kolon yetkisi kural sınıfı** + **ikinci Prisma istemcisi/havuzu** + **üçüncü zorunlu env** (ikinci operatör kırılması) teslim etmek zorunda.
 
 **Kapsam:**
 
@@ -891,7 +898,7 @@ ignore dosyasını birlikte okuması.
 
 ---
 
-## v0.0.14.1 — `arkesoft_auth` rolü ve kolon bazlı yetki ayrımı (hotfix)
+## v0.0.14.1 — `arkesoft_auth` rolü ve kolon bazlı yetki ayrımı (hotfix) ✅ (tamamlandı: 2026-11-05)
 
 **Hedef:** Parola hash'i / oturum belirteci / doğrulama belirteci taşıyan üç platform tablosu
 veritabanı seviyesinde de korunsun; ADR-0008'in v0.0.14'e vadeli borcu kapansın.
@@ -901,12 +908,23 @@ filtresiz okuyabilir. ADR-0008 bunu kendi _"Olumsuz Sonuçlar"_ bölümünde aç
 (`docs/adr/0008-sir-tasiyan-tablolarin-tipi-ve-linti-ile-korunmasi.md:117-119`).
 **Kapsam (kullanıcı onayı 2026-11-04: "v0.0.14.1 — hotfix deseni", v0.0.9.1 emsali):**
 
-- [ ] `arkesoft_auth` rolü (`NOSUPERUSER`, `NOBYPASSRLS`, `NOCREATEDB`) — yalnızca üç hash/belirteç tablosunu okur, başka hiçbir tabloyu okumaz
-- [ ] Katalog linter'ına **kolon yetkisi kural sınıfı** eklenmesi
-- [ ] **Mevcut** tablo yetkisi kuralının üç tablo için kolon bazlı sorguya **tadil edilmesi**
-- [ ] Platform tablolarına tablo bazlı `REVOKE` + hash/belirteç kolonlarına kolon bazlı `GRANT`
-- [ ] İkinci Prisma istemcisi/havuzu + `DATABASE_AUTH_URL` (**ikinci operatör kırılması**)
-- [ ] Geri almanın **dördüncü kademesi** + `pnpm db:rollback-roles` (yazılı v0.0.14 borcu)
+- [x] `arkesoft_auth` rolü (`NOSUPERUSER`, `NOBYPASSRLS`, `NOCREATEDB`) — **düzeltildi (kullanıcı
+      onayı 2026-11-05):** üç hash/belirteç tablosunu **ve `app_user`'ı** okur; bu dördü
+      dışındaki hiçbir platform veya kiracı tablosuna erişmez. İlk metin `app_user`'ı
+      kapsam dışı bırakıyordu — Better Auth'un `findUserByEmail`'i `app_user`'a baktığı için
+      ve Better Auth tek Prisma istemcisi kullandığı için bu erişim başka role devredilemediği
+      için literal uygulama kayıt/giriş akışının tamamını kırardı
+- [x] Katalog linter'ına **kolon yetkisi kural sınıfı** eklenmesi
+- [x] **Mevcut** tablo yetkisi kuralının üç tablo için kolon bazlı sorguya **tadil edilmesi**
+- [x] **düzeltildi (kullanıcı onayı 2026-11-05):** **üç sır taşıyan tabloya** (`account`,
+      `session`, `verification`) tablo bazlı `REVOKE` + hash/belirteç kolonlarına kolon bazlı
+      `GRANT` (ilk metin _"platform tablolarına"_ diyordu — `tenant`/`app_user`'ı da kapsardı
+      ve `arkesoft_app`'in bu ikisine erişimi zorunlu, ADR-0008:53)
+- [x] Mevcut ikinci Prisma istemcisinin (`AuthPrismaClientResource`, `apps/api/src/auth/auth.module.ts`'te
+      **zaten vardı**) `DATABASE_AUTH_URL`'e **yeniden yönlendirilmesi** (**ikinci operatör
+      kırılması**) — iş "kur" değil "yönlendir" (tek satır); ilk metin _"ikinci Prisma
+      istemcisi/havuzu"_ kurulacakmış gibi okunuyordu
+- [x] Geri almanın **dördüncü kademesi** + `pnpm db:rollback-roles` (yazılı v0.0.14 borcu)
       **Dokunulan paketler:** packages/db, apps/api, packages/config, infra
       **Kabul kriteri:** `arkesoft_auth` ile üç tablo okunabiliyor, `arkesoft_app` ile **okunamıyor** (canlı prob); katalog linter'ı üç tabloda bulgu **üretmiyor** ama kolon yetkisi sapmasında **üretiyor** (**iki yönlü**, mutasyonla); `DATABASE_AUTH_URL` yokken rol katalogda varsa **fail-fast** (`DATABASE_URL`'e düşmek **yasak** — sessiz güvenlik kaybı); dördüncü kademe geri alma koşturuldu ve katalog **başlangıç durumuna döndü**.
       **Bağımlılık:** v0.0.14
@@ -937,6 +955,97 @@ varır. Yukarıdaki _"Devreden borç"_ paragrafındaki etiket **bu yüzden yanl�
 
 - v0.0.14'ün iki yeni tablosu **kiracı seviyesidir** → `REVOKE` işi **platform** tablolarındadır, **kesişim yok**.
 - Davet tablosu **ham belirteç saklamıyor** (yalnızca `sha256` özeti) → sır taşıyan modeller listesine **girmedi** ve kimlik bilgisi taşıyan kolon sayısı **üçte kaldı**.
+
+✅ **Tamamlandı (2026-11-05) — onaylanan yetki beyanı, gerçekleşen durum, ölçüldü**
+(ayrıntı ve gerekçe: `docs/adr/0017-veritabani-seviyesi-rol-ayrimi-ve-kolon-yetkisi.md`):
+
+```
+account | session | verification : kolon bazlı SELECT+INSERT+UPDATE (TÜM kolonlar)
+                                   + TABLO bazlı DELETE
+app_user                         : tablo bazlı SELECT+INSERT+UPDATE, DELETE YOK
+diğer tüm tablolar               : hiçbir yetki yok
+arkesoft_app, üç sır tablosunda  : HİÇBİR yetki yok
+nitelikler : LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS
+şema       : GRANT USAGE (CREATE YOK) · ALTER DEFAULT PRIVILEGES arkesoft_auth için AÇILMADI
+sekans     : GRANT YOK (ölçüldü: public şemasında hiç sekans yok)
+```
+
+Kabul kriterinin tamamı canlı prob ve iki yönlü mutasyonla karşılandı; dördüncü kademe
+geri alma (`pnpm db:rollback-auth-role`) gerçekten koşturuldu ve katalog
+`pnpm db:bootstrap`'in yeniden koşturulmasıyla başlangıç durumuna döndü. Ayrıntı:
+ADR-0017, `docs/development.md` → "Dört kademeli geri alma".
+
+**Gerçekleşen sürümler (`release`, 2026-11-05 — `pnpm release:version` sonrası her birim
+`package.json`'dan tek tek okunarak ÖLÇÜLDÜ, hiçbiri varsayılmadı):**
+
+- **Platform** (kök `arkesoft`): `0.4.0` → **`0.5.0`**. `--apply` kökü senkronladı;
+  `node scripts/sync-platform-version.ts --check` exit 0.
+- **`fixed` grup** (10 paket: `admin`, `api`, `config`, `db`, `errors`, `integrations`,
+  `storefront`, `superadmin`, `tenancy`, `ui`): `0.4.0` → **`0.5.0`** — onu da, hepsi eşit.
+- **`@arkesoft/trpc`** (public API birimi, `fixed` grupta **değil**): `0.4.0` → **`0.4.1`**.
+  Açık minor changeset yazılmadı (sözleşme gerçekten değişmedi — `catalog-lint`/
+  `catalog-snapshot` dışa açılmıyor, router/şema/port dokunulmadı) → kaskat **patch**
+  (`@arkesoft/errors@0.5.0` iç bağımlılık bump'ı), `CHANGELOG.md` yalnızca
+  "Patch Changes" taşıyor. T-014'teki kaskat tuzağının **tersi** doğru çıktı, ölçülerek
+  teyit edildi.
+- **`@arkesoft/theme-sdk`**: `0.1.1` → **`0.1.1`** — **HAREKET ETMEDİ**.
+  `git status --porcelain packages/theme-sdk` bump öncesi **ve** sonrası **boş**.
+- **`@arkesoft/themes-modern`**: `0.1.0` → **`0.1.0`** — **HAREKET ETMEDİ**.
+  `git status --porcelain packages/themes` bump öncesi **ve** sonrası **boş**.
+
+Tek changeset yazıldı (`arkesoft-auth-rolu-kolon-yetkisi.md` → `@arkesoft/db` +
+`@arkesoft/api` + `@arkesoft/config` minor); `changeset version` tarafından tüketildi ve
+`.changeset/` yalnızca `config.json` ile kaldı. ⚠ **Kök `CHANGELOG.md` biçim kapısını yine
+karşılamadı** (`release:version`'ın altıncı sapması): `sync-platform-version.ts` özeti
+`- ${summary}` olarak eklediği için sarma satırları girintisiz düşüyor. Bu kez tek
+paragraflık bir özet olduğu için `prettier --write` **tek başına** doğru sonucu verdi
+(liste maddesi bozulmadı, T-014'ün çok-paragraflı kusuru burada **tetiklenmedi**) —
+`git diff CHANGELOG.md` ile doğrulandı.
+
+**Kabul kriteri — `release`'in KENDİ koşumu, 2026-11-05 (sürüm bump'ı SONRASI, hepsi
+`--env-mode=loose --force` ve 0 cached; önceki gate sayıları devralınmadı):**
+
+```
+pnpm build --env-mode=loose --force (ön-build)   13/13 görev, 0 cached  → exit 0
+pnpm lint --env-mode=loose --force                21/21 görev, 0 cached  → exit 0
+pnpm typecheck --env-mode=loose --force            21/21 görev, 0 cached  → exit 0
+pnpm test --env-mode=loose --force                 18/18 görev, 0 cached  → exit 0
+    db 202/202 · api 492/492 (toplam 694 test, iki paket doğrudan ölçüldü)
+pnpm test:isolation --env-mode=loose --force       10/10 görev, 0 cached  → exit 0
+    74 test / 9 dosya  (db 56/5 dosya + api 18/4 dosya) — taban birebir tutarlı
+pnpm build --env-mode=loose --force (tekrar)       13/13 görev, 0 cached  → exit 0
+pnpm format:check                                  "All matched files use Prettier code style!" → exit 0
+node scripts/sync-platform-version.ts --check                          → exit 0
+```
+
+⚠ **Biçim sapması teşhisi + düzeltme (kabul kriteri komutlarından ÖNCE, Orkestratörün
+yetkilendirmesiyle):** `pnpm format:check` başlangıçta `docs/development.md` ve
+`ROADMAP.md`'de exit 1 verdi. Ölçüm: satır sayısı (1536/2923) ve madde imi sayısı (51/542)
+`prettier --write` öncesi/sonrası **birebir aynı** → sapma kozmetikti (T-013'ün anlamsal
+kırılma sınıfı **değil**). `git diff --stat` yalnızca bu iki dosyayı gösterdi, başka dosya
+dokunulmadı.
+
+⚠ **AC1 (`arkesoft_auth`/`arkesoft_app` 2×2 matrisi) canlı veritabanında bağımsız tekrar
+ölçüldü** (`docker exec arkesoft-postgres psql`): `arkesoft_auth → account` başarılı,
+`arkesoft_app → account` → `permission denied for table account`, `arkesoft_app → tenant`
+başarılı, `arkesoft_auth → tenant` → `permission denied for table tenant` — dördü de
+beklenen hücrelerle eşleşti. `TENANT_ISOLATION_RULES.length` **31** (başlangıç 20, bu
+sürümde 11 yeni) kaynaktan sayıldı, prose'a yazılan sayı değil. `pg_proc`/`pg_class`
+(view/matview) sayımı **public şemasında 0** — mutasyon testlerinden kalıntı yok.
+
+**Teknik borç tablosu doğrulandı, bir sayı düzeltildi:** Orkestratörün brief'i "15 borç
+satırı" diyordu; aşağıdaki "Vadesi v0.0.14.1 kaynaklı borçlar" tablosu **13 satır**
+taşıyor (ölçüldü: `grep -c`). Fark içerik eksikliği değil, bir sayım farkı — tablo
+`docs` tarafından ADR-0017 ile birlikte eksiksiz yazılmış.
+
+**ADR:** [ADR-0017](./docs/adr/0017-veritabani-seviyesi-rol-ayrimi-ve-kolon-yetkisi.md)
+— veritabanı seviyesi rol ayrımı ve kolon yetkisi (altı karar: `arkesoft_auth`'un kolon
+bazlı SELECT/INSERT/UPDATE + tablo bazlı DELETE yetki kümesi · kolon ACL'nin iki
+tamamlayıcı kaynaktan (`has_column_privilege` + `pg_attribute.attacl`) okunması ·
+koşulsuz-zorunlu `DATABASE_AUTH_URL` fail-fast · kademe numarası ≠ kademe sırası (dördüncü
+kademe sırayla ilk koşar) · bootstrap'ın `IF EXISTS` korumalı iki-geçişli DDL'i · ayrı
+`databaseAuthEnvSchema`; artı sekiz reddedilen alternatif, dokuz olumlu/olumsuz sonuç,
+dört gözden geçirme koşulu).
 
 ---
 
@@ -2741,6 +2850,37 @@ kayıtlı — `security` de bunu kendi bulgusu olarak raporlamadı.
 | medium | `packages/db/src/__tests__/helpers/migration-set.ts` + ikiz CLI (`bootstrap-roles.ts`/`run-guarded-prisma.ts`)                                                               | Tur 2'den devam eden dört kalem: indeks kuralı çelişkisi (`migration-set.ts` UNIQUE+≥2 kolon ↔ `catalog-lint.ts` herhangi bir indeks) · ikiz CLI ~70 satır tekrar (`src/prisma-cli.ts` çıkarımı önerisi) · çıplak `throw new Error` yerine `AppError` (architect kararı ister) · `apps/api` tip pin'inin `type-pins/` konvansiyonuna taşınması.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | architect + db | v0.0.14 | solid                        |
 | low    | `packages/db/package.json` `deploy` + `.github/actions/prepare-db/action.yml`                                                                                                | `db:deploy` için dar onay kapısı — yeni guard CI'ın doğru rolle bağlanan değişkeni set etmesini ister; bu bir gerileme değil ama hattı kırabilecek bir bağımlılık.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | devops + db    | v0.0.14 | qa                           |
 | medium | `packages/db/src/client.ts:136-139` (`AppPrismaDatabase` `Pick<>` allowlist) + `apps/api/src/prisma/prisma.service.ts:74` + `packages/db/src/index.ts:29`/`prisma.module.ts` | **T-006: "R-1 kararı"nın (ADR-0008) kapsam boşluğu, büyüdü.** `account`/`session`/`verification` tip seviyesinde `Pick<>` allowlist ile korunuyor (beş kaçış kapısı kapandı), ama **altıncı kapı AÇIK ve belgelenmiş**: allowlist üyesi `$queryRaw` herhangi bir `PrismaService` enjekte eden serviste tek satırla **tüm hash'leri/belirteçleri** okuyabiliyor (çalışma zamanında ölçüldü: 2830 parola hash'i). Ayrıca `PrismaService.client` TS `private`'ı çalışma zamanında yok (`as unknown as` ile aşılabiliyor, ölçüldü: 2894 satır) ve `withTenant`'ın dışa açık tam istemci token'ı (latent, DI çözülemiyor ama tek satırlık bir `exports` değişikliğiyle açılabilir). **Hiçbiri bugün sömürülen bir açık değil** — hepsi tip+lint+test ile kapalı veya DI ile latent. v0.0.14'ün `arkesoft_auth` rolü + kolon bazlı `GRANT`/`REVOKE` bu sınıfı veritabanı seviyesinde kapatacak. Ek öneri (≈6 satır, davranış değişikliği yok): `health.ts`'in `$queryRaw` erişimini `AppPrismaDatabase`'den ayrı, tek üyeli bir `connectionProbe` erişimcisine taşı. | architect + db | v0.0.14 | security tur3/4 + solid tur4 |
+
+## Vadesi v0.0.14.1 kaynaklı borçlar (T-015 gate sonuçları)
+
+**Not:** T-015 (v0.0.14.1) üç gate turunda da sonunda PASS verdi (`critical`/`high` yok,
+3 FIX turunda çoğu bulgu kapandı); aşağıdakiler bilinçli olarak teknik borca kaydedilen
+`low`/`medium` bulgulardır. Ayrıntı ve gerekçe: `docs/adr/0017-veritabani-seviyesi-rol-ayrimi-ve-kolon-yetkisi.md`.
+
+| SEV    | Konum                                                                                                 | Açıklama                                                                                                                                                                                                                                                                                                                                                                                                             | Sorumlu | Vade    | Kaynak gate               |
+| ------ | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------- | ------------------------- |
+| medium | **QA-5** · `apps/api` izolasyon süiti                                                                 | Reprodüklenemeyen flake: 1/15 koşumda 1 dosya FAILED + 5 SKIPPED; 14 denemede üremedi; tam log kaydedilmediği için başarısız testin kimliği **doğrulanamadı**. Sabit `skip`/`skipIf` yok. Orkestratör kararı: son FIX turu S-15'e harcandı (gerekçe T-008 emsali — PASS almış gate'lerin kuyruk bulgularını kovalamak yüksek token maliyeti, sıfır davranış hatası). İlk iş: log yakalama.                           | devops  | v0.0.15 | qa tur 3                  |
+| medium | **SD-1** · `packages/db/src/env.ts:31,63,104,136`                                                     | Dört **birebir aynı** env tipi takma adı → dört ayrıcalık seviyesi tipte **ayrışmıyor**; somut risk adresi `run-guarded-prisma.ts:218` (`migrator ? … : …`, iki dalın tipi aynı → karıştırma sessiz ve daha fazla ayrıcalık yönünde). `DatabaseAuthEnv` adı iki pakette iki anlamda.                                                                                                                                 | db      | —       | solid tur 1               |
+| medium | **SD-2** · `rollback-roles.ts:60-196` ⇄ `bootstrap-roles.ts:44-159` ⇄ `run-guarded-prisma.ts:104-206` | Spawn iskeletinin 3. kopyası, ~110/217 satır birebir. `fail`/`runPrismaDbExecute`/`.env` yükleme/`main` sırası da kopya; kardeş dört hata sınıfı doğru yazıyor. `db`'nin ilk beyanı (_"üç küçük yardımcı"_) gerçeği eksik anlatıyordu — düzeltilmiş hâli bu satırdır.                                                                                                                                                | db      | —       | solid tur 2/3             |
+| low    | **S-6** · `auth-instance.ts:289` → pino                                                               | Ham `42501` metni (`permission denied for table account`) pino `msg` dizesine gömülü → **redakte edilemez**; `PINO_REDACT_PATHS`'te `idToken` yok (`account` üçünü de taşıyor). Yanıt gövdesi `{}` — tele **sızmıyor** (ölçüldü).                                                                                                                                                                                    | backend | v0.0.17 | security tur 1            |
+| low    | **S-11** · `packages/db/src/catalog-snapshot.ts`                                                      | `pg_default_acl` + `nspacl` hiçbir okuyucuda yok (M13/M12 SURVIVED). `low` gerekçesi ölçülmüş: tuzak ateşlendiğinde yakalanıyor.                                                                                                                                                                                                                                                                                     | db      | v0.0.17 | security tur 1/2          |
+| low    | **S-12** · `packages/db/src/catalog-snapshot.ts`                                                      | `pg_auth_members` okunmuyor. Yaygın hâl kapalı (hepsi `rolinherit=t`); yalnızca `NOINHERIT`+üyelik (iki süper kullanıcı DDL'i + `SET ROLE`) görünmez.                                                                                                                                                                                                                                                                | db      | v0.0.17 | security tur 1/2          |
+| low    | **S-13** · `apps/api/src/auth/auth.module.ts:103-113`                                                 | Açılış artık DB'ye bağlı (`createPrismaClient` bilinçle tembeldi). Bağlantı reddinde hızlı düşüyor (ölçüldü) ama k8s'te failover → crash-loop riski. `security`'nin yargısı: fail-closed **doğru seçim**, gerileme değil; timeout/retry + readiness⇄liveness politikası sahiplenilmeli.                                                                                                                              | devops  | —       | security tur 2            |
+| low    | **S-14** · `packages/db/sql/rollback-auth-role.sql:79`                                                | Kill-switch `arkesoft_app`'e üç sır tablosunda tam DML'i geri verir; prob geçmeye devam eder (yalnızca `arkesoft_auth`/`tenant`'a bakıyor) → sinyal yok. Savunma ayakta: `AppPrismaDatabase = Pick<…>` (`client.ts:200`). Runbook'a doğrulama adımı eklenmeli.                                                                                                                                                       | docs/db | —       | security tur 2            |
+| low    | **S-16** · `packages/db/src/catalog-snapshot.ts:416-434`                                              | `rolconfig` / `pg_db_role_setting` hiçbir okuyucuda yok (0 grep) → rol bazlı varsayılan kiracı GUC'u fail-closed davranışı sessizce kapatabilir. `low` gerekçesi: `arkesoft_app` `ALTER ROLE … SET` deneyince `permission denied to set parameter` → kendi kendine erişilemez.                                                                                                                                       | db      | v0.0.15 | security tur 3            |
+| low    | **S-17** · `packages/db/src/catalog-lint.ts:1230-1233`                                                | Teşhis mesajı üç şekilde yanıltıcı (hepsi ölçüldü, ateşlenmeyi etkilemez): PUBLIC `"-"` olarak basılıp "adlandırılmış" etiketleniyor · sahip `arkesoft_migrator` gürültü olarak listeleniyor · `functionName` imza taşımadığı için overload'larda hibeler karışıyor. Operatör "app erişemiyor" yanlış sonucuna varabilir. Düzeltme: `grantee=0` → `'PUBLIC'`, sahibi listeden çıkar, `oid::regprocedure::text` taşı. | db      | —       | security kapanış kontrolü |
+| low    | **SD-7** · `packages/db/src/__tests__/type-pins/auth-secret-tables.pin.ts:27-34`                      | Prisma **model** adı uzayı ile DB **tablo** adı uzayı eşitleniyor; ayrıştıkları `CLAUDE.md` §4'te yazılı, emsal repoda var (`User` ⇄ `app_user`). Bugün tesadüfen doğru.                                                                                                                                                                                                                                             | db      | —       | solid tur 2               |
+| low    | **SD-10** · `packages/db/src/catalog-lint.ts:212-215`                                                 | `LintFinding.tableName` artık VIEW ve FONKSİYON adı da taşıyor → alan adı ve JSDoc taşınan veriyi yanlış tanımlıyor. Ölçülmüş maliyet: `objectName`'e çevirmek ~70+ düzenleme noktası (38 üretim + ~35 test assert'i), hepsi `packages/db` içinde. FIX 3'te JSDoc gerçeği anlatacak şekilde düzeltildi, yeniden adlandırma borçta.                                                                                   | db      | v0.0.16 | solid tur 2/3             |
+| low    | **QA-2** · `apps/api/src/__tests__/tenant-resolver.test.ts`                                           | Pre-existing ioredis zaman aşımı flake'i; `qa` 5/5 koşumda reprodükleyemedi, dosya bu turda değişmedi, v0.0.8'den beri var.                                                                                                                                                                                                                                                                                          | qa      | —       | qa tur 1                  |
+
+**Kapanan borç (satır olarak tutulmuyor):** ADR-0008'in `v0.0.14` vadeli borcu
+(ADR-0008:119) bu sürümle **kapandı** — bkz. ADR-0017. ADR-0008'in `Durum:` satırı
+**değişmedi**; ikisi beraber okunur.
+
+**SD-4 — bayat "20 kural" sayısının dört yerde kapanışı:** `docs/development.md:427,439`
+ve `docs/adr/0007-rls-ve-rol-ayrimi.md:196,218`'deki sabit kural sayısı kaldırıldı,
+kanonik kaynak `packages/db/src/catalog-lint.ts`'teki `TENANT_ISOLATION_RULES`'a atıfla
+değiştirildi (`docs`, bu sürüm).
 
 ## Vadesi v0.0.15 — İki faktörlü doğrulama ve oturum güvenliği
 

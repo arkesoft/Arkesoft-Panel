@@ -193,7 +193,11 @@ Metin tarayıcısı (`migration-set.ts`, T-004'ten) yaşadığı üç sorun:
 sistem kataloğunu (`pg_class.relrowsecurity`, `pg_policies`, `information_schema`)
 doğrudan okur.
 
-**20 kural** (FIX tur 1'de iki kurala bölündü, FIX tur 2'de bir kural eklendi):
+**Kural kümesi** (v0.0.13 sonundaki hâli; FIX tur 1'de iki kurala bölündü, FIX tur 2'de bir
+kural eklendi — kanonik sayım artık `packages/db/src/catalog-lint.ts`'teki
+`TENANT_ISOLATION_RULES` dizisinde yaşar ve burada tekrar edilmiyor, bkz.
+`docs/development.md` → Ölçüm disiplini (g); v0.0.14.1'de `arkesoft_auth` kolon yetkisi
+kural sınıfıyla daha da genişledi, bkz. ADR-0017):
 
 - Taksonomi→katalog (13): `MISSING_TABLE`, `MISSING_TENANT_ID_COLUMN`,
   `NULLABLE_TENANT_ID_COLUMN`, `WRONG_TENANT_ID_TYPE`,
@@ -215,8 +219,8 @@ iki ayrı kurala bölündü). Tur 2'de `solid` ve `security` **bağımsız olara
 bölünmenin kusurun **semptomunu** kapattığını, **sınıfını** kapatmadığını ölçtü:
 alt dize araması "ifade GUC'u **anıyor mu**" sorusunu yanıtlıyor, "ifade
 `tenant_id`'yi GUC'a **eşitliyor mu**" sorusunu yanıtlamıyordu.
-`USING (current_setting(<guc>, true) IS NOT NULL)` gibi altı varyant 20 kuralın
-tamamından temiz geçiyordu.
+`USING (current_setting(<guc>, true) IS NOT NULL)` gibi altı varyant o zamanki kural
+kümesinin tamamından temiz geçiyordu.
 
 **Karar (architect K-E5 revizyonu):** linter politika ifadesini **kanonik tam
 eşitlikle** denetler. Beklenen dize, tenant kolonu sabiti ve ayar adından
@@ -428,7 +432,8 @@ DATABASE_URL="$DATABASE_BOOTSTRAP_URL" pnpm exec prisma db execute \
 TABLE … OWNER TO`) ve `REVOKE` yapıyor — bootstrap süper kullanıcısı gerekir. Çevresel
 önek, `arkesoft_app` rolü yerine bootstrap URL'sini işleme geçirir.
 
-**`db:rollback-roles` npm script'i yoktur.** Doğrudan `pnpm exec` ile çağırılmalı.
+**`pnpm db:rollback-roles`** script'i artık vardır (v0.0.14.1'den itibaren) ve yukarıdaki
+`pnpm exec`/`prisma db execute` çağrısıyla aynı dosyayı koşturur; ikisi de geçerlidir.
 
 Bu komut bootstrap adımının etkisini tersler: sahipliği `arkesoft` rolüne geri devirir,
 `GRANT` ve `ALTER DEFAULT PRIVILEGES`'i geri alır. **`DROP ROLE` YOK** — roller küme
@@ -438,6 +443,13 @@ müdahale gerekir (üretim runbook'u Pulumi/Helm'de tanımlanır).
 
 Her kademe `pnpm test:isolation`'ı **kırmızıya düşürür** — bu bilinçli; kapatma bir
 hata değil, izolasyonun indirilmesidir.
+
+⚠ **v0.0.14.1 notu:** bu üç kademenin yanına kullanıcı kimliği/veritabanı kimliği
+rolü ayrımını geri alan bir **dördüncü kademe** eklendi (`sql/rollback-auth-role.sql`,
+`pnpm db:rollback-auth-role`). Dördüncü kademe bu üçünden **farklı** bir sınıftır — yalnızca
+v0.0.14.1'in deltasını tersler ve **sırayla ilk** (4→1→2→3) çalışır; 3'ten sonra 4 koşarsa
+tutarsız bir ara durum doğar. Tam gerekçe ve runbook: `docs/development.md` →
+"Dört kademeli geri alma", `docs/adr/0017-veritabani-seviyesi-rol-ayrimi-ve-kolon-yetkisi.md`.
 
 ---
 

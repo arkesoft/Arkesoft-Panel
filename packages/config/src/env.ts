@@ -132,6 +132,37 @@ export const databaseAdminEnvSchema = z.object({
 export type DatabaseAdminEnv = z.infer<typeof databaseAdminEnvSchema>
 
 /**
+ * Kimlik doğrulama rolü bağlantısı (ROADMAP v0.0.14.1, T-015/ST-A, ADR-0008
+ * borcu — `arkesoft_auth` rolü).
+ *
+ * BAĞLAYICI GÜVENLİK KARARI — bu şema BİLİNÇLİ OLARAK ÜÇÜNCÜ, AYRI bir
+ * `z.object` olarak tutulur; ne `infraEnvSchema`'ya ne `databaseAdminEnvSchema`'ya
+ * girer:
+ *
+ * - `infraEnvSchema`'ya GİRMEZ: girerse `admin`/`superadmin`/`storefront` dahil
+ *   onu tüketen HER süreç, tüm parola hash'lerine/oturum-doğrulama
+ *   belirteçlerine erişen bir kimlik bilgisini açılışta ZORUNLU kılar — bu,
+ *   yukarıdaki `databaseAdminEnvSchema`'nın (satır ~115) K-E8 kararıyla
+ *   kapattığı deliğin BİREBİR AYNISI.
+ * - `databaseAdminEnvSchema`'ya GİRMEZ: o şema ayrıcalıklı **DDL**
+ *   bağlantıları (migrator/bootstrap) içindir ve yalnızca `packages/db`
+ *   tüketir. `DATABASE_AUTH_URL` ise bir ÇALIŞMA ZAMANI kimliğidir —
+ *   `arkesoft_auth` rolü yalnızca üç hash/belirteç taşıyan tabloyu (kolon
+ *   bazlı) ve `app_user`'ı (tablo bazlı, DELETE hariç) okur/yazar; `apps/api`
+ *   `AuthModule` içinde kimlik doğrulama akışı için tüketir.
+ *
+ * İki tüketici, tek tanım: `apps/api/src/config/api-env.ts` → `infraEnvSchema`'yı
+ * `.extend({ DATABASE_AUTH_URL: databaseAuthEnvSchema.shape.DATABASE_AUTH_URL })`
+ * ile genişletir; `packages/db/src/env.ts` → `readDatabaseAuthEnv()` (test
+ * süitinin `arkesoft_auth` bağlantısı, canlı katalog kanıtı için).
+ */
+export const databaseAuthEnvSchema = z.object({
+  DATABASE_AUTH_URL: connectionUrl(['postgresql://', 'postgres://']),
+})
+
+export type DatabaseAuthEnv = z.infer<typeof databaseAuthEnvSchema>
+
+/**
  * Storefront'un geçirgenlik (turbo `env`) katmanının `pnpm env:check`
  * tarafından ayrıca doğrulanan alt kümesi (ROADMAP T-011/S1, ADR-0014).
  *

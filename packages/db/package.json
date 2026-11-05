@@ -1,6 +1,6 @@
 {
   "name": "@arkesoft/db",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "description": "Prisma şeması, migration’lar, seed ve RLS politikaları",
@@ -28,6 +28,8 @@
     "lint": "eslint .",
     "clean": "rm -rf dist generated .turbo",
     "bootstrap": "pnpm run build && node dist/bootstrap-roles.js",
+    "rollback-roles": "pnpm run build && node dist/rollback-roles.js roles",
+    "rollback-auth-role": "pnpm run build && node dist/rollback-roles.js auth-role",
     "migrate": "pnpm run build && node dist/run-guarded-prisma.js migrate dev",
     "deploy": "pnpm run build && node dist/run-guarded-prisma.js migrate deploy",
     "push": "pnpm run build && node dist/run-guarded-prisma.js db push",

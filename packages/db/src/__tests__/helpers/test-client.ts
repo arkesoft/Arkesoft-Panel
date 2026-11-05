@@ -38,7 +38,7 @@
 //   artık `env.ts`'in desenini TEKRARLAMAK yerine o fonksiyonu ÇAĞIRIR.
 
 import { evaluateTargetDatabase } from '../../guard-policy.js'
-import { readDatabaseEnv, readDatabaseMigrationEnv } from '../../env.js'
+import { readDatabaseAuthEnv, readDatabaseEnv, readDatabaseMigrationEnv } from '../../env.js'
 import { createPrismaClient } from '../../client.js'
 import type { PrismaDatabase } from '../../client.js'
 import { TENANT_CONTEXT_SETTING } from '../../tenant-context.js'
@@ -93,3 +93,50 @@ if (migrationDecision.kind === 'reject') {
 export const testMigrationPrisma: PrismaDatabase = createPrismaClient({
   databaseUrl: migrationEnv.databaseUrl,
 })
+
+// ÜÇÜNCÜ bağlantı — `arkesoft_auth` (ROADMAP v0.0.14.1, T-015/ST-A, ADR-0008
+// borcu) — BİLEREK `testAppPrisma`/`testMigrationPrisma`'nın tersine TEMBEL
+// (R-PO1 + R-PO2, Orkestratör bağlayıcı kısıtı):
+//
+//   1. R-PO2/CI: `.github/workflows/ci.yml`'in `guards` işi, AC12a adımında
+//      `create-env:'false'` ile YALNIZCA `DATABASE_URL` tanımlıyken
+//      `pnpm --filter @arkesoft/db exec vitest list` koşturuyor. `env.js`'ten
+//      `readDatabaseAuthEnv()`'i MODÜL SEVİYESİNDE çağırmak (yukarıdaki
+//      `readDatabaseEnv()`/`readDatabaseMigrationEnv()` deseni gibi) bu test
+//      DOSYASINI yükleyen HER test dosyasını, `DATABASE_AUTH_URL` tanımsızken
+//      bile `EnvValidationError` ile ÇÖKERTİR — o adım KIRMIZIYA döner ve
+//      `guards` işi CI-only (yerel beş kapıda GÖRÜNMEZ) olduğu için bu
+//      kırılma yerelde SESSİZ kalır (T-014 FIX 2'nin dersi).
+//   2. R-PO1: kullanıcının yerel `.env`'inde `DATABASE_AUTH_URL` YOK ve
+//      ajanlar o dosyaya YAZMAZ — `testAuthPrisma`'yı modül seviyesinde
+//      kurmak `pnpm --filter @arkesoft/db test` komutunun KENDİSİNİ, bu
+//      bağlantıyı HİÇ kullanmayan test dosyaları DAHİL, env eksikken
+//      çökertirdi.
+//
+// Çözüm: `readDatabaseAuthEnv()` çağrısı yalnızca `getTestAuthPrisma()`'nın
+// GÖVDESİNDE yapılır; istemci İLK çağrıda kurulup bellekte tutulur (tek
+// bağlantı havuzu, tekrar `createPrismaClient` çağrılmaz). Bu fonksiyonu
+// ÇAĞIRMAYAN hiçbir test dosyası `DATABASE_AUTH_URL`'in varlığına bağımlı
+// OLMAZ.
+let cachedAuthPrisma: PrismaDatabase | undefined
+
+/**
+ * `arkesoft_auth` (kimlik doğrulama rolü) bağlantısı — AC1/AC2'nin 2×2
+ * matrisi ve canlı katalog kanıtları için (ST-E'nin işi). Çağrılmadığı sürece
+ * `DATABASE_AUTH_URL` hiç OKUNMAZ (yukarıdaki tembellik gerekçesi).
+ */
+export function getTestAuthPrisma(): PrismaDatabase {
+  if (cachedAuthPrisma !== undefined) {
+    return cachedAuthPrisma
+  }
+
+  const authEnv = readDatabaseAuthEnv()
+
+  const authDecision = evaluateTargetDatabase(authEnv, process.env['ARKESOFT_CONFIRM_DESTRUCTIVE'])
+  if (authDecision.kind === 'reject') {
+    throw new Error(authDecision.message)
+  }
+
+  cachedAuthPrisma = createPrismaClient({ databaseUrl: authEnv.databaseUrl })
+  return cachedAuthPrisma
+}

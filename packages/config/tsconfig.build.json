@@ -9,5 +9,9 @@
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  // `src/__tests__` — T-015 FIX turu 1, madde 3: tip pin'leri (`*.pin.ts`)
+  // `pnpm typecheck`'in derlemesinden kanıt alır (`tsconfig.json`'un
+  // `include`'u onları KAPSAR), ama üretim paketine (`dist/`) GİRMEMELİ —
+  // `packages/db/tsconfig.build.json`'un AYNI, önceden var olan deseni.
+  "exclude": ["node_modules", "dist", "src/__tests__"]
 }

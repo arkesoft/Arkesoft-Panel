@@ -36,19 +36,20 @@
 // sözleşmesi artık `MailModule`'ün sorumluluğunda.
 
 import { Inject, Injectable, Module } from '@nestjs/common'
-import type { OnModuleDestroy, Provider } from '@nestjs/common'
+import type { OnModuleDestroy, OnModuleInit, Provider } from '@nestjs/common'
 // T-006/S8 EKLEMESİ: `APP_INTERCEPTOR` — `RateLimitAccountResetInterceptor`
 // için (`APP_GUARD` ile AYNI "modülün global'liğinden BAĞIMSIZ kaydolur"
 // mekanizması, `tenancy.module.ts` dosya başı yorumu). Mevcut `APP_GUARD`
 // importu SİLİNMEDİ, yalnızca token EKLENDİ.
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
-import { createPrismaClient } from '@arkesoft/db'
+import { assertAuthRoleIsRestricted, createPrismaClient } from '@arkesoft/db'
 import type { AuthPrismaDatabase } from '@arkesoft/db'
 import type { Auth } from 'better-auth'
 import type { Logger } from 'pino'
 
 import type { ApiEnv } from '../config/api-env.js'
 import { API_ENV } from '../config/config.tokens.js'
+import { describeErrorCause } from '../errors/describe-error-cause.js'
 import { ROOT_LOGGER } from '../logging/logging.tokens.js'
 import { createAuthInstance } from './auth-instance.js'
 import { AuthController } from './auth.controller.js'
@@ -70,13 +71,56 @@ import { SessionsController } from './sessions.controller.js'
 /**
  * `AuthModule`'e ÖZEL, ayrı bir Prisma istemcisi (dosya başı yorumu). Eager
  * `$connect()` YOK (K-A3 deseniyle AYNI) — bağlantı ilk sorguda kurulur.
+ *
+ * T-015 FIX turu 2 (solid'in SRP reçetesi, qa QA-3/QA-4, solid SD-9) — `export`
+ * EDİLDİ (yalnızca TS düzeyinde; Nest'in `AuthModule.exports` DİZİSİNE
+ * GİRMEDİ, dışarıya açılan modül yüzeyi DEĞİŞMEDİ). Gerekçe: istek-fazı
+ * testlerinin üretim açılış kapısına (bu sınıfın GERÇEK `onModuleInit`'i,
+ * DB'ye bağımlı) BAĞIMLI KALMAMASI için `__tests__/helpers/
+ * auth-prisma-client-resource-boot-probe-fixture.ts` bu sınıfı GENİŞLETİP
+ * `Test.overrideProvider(AuthPrismaClientResource)` ile DEĞİŞTİRİR — bunun
+ * için TOKEN'IN (sınıfın kendisi) test dosyalarından İÇE AKTARILABİLİR
+ * olması gerekir. Üretim davranışı (fail-closed boot probu, aşağıda)
+ * BİREBİR KORUNDU — yalnızca görünürlük değişti.
  */
 @Injectable()
-class AuthPrismaClientResource implements OnModuleDestroy {
+export class AuthPrismaClientResource implements OnModuleInit, OnModuleDestroy {
   readonly client: AuthPrismaDatabase
 
-  constructor(@Inject(API_ENV) env: ApiEnv) {
-    this.client = createPrismaClient({ databaseUrl: env.DATABASE_URL })
+  constructor(
+    @Inject(API_ENV) env: ApiEnv,
+    @Inject(ROOT_LOGGER) private readonly logger: Logger,
+  ) {
+    // ROADMAP v0.0.14.1, T-015/ST-F — `env.DATABASE_URL` (en az yetkili
+    // `arkesoft_app`, artık `account`/`session`/`verification` tablolarında
+    // HİÇBİR yetki taşımıyor) → `env.DATABASE_AUTH_URL` (`arkesoft_auth`,
+    // yalnızca bu üç tabloya kolon bazlı DML + `app_user`'a tablo bazlı
+    // DML). TEK satırlık yönlendirme — yeni istemci/havuz/yaşam döngüsü
+    // KURULMADI, `AuthPrismaClientResource` ZATEN ayrı (dosya başı yorumu).
+    // `??`/`||`/`?:` ile `DATABASE_URL`'e geri düşüş YASAK (R-PM4/K-A4) —
+    // kanıt: `__tests__/database-auth-url-*.test.ts` (c1/c2/c3).
+    this.client = createPrismaClient({ databaseUrl: env.DATABASE_AUTH_URL })
+  }
+
+  /**
+   * ROADMAP v0.0.14.1, T-015 FIX turu 1, madde 2 (security S-2(b)) —
+   * `@arkesoft/db`'nin negatif yetenek probunu (`assertAuthRoleIsRestricted`)
+   * AÇILIŞTA BİR KEZ çağırır, HER İSTEKTE DEĞİL. Nest bu metodu modül
+   * grafiği kurulurken bir kez çalıştırır (`OnModuleInit`); prob reddederse
+   * (`AuthRoleNotRestrictedError`) hata loglanır VE yukarı fırlatılır —
+   * `catch {}` ile SESSİZCE yutulmaz, `NestFactory.create()` zinciri
+   * reddedilir ve süreç açılışta DÜŞER (fail-closed, bağlayıcı kısıt).
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      await assertAuthRoleIsRestricted(this.client)
+    } catch (error) {
+      this.logger.error(
+        describeErrorCause(error),
+        'arkesoft_auth bağlantısı kısıtlı değil — açılış durduruluyor (S-2(b) fail-closed probu)',
+      )
+      throw error
+    }
   }
 
   onModuleDestroy(): Promise<void> {

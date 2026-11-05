@@ -277,38 +277,126 @@ describe('AC8 — sır sızıntısı yok (gerçek Postgres + Mailpit, tam akış
 // değil, sızıntı yok); çağrı/argüman SAYISI/SIRASI ne olursa olsun HERHANGİ
 // birinde "wrong" varsa test KIRMIZI olur.
 describe('better-call router.mjs:93 console.error — DATABASE_URL şifresi SIZMAMALI (FIX turu 1, solid H-1)', () => {
-  it('sağlayıcı seviyesi beklenmedik hata → console.error ÇAĞRILIRSA ham hata metni DATABASE_URL şifresini İÇERMEZ', async () => {
+  // T-015 FIX turu 1, madde 2 (security S-2(b)) GÜNCELLEMESİ — `AuthPrismaClientResource`
+  // artık `onModuleInit`'te `assertAuthRoleIsRestricted()`'ı AÇILIŞTA (bootstrap)
+  // çalıştırıyor (bkz. `auth.module.ts` dosya başı yorumu). Bu prob KENDİSİ bir
+  // sorgu çalıştırdığı için ulaşılamayan bir `DATABASE_AUTH_URL` artık İSTEK
+  // ZAMANINDA DEĞİL, AÇILIŞTA yakalanır — `createTestApp()` REDDEDER, HTTP
+  // sunucusu HİÇ AYAĞA KALKMAZ, `request(...)` çağrısı artık ULAŞILAMAZ. Bu bir
+  // REGRESYON DEĞİL, FIX'in AMAÇLANAN SONUCU: bozuk bir auth bağlantısı artık
+  // trafiği HİÇ KABUL ETMİYOR (ÖLÇÜLDÜ: `pnpm --filter @arkesoft/api test` bu
+  // override İLE önce AÇILIŞ reddi üretti, test bu yeni sınıra göre YENİDEN
+  // yazıldı). Sızıntı kontrolü KORUNUYOR — şimdi İKİ kanalda BİRDEN: better-call'un
+  // `console.error`'ı (artık bu senaryoda hiç ÇAĞRILMAZ, çünkü request'e asla
+  // ulaşılmıyor) VE bizim pino logumuz (`AuthPrismaClientResource.onModuleInit`'in
+  // `describeErrorCause()` ile yazdığı satır) — İKİSİ DE şifreyi İÇERMEMELİ.
+  it('ulaşılamayan DATABASE_AUTH_URL → AÇILIŞ reddedilir; ne console.error ne pino logu ham şifreyi İÇERİR', async () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { stream, getFullText } = createMemoryLogStream()
 
-    const testApp = await createTestApp({
-      apiEnv: {
-        ...BASE_ENV,
-        DATABASE_URL: 'postgresql://arkesoft_app:wrong@127.0.0.1:1/arkesoft?schema=public',
-      },
-    })
+    // GÜNCELLEME (ROADMAP v0.0.14.1, T-015/ST-F): `AuthPrismaClientResource`
+    // artık `env.DATABASE_AUTH_URL`'i okuyor — sağlayıcı seviyesi hatayı
+    // ÜRETMEK için override edilecek alan BUDUR (`DATABASE_URL` DEĞİL,
+    // `auth.module.ts:79`).
+    await expect(
+      createTestApp({
+        stream,
+        apiEnv: {
+          ...BASE_ENV,
+          DATABASE_AUTH_URL: 'postgresql://arkesoft_auth:wrong@127.0.0.1:1/arkesoft?schema=public',
+        },
+      }),
+    ).rejects.toThrow()
 
-    try {
-      await request(testApp.app.getHttpServer())
-        .post('/auth/sign-up/email')
-        .send({ name: 'S6 Ölçüm Kullanıcısı', email: uniqueEmail(), password: PASSWORD })
-    } finally {
-      await testApp.app.close()
-    }
-
-    // GERÇEK, KOŞULSUZ ASSERT (FIX turu 2, madde 5, dosya başı yorumu) —
-    // better-call'un KENDİ `console.error`'ı (bizim pino/redaction'ımızı
-    // ATLAYAN, üçüncü parti, kapsam dışı bir çağrı yolu) ÇAĞRILMIŞ olabilir
-    // VEYA olmayabilir, KAÇ KEZ çağrıldığı ve HANGİ argüman indeksinde
-    // sızdırdığı BİLİNMEZ — TÜM çağrıların TÜM argümanları tek metne
-    // İNDİRİLİR, DATABASE_URL'in şifresi ("wrong") bu metnin HİÇBİR
-    // YERİNDE olmamalıdır. Çağrı hiç olmadıysa `allCallsText` boş dizedir
-    // ve assert yine ANLAMLIDIR (vakum değil, sızıntı yok) — `if/else`
-    // ve dallanma YOK.
+    // GERÇEK, KOŞULSUZ ASSERT (FIX turu 2, madde 5, dosya başı yorumu İLE AYNI
+    // desen) — better-call'un KENDİ `console.error`'ı bu senaryoda HİÇ
+    // ÇAĞRILMAMIŞ olabilir (bootstrap daha önce düşüyor) — TÜM çağrıların TÜM
+    // argümanları tek metne İNDİRİLİR, DATABASE_AUTH_URL'in şifresi ("wrong")
+    // bu metnin HİÇBİR YERİNDE olmamalıdır. Çağrı hiç olmadıysa `allCallsText`
+    // boş dizedir ve assert yine ANLAMLIDIR (vakum değil, sızıntı yok).
     const allCallsText = consoleErrorSpy.mock.calls
       .flat()
       .map((value) => (value instanceof Error ? (value.stack ?? value.message) : String(value)))
       .join('\n')
     expect(allCallsText).not.toContain('wrong')
+
+    // YENİ kanal — `onModuleInit`'in fail-closed hata logu (K-A12/security
+    // endişesi): bootstrap hatasının METNİ de şifreyi İÇERMEMELİ, ama test VAKUM
+    // OLMASIN diye hatanın GERÇEKTEN loglandığı da doğrulanır (sessizce
+    // yutulmadı kanıtı).
+    const fullLogText = getFullText()
+    expect(fullLogText).not.toContain('wrong')
+    expect(fullLogText).toContain('açılış durduruluyor')
+
+    consoleErrorSpy.mockRestore()
+  }, 15_000)
+})
+
+// T-015 FIX turu 2 (solid'in SRP reçetesi — qa QA-3/QA-4, solid SD-9) — YUKARIDAKİ
+// blok yalnızca AÇILIŞ/KABLOLAMA invariant'ını (DI yaşam döngüsü, değişme sebebi:
+// `AuthPrismaClientResource.onModuleInit`'in GERÇEK DB probu) doğrular. BU blok
+// İKİNCİ, AYRI sistem sınırını (istek anı davranışı — better-call/hata sınırı/
+// logger, değişme sebebi: Better Auth'un KENDİ dispatch seviyesi hata yakalayıcısı)
+// doğrular ve `AuthPrismaClientResourceBootProbeFixture` İLE (üretim boot kapısına
+// BAĞIMLI KALMADAN) mount edilir — tam `database-auth-url-no-fallback-literal
+// .test.ts:129,187`'nin deyimi (vacuity karşıtı guard, ÖLÇÜLEN önkoşul sıfır
+// DEĞİL). FIX turu 1'in kaybettiği şey: "çağrı hiç yoksa metin boş dizedir, assert
+// YİNE anlamlıdır" savunması TEK BAŞINA vakum riskini KAPATMIYOR — `request(...)`
+// HİÇ ÇAĞRILMAZSA assert KOŞULSUZ geçer (QA-3). Düzeltme: `consoleErrorSpy.mock
+// .calls.length`'in SIFIRDAN BÜYÜK olduğu AÇIKÇA assert edilir (anti-vacuity
+// bekçisi) — `request(...)` kaldırılırsa bu satır KIRMIZI olur (ölçülmüş, ajan
+// raporunda kırmızı/yeşil kanıtı var).
+describe('better-call router.mjs:93 console.error — İSTEK ANINDA ulaşılamayan DB (T-015 FIX turu 2, solid SRP reçetesi)', () => {
+  it('sign-up isteği sırasında DATABASE_AUTH_URL ulaşılamaz → better-call console.error ÇAĞRILIR (anti-vacuity: >0) VE hiçbir çağrı şifreyi İÇERMEZ', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { stream, getFullText } = createMemoryLogStream()
+
+    // `bypassAuthBootProbe: true` — üretim boot kapısı (gerçek
+    // `assertAuthRoleIsRestricted`) ATLANIR, böylece AÇILIŞ `DATABASE_AUTH_URL`'in
+    // ulaşılabilirliğinden BAĞIMSIZ başarılı olur ve bağlantı denemesi (lazy
+    // `$connect`) İLK SORGUYA (bu testteki `/auth/sign-up/email` isteğine) kayar.
+    const testApp = await createTestApp({
+      stream,
+      bypassAuthBootProbe: true,
+      apiEnv: {
+        ...BASE_ENV,
+        DATABASE_AUTH_URL: 'postgresql://arkesoft_auth:wrong@127.0.0.1:1/arkesoft?schema=public',
+      },
+    })
+
+    try {
+      const response = await request(testApp.app.getHttpServer())
+        .post('/auth/sign-up/email')
+        .send({ name: 'S6 Ölçüm Kullanıcısı', email: uniqueEmail(), password: PASSWORD })
+
+      // QA-4 — Better Auth hatayı KENDİ İÇİNDE yakalar, `AuthController`'ın
+      // `try/catch`'i (→ `AuthProviderFailedError`, HTTP 503) BU YOLDA DEVREYE
+      // GİRMEZ: yanıt `503` DEĞİL, boş gövdeli `500`'dür (auth-flow.test.ts'in
+      // ÖLÇÜMÜYLE AYNI davranış sınıfı, `auth.handler()` REDDETMEZ).
+      expect(response.status).toBe(500)
+      expect(response.text).toBe('')
+    } finally {
+      await testApp.app.close()
+    }
+
+    // ANTI-VACUITY BEKÇİSİ (solid'in reçetesi, ZORUNLU) — `request(...)` GERÇEKTEN
+    // çağrıldığının VE better-call'un dispatch seviyesi hata yakalayıcısının
+    // GERÇEKTEN tetiklendiğinin mekanik kanıtı. `request(...)` kaldırılırsa bu
+    // satır 0 > 0 olarak KIRMIZI olur (ajan raporunda kanıtlı).
+    expect(consoleErrorSpy.mock.calls.length).toBeGreaterThan(0)
+
+    // GERÇEK, KOŞULSUZ ASSERT (FIX turu 2, madde 5 deseniyle AYNI) — TÜM
+    // çağrıların TÜM argümanları tek metne İNDİRİLİR, DATABASE_AUTH_URL'in
+    // şifresi ("wrong") bu metnin HİÇBİR YERİNDE olmamalıdır.
+    const allCallsText = consoleErrorSpy.mock.calls
+      .flat()
+      .map((value) => (value instanceof Error ? (value.stack ?? value.message) : String(value)))
+      .join('\n')
+    expect(allCallsText).not.toContain('wrong')
+
+    // Bizim pino kanalımız da (varsa) şifreyi İÇERMEMELİ.
+    const fullLogText = getFullText()
+    expect(fullLogText).not.toContain('wrong')
 
     consoleErrorSpy.mockRestore()
   }, 15_000)

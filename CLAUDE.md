@@ -331,6 +331,25 @@ Yeni bir endpoint, prosedür, kuyruk işi veya tablo eklerken **her maddeyi** do
 - [ ] Hata mesajı başka tenant'ın varlığını sızdırmıyor (var olmayan vs. yetkisiz ayrımı yapılmıyor → her ikisi de 404); istisna: host çözümünden gelen kiracının kendisi için — bkz. ADR-0010 §5.
 - [ ] Log kayıtlarında `tenantId` var.
 - [ ] Süper admin erişimi varsa impersonation kaydı ve denetim kaydı üretiliyor.
+- [ ] **Bağımlı/türetilmiş veritabanı nesnesi eklemiyorum** — ya da ekliyorsam katalog
+      linter'ının görüş alanını birlikte genişletiyorum (T-015/ADR-0017, `security` tur 3).
+      Linter bugün `public` şemasında şunları görür: tablolar (`relkind IN ('r','p')`),
+      view/matview/foreign tablolar (`UNEXPECTED_RELATION_KIND` — koşulsuz bulgu, allowlist
+      henüz YOK) ve fonksiyonların **PUBLIC** `EXECUTE` hakkı
+      (`UNEXPECTED_FUNCTION_EXECUTE_PRIVILEGE`). **Görmediği** eksenler:
+      `pg_proc.prosecdef`, PUBLIC-dışı `EXECUTE` alıcıları, `pg_trigger`, `pg_rewrite`
+      (RULE), `pg_roles.rolconfig`/`pg_db_role_setting`. Bu eksenlerden birine dokunan bir
+      nesne eklemek **otomatik kapı tarafından yakalanmaz** — elle güvenlik incelemesi +
+      linter genişletmesi zorunlu.
+- [ ] **`SECURITY DEFINER` fonksiyon eklemiyorum.** Ekliyorsam: sahibi tablo sahibi
+      (`arkesoft_migrator`) olduğu için fonksiyon RLS'i ve kolon bazlı kısıtlamayı
+      baypas edebilir. Açıkça `REVOKE EXECUTE … FROM PUBLIC` yazılacak, `EXECUTE`
+      **hiçbir** çalışma zamanı rolüne (`arkesoft_app`/`arkesoft_auth`) verilmeyecek
+      (verilmesi gerekiyorsa ADR yazılacak), ve fonksiyon gövdesi kiracı bağlamını kendi
+      içinde zorlayacak.
+- [ ] **`public` dışına şema açmıyorum** (bugün yapısal olarak kapalı: çalışma zamanı
+      rolleri `CREATE ON DATABASE` taşımıyor — ölçüldü). Açılırsa katalog okuyucularının
+      tamamının `nspname = 'public'` filtresi o şemayı kör noktaya çevirir.
 
 ---
 

@@ -6,10 +6,12 @@
 -- BU DOSYA DEĞİL. Bu dosya yalnızca bootstrap-roles.sql'in sahiplik/GRANT
 -- etkisini tersler — şema geri alma (DROP TABLE/COLUMN) GEREKTİRMEZ.
 --
--- Koşturucu: bu dosyanın `bootstrap-roles.ts`'teki bir karşılığı YOK (henüz
--- `pnpm db:rollback-roles` script'i eklenmedi — v0.0.14 borcu, `docs`
--- runbook'ta bunu açıkça yazar). Elle koşturma, `bootstrap-roles.ts:138`'in
--- (`childEnv = { ...process.env, DATABASE_URL: bootstrapUrl }`) karşılığı:
+-- Koşturucu: `packages/db/src/rollback-roles.ts` (v0.0.14.1'de eklendi, `roles`
+-- argümanı) — `pnpm db:rollback-roles` script'i artık bu dosyayı koşturur; aynı
+-- dosyanın `auth-role` argümanı `rollback-auth-role.sql`'i (kademe 4) koşturur.
+-- Script `bootstrap-roles.ts:138`'in (`childEnv = { ...process.env,
+-- DATABASE_URL: bootstrapUrl }`) desenini kullanır. Script'siz elle koşturma da
+-- hâlâ geçerlidir:
 --     cd packages/db
 --     DATABASE_URL="$DATABASE_BOOTSTRAP_URL" pnpm exec prisma db execute \
 --       --file sql/rollback-roles.sql
@@ -104,3 +106,10 @@ REVOKE USAGE ON SCHEMA public FROM arkesoft_app;
 -- olmayı sürdürür (`DROP ROLE` yasağı, K-E2). Rollback sonrası
 -- `pnpm test:isolation` KIRMIZIYA döner — bu bilinçli bir kill-switch
 -- özelliğidir (architect, "Her kademe test:isolation'ı kırmızıya düşürür").
+-- ⚠ v0.0.14.1 İSTİSNASI: dördüncü kademe (`sql/rollback-auth-role.sql`,
+-- `pnpm db:rollback-auth-role`) bu kademenin TERSİ yönde çalışır ve SIRAYLA
+-- İLK koşar (yürütme sırası 4→1→2→3, numaralandırma eklenme sırasını
+-- kaydeder). Kademe 4 sonrası KIRMIZI aynı "kill-switch" sebebinden DEĞİL —
+-- kod (yeni kurallar) katalogdan daha yeni olduğu için; kanıt, hata değil.
+-- Yeşile dönüş: `pnpm db:bootstrap`'i yeniden koştur. Ayrıntı:
+-- docs/development.md → "Dört kademeli geri alma".

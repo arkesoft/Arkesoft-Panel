@@ -55,7 +55,11 @@
 // eklenme sırasıdır, dizi uzunluğu DEĞİL).
 // Bu tek satırlık değişiklik DÖRT mekanizmayı birden devreye sokar ve hiçbiri
 // bu dosyanın dışındaki linter kaynak kodunu DEĞİŞTİRMEYİ gerektirmez:
-//   1. Canlı katalog linter'ı (`catalog-lint.ts`, 20 kural) — `job` için
+//   1. Canlı katalog linter'ı (`catalog-lint.ts` — kural kodlarının TEK
+//      doğruluk kaynağı `TENANT_ISOLATION_RULES`'tır, BURADA sabit bir sayı
+//      YAZILMAZ; FIX turu 1, solid Tur 1 [low] SD-3 bulgusu: bu satırdaki
+//      bayat kural SAYISI R-PM7'nin kapattığı SINIFIN TAM KENDİSİYDİ, ironik
+//      biçimde ST-C'nin kendi dosyasında) — `job` için
 //      `tenant_id` kolonu/tipi/NOT NULL'ı, RLS `ENABLE`+`FORCE`'u, kanonik
 //      `USING`/`WITH CHECK` politikasını ve `arkesoft_app` DML yetkisini arar.
 //   2. Migration kümesi linter'ı (`__tests__/helpers/migration-set.ts`) —
@@ -112,3 +116,55 @@ export const TENANT_SCOPED_TABLES = [
   'audit_log',
   'tenant_invitation',
 ] as const
+
+// GENİŞLETME (ROADMAP v0.0.14.1, T-015/ST-C, architect "Bağlayıcı yetki
+// beyanı" + kullanıcı kararı 2026-11-05): `arkesoft_auth` rolünün üç
+// hash/belirteç taşıyan platform tablosuna (`PLATFORM_LEVEL_TABLES`'ın alt
+// kümesi) hangi yetkiyi taşıması gerektiğinin VERİ beyanı. Bu dosyanın
+// İMPORTSUZ kalması (dosya başı kuralı — bkz. `catalog-lint.ts` AC9/K-E5)
+// burada da KORUNUR: aşağıdaki iki sabit `catalog-lint.ts`'in saf kural
+// motoruna `LintCatalogOptions` ÜZERİNDEN PARAMETRE olarak geçer, modülden
+// import EDİLMEZ — `TENANT_SCOPED_TABLES`/`PLATFORM_LEVEL_TABLES`'ın ZATEN
+// kurulu deseniyle BİREBİR aynı.
+//
+// Tip seviyesi PİN: bu dizinin üyeleri `client.ts:68`'teki
+// `AUTH_SECRET_BEARING_MODELS` ile BİREBİR aynı olmak ZORUNDADIR — ikisi
+// AYRI dosyalarda, AYRI amaçlarla (biri çalışma zamanı tip daraltması, biri
+// katalog linter'ı girdisi) yaşar ama AYNI üç modeli adlandırır. Pin:
+// `__tests__/type-pins/auth-secret-tables.pin.ts` (derleme zamanı, kapalı
+// dünya — iki yönlü `Exclude<>`).
+//
+// Kapsam DARALTILDI (kullanıcı kararı 2026-11-05, R-PM6 — po'nun revize
+// ettiği ROADMAP madde 4): tablo bazlı `REVOKE` yalnızca BU ÜÇ tabloya
+// uygulanır — `tenant`/`app_user` KAPSAM DIŞI (ADR-0008:53'ün ölçtüğü canlı
+// kullanım `tenant` 32, `user` 5, `tenantMembership` 1 — literal daraltma
+// uygulamayı kırardı).
+export const AUTH_SECRET_BEARING_TABLES = ['account', 'session', 'verification'] as const
+
+/**
+ * `arkesoft_auth`ın bir tablo üzerindeki BEKLENEN yetki şekli. `columnLevel`
+ * `true` ise SELECT/INSERT/UPDATE KOLON bazlı (TÜM kolonlar) beklenir ve
+ * TABLO bazlı SELECT/INSERT/UPDATE BEKLENMEZ (anti-vacuity — R-PM3);
+ * `columnLevel` `false` ise bu üçü TABLO bazlı beklenir (DELETE PostgreSQL'de
+ * kolon bazlı TANIMLI DEĞİL, bu yüzden `expectsTableDelete` AYRI bir alan).
+ */
+export type AuthRoleTablePrivilegeExpectation = {
+  readonly tableName: string
+  readonly columnLevel: boolean
+  readonly expectsTableDelete: boolean
+}
+
+// Kullanıcı kararı 2026-11-05 (ikinci kapı, architect'in `app_user` ölçümü
+// üzerine): `app_user` ZORUNLU olarak dahil — Better Auth'un
+// `findUserByEmail`'i ona bakar (`internal-adapter.mjs:585`) ve Better Auth
+// TEK Prisma istemcisi kullandığı için bu erişim başka bir role
+// DEVREDİLEMEZ. `app_user` için DELETE BEKLENMİYOR (A-N1: `user.deleteUser`
+// ucu `auth-instance.ts`'te AÇILMAMIŞ — en az yetki; açılırsa bu satır
+// güncellenir ve hata GÜRÜLTÜLÜ olur, sessiz değil).
+export const AUTH_ROLE_TABLE_PRIVILEGE_EXPECTATIONS: readonly AuthRoleTablePrivilegeExpectation[] =
+  [
+    { tableName: 'account', columnLevel: true, expectsTableDelete: true },
+    { tableName: 'session', columnLevel: true, expectsTableDelete: true },
+    { tableName: 'verification', columnLevel: true, expectsTableDelete: true },
+    { tableName: 'app_user', columnLevel: false, expectsTableDelete: false },
+  ] as const

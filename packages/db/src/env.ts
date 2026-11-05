@@ -17,6 +17,7 @@
 
 import {
   databaseAdminEnvSchema,
+  databaseAuthEnvSchema,
   EnvValidationError,
   infraEnvSchema,
   parseEnv,
@@ -115,6 +116,38 @@ export function readDatabaseMigrationEnv(): DatabaseMigrationEnv {
 
   return {
     databaseUrl: env.DATABASE_MIGRATION_URL,
+    nodeEnv: env.NODE_ENV,
+  }
+}
+
+/**
+ * `src/__tests__/helpers/test-client.ts`'in `arkesoft_auth` bağlantısı için
+ * gerektirdiği, doğrulanmış ortam alt kümesi (ROADMAP v0.0.14.1, T-015/ST-A,
+ * ADR-0008 borcu). `readDatabaseMigrationEnv`'in BİREBİR deseni — "iki
+ * tüketici, tek tanım" (`@arkesoft/config`'in `databaseAuthEnvSchema`'sı,
+ * `apps/api/src/config/api-env.ts`'in ikinci tüketicisi).
+ *
+ * `DATABASE_AUTH_URL` `databaseAuthEnvSchema`'da ZORUNLU (opsiyonel DEĞİL) —
+ * bu yüzden `readDatabaseBootstrapEnv`'teki gibi ek bir `undefined` kontrolü/
+ * özel hata mesajı GEREKMEZ, `parseEnv` zaten eksikse `EnvValidationError`
+ * fırlatır (koşulsuz fail-fast, architect kararı — ROADMAP'in "rol katalogda
+ * varsa" koşulu BİLEREK uygulanmadı).
+ */
+export type DatabaseAuthEnv = {
+  readonly databaseUrl: string
+  readonly nodeEnv: NodeEnv
+}
+
+/** `DATABASE_AUTH_URL` ve `NODE_ENV`'i doğrular. */
+export function readDatabaseAuthEnv(): DatabaseAuthEnv {
+  const env = parseEnv(
+    infraEnvSchema
+      .pick({ NODE_ENV: true })
+      .extend({ DATABASE_AUTH_URL: databaseAuthEnvSchema.shape.DATABASE_AUTH_URL }),
+  )
+
+  return {
+    databaseUrl: env.DATABASE_AUTH_URL,
     nodeEnv: env.NODE_ENV,
   }
 }

@@ -8,7 +8,7 @@
 // `CatalogSnapshot` nesnesidir — bu dosya yalnızca "bu doğru mu?" sorusunu
 // saf fonksiyonla yanıtlar; "ne var?" sorusunu `catalog-snapshot.ts` yanıtladı.
 // Bu ayrım `__tests__/catalog-lint.test.ts`'in DB'siz, saf birim testi olarak
-// koşmasını sağlar (fixture'larla 20 kuralın tamamı burada doğrulanır).
+// koşmasını sağlar (fixture'larla kural kodlarının tamamı burada doğrulanır).
 //
 // TAKSONOMİ PARAMETREDİR, modülden import EDİLMEZ (AC9'un mekanizması):
 // çağıran (`createTenantIsolationSuite()`/isolation testleri) `src/tenancy.ts`
@@ -25,97 +25,236 @@
 // GUC adından DEĞİL) `buildCanonicalPolicyExpression()` ile beklenen TAM
 // ifadeyi ÜRETİR ve politika ifadesiyle BİREBİR karşılaştırır.
 //
-// 20 KURAL KODU (FIX turu 2: solid/security Tur 2 [medium] bulgusu üzerine
-// İKİ KURAL YENİDEN ADLANDIRILDI — net sıfır değişiklik; AYRICA B3
-// (qa/solid Tur 2 [low] BAĞIMSIZ bulgu) üzerine BİR YENİ kural eklendi,
-// 19 → 20; aşağıdaki GÜNCELLEME notlarına bakın):
-//   taksonomi→katalog (13): MISSING_TABLE, MISSING_TENANT_ID_COLUMN,
+// KURAL KODLARININ TEK DOĞRULUK KAYNAĞI `TENANT_ISOLATION_RULES`'TIR (ROADMAP
+// v0.0.14.1, T-015/ST-C, R-PM7'nin yapısal çözümü): prose'ta artık hiçbir
+// sabit sayı YOKTUR — dizinin eleman sayısı `TENANT_ISOLATION_RULES.length`
+// ile, her kodun üretildiği en az bir fixture `__tests__/catalog-lint.test.ts`
+// içinde MEKANİK olarak doğrulanır. Eskiden burada dört ayrı yerde elle
+// yazılı bir sayı vardı (development.md kural (g)'nin tam konusu) — her yeni
+// kural eklendiğinde dördü de BAYATLIYORDU; artık bayatlayacak bir sayı YOK.
+//
+// Kategoriler (kodun kendisi `TENANT_ISOLATION_RULES`'ta, bağlayıcı sıra
+// DEĞİL — bu liste yalnızca OKUYUCU için gruplama):
+//   taksonomi→katalog: MISSING_TABLE, MISSING_TENANT_ID_COLUMN,
 //     NULLABLE_TENANT_ID_COLUMN, WRONG_TENANT_ID_TYPE,
 //     MISSING_TENANT_ID_LEADING_INDEX, RLS_NOT_ENABLED, RLS_NOT_FORCED,
 //     MISSING_TENANT_POLICY, POLICY_MISSING_WITH_CHECK,
 //     POLICY_USING_NOT_CANONICAL, POLICY_WITH_CHECK_NOT_CANONICAL,
 //     POLICY_RESTRICTED_TO_ROLE, APP_ROLE_MISSING_DML_PRIVILEGE
-//   katalog→taksonomi (3): UNCLASSIFIED_TABLE, TENANT_ID_ON_PLATFORM_TABLE,
+//   katalog→taksonomi: UNCLASSIFIED_TABLE, TENANT_ID_ON_PLATFORM_TABLE,
 //     TENANT_ID_WITHOUT_TAXONOMY_ENTRY
-//   rol (2): APP_ROLE_IS_SUPERUSER_OR_BYPASSRLS, APP_ROLE_OWNS_TABLE
-//   platform/ledger (1, YENİ — B3): APP_ROLE_EXCESS_MIGRATIONS_LEDGER_PRIVILEGE
-//   fail-closed (1): EMPTY_CATALOG_SNAPSHOT
+//   rol (T-015/ST-C'de ÖZNESİ genişledi — iki çalışma zamanı rolü):
+//     APP_ROLE_IS_SUPERUSER_OR_BYPASSRLS, APP_ROLE_OWNS_TABLE,
+//     ROLE_HAS_EXCESS_ATTRIBUTE (YENİ)
+//   platform/ledger: APP_ROLE_EXCESS_MIGRATIONS_LEDGER_PRIVILEGE
+//   auth rolü / sır taşıyan tablo yetkisi (T-015/ST-C, YENİ — ADR-0008 borcu):
+//     APP_ROLE_RETAINS_SECRET_TABLE_PRIVILEGE,
+//     AUTH_ROLE_MISSING_COLUMN_PRIVILEGE,
+//     AUTH_ROLE_TABLE_LEVEL_PRIVILEGE_ON_SECRET_TABLE,
+//     AUTH_ROLE_MISSING_TABLE_PRIVILEGE, AUTH_ROLE_EXCESS_TABLE_PRIVILEGE,
+//     UNEXPECTED_COLUMN_LEVEL_GRANTEE, UNEXPECTED_TABLE_LEVEL_GRANTEE (FIX
+//     turu 1, YENİ — security Tur 1 [medium] S-1 bulgusu, Kaynak C)
+//   katalog bütünlüğü (FIX turu 2, YENİ — security Tur 2 [high] S-7 bulgusu,
+//     Kaynak D): UNEXPECTED_RELATION_KIND
+//   fonksiyon yürütme hakkı (FIX turu 2, YENİ — security Tur 2 [medium] S-8
+//     bulgusu, Kaynak E — "hibe" ekseni): UNEXPECTED_FUNCTION_EXECUTE_PRIVILEGE
+//   fonksiyon varlığı (FIX turu 3, YENİ — security Tur 3 [medium] S-15
+//     bulgusu, Kaynak E — "varlık" ekseni, taksonomi-bağımsız, Kaynak D'nin
+//     deseniyle): UNEXPECTED_SECURITY_DEFINER_FUNCTION
+//   fail-closed: EMPTY_CATALOG_SNAPSHOT
 //
-// GÜNCELLEME (FIX turu 2, B3 — qa/solid Tur 2 [low] BAĞIMSIZ bulgu):
-// `bootstrap-roles.sql`'in 4. bölümündeki blanket `GRANT .../ALTER DEFAULT
-// PRIVILEGES` TÜM gelecekteki tablolara otomatik DML verir — bu mekanizma
-// TABLO ADINA göre filtrelenemez, dolayısıyla Prisma'nın KENDİ migration
-// defterini (`_prisma_migrations`) de kapsar. `arkesoft_app` (çalışma zamanı,
-// en az yetkili rolü) bu deftere INSERT/UPDATE/DELETE yapabiliyordu —
-// `security`/`qa` ampirik olarak ÖLÇTÜ. `_prisma_migrations` taksonomide
-// (`EXEMPT_TABLES`) olduğu için `lintAppRoleDmlPrivileges`in YETERSİZ
-// yetki kontrolünün (ve `lintCatalogToTaxonomy`'nin) HİÇBİRİNİN öznesi
-// değildi — "fazla yetki" sorusunu soran HİÇBİR kural yoktu.
-// `lintMigrationsLedgerPrivilege` bu boşluğu kapatır: `_prisma_migrations`
-// üzerinde `appRoleName`in SELECT DIŞINDA bir DML yetkisi varsa bulgu verir.
+// FIX turu 1 (security Tur 1 [medium] S-1 bulgusu — KAYNAK C): Kaynak A
+// (`has_table_privilege`) sadece İKİ ADLANDIRILMIŞ rolü (`appRoleName`/
+// `authRoleName`) sorguluyordu — ÜÇÜNCÜ, adlandırılmış bir role verilen
+// TABLO SEVİYESİ bir hibe (örn. `GRANT SELECT ON public.account TO
+// bi_reader`) hiçbir kural tarafından GÖRÜLMÜYORDU (Kaynak B/`attacl` de
+// bunu YAKALAMAZ — tablo seviyesi hibe `pg_class.relacl`de yaşar, `attacl`de
+// DEĞİL). `security`'nin M1 mutasyonu bunu ÖLÇTÜ: SURVIVED, linter 0 bulgu
+// verdi. KAYNAK C (`pg_class.relacl` + `aclexplode`, `readTableGrants`)
+// bu boşluğu kapatır — `UNEXPECTED_TABLE_LEVEL_GRANTEE`nin zemini.
 //
-// GÜNCELLEME (FIX turu 1, [high] — solid VE security BAĞIMSIZ OLARAK buldu):
-// eski TEK `POLICY_WRONG_SETTING` kuralı `usingExpression` **VEYA** (`||`)
-// `withCheckExpression`'ın GUC'u okumasını yeterli sayıyordu — bir politika
-// `USING (doğru GUC) WITH CHECK (true)` yazarsa (çapraz tenant YAZMA açık
-// kalır) 19 kuralın TAMAMINDAN temiz geçiyordu. İKİ AYRI kural kodu
-// (eski adlarıyla `POLICY_USING_WRONG_SETTING`/`POLICY_WITH_CHECK_WRONG_SETTING`)
-// USING ve WITH CHECK'i BAĞIMSIZ değerlendirmeye başladı — AC3'ün "iki vaka
-// ayrı isimli kural" deseniyle aynı gerekçe (K-E5). Ayrıca
-// `POLICY_RESTRICTED_TO_ROLE` eklendi (architect K-E2.1'in "politikada `TO`
-// yan tümcesi YOK" kararını zorlar).
+// AMPİRİK ÖLÇÜLMÜŞ ASİMETRİ (BAĞLAYICI, Kaynak B/`attacl`'den FARKLI):
+// `attacl`de tablo SAHİBİ `grantee` olarak GÖRÜNMEZ (ST-A0③, `owner_row_count
+// = 0`); `relacl`de tablo SAHİBİ `grantee` olarak GÖRÜNÜR — canlı Postgres'te
+// ölçüldü (`arkesoft_migrator` HER tabloda SEKİZ privilege_type'ın hepsiyle
+// `grantee` olarak listelenir, bir GRANT/REVOKE DDL'i o tabloyu MATERYALİZE
+// ettiği an). Bu yüzden `UNEXPECTED_TABLE_LEVEL_GRANTEE`'nin beklenen
+// grantee kümesi `{appRoleName, authRoleName, table.tableOwner}`DİR —
+// `table.tableOwner` LİTERAL DEĞİL, `snapshot.tables[].tableOwner`'dan
+// OKUNUR (her tablo için AYRI, R-PO6'nın AYNI deseni — tahminle yazılsaydı
+// kural KALICI yanlış pozitif verirdi). Bu kural, diğer beş auth-rolü
+// kuralıyla AYNI `authRole` kapısının ARDINDADIR (yalnızca o alan
+// geçirildiğinde değerlendirilir) — `authRoleName` YOKKEN beklenen küme
+// `{appRoleName, table.tableOwner}`e düşerdi ve bugün canlı veritabanında
+// ÜÇ sır taşıyan tabloda zaten VAR olan `arkesoft_auth` hibeleri (DELETE)
+// YANLIŞ POZİTİF üretirdi — dondurulmuş beş çağrı noktası (hiçbiri `authRole`
+// geçirmiyor) bu yüzden bu kuralı da HİÇ görmez, kalıcı yanlış pozitif
+// riski YAPISAL olarak kapanır.
 //
-// GÜNCELLEME (FIX turu 2, K-E5 REVİZYONU — solid Tur 2 [medium] bulgusu:
-// "tur 1 high'ının SINIFI kapanmadı"): FIX turu 1'in `expressionReferencesSetting`
-// yardımcısı yalnızca `current_setting('<ayar>'` ALT DİZESİNİ arıyordu — HANGİ
-// kolonun karşılaştırıldığını ve ifadenin ŞEKLİNİ hiç iddia etmiyordu. `security`
-// 14 varyant ölçtü; 19 kuralın TAMAMINDAN temiz geçen ALTI vaka buldu (yanlış
-// kolon, `OR true`, `<>`, `IS NOT NULL`, başka GUC + yorumda doğru GUC) ve
-// kalıp-tabanlı bir ara çözümün DE atlatılabileceğini gösterdi
-// (`NOT (tenant_id = current_setting(…))` ve `(…) IS NOT TRUE` — kalıp
-// MEVCUT, üst seviye `or`/çıplak `true` YOK, ama anlam TERSİNE ÇEVRİLMİŞ).
-// **Dördüncü sezgisel yama REDDEDİLDİ** (R-D1'in "mekanizma yanlış, eşik
-// değil" dersi — bkz. dosya başı). Çözüm: `buildCanonicalPolicyExpression()`
-// GUC adından TEK doğru ifadeyi ÜRETİR (sabit yazılmaz) ve karşılaştırma
-// ALT DİZE/kalıp DEĞİL, TAM (byte-birebir) EŞİTLİKTİR —
-// `isCanonicalPolicyExpression()`. `expressionReferencesSetting` SİLİNDİ
-// (zayıf yardımcıyı bırakmak sonraki geliştiriciyi ona yönlendirirdi). İki
-// kural adı da bu nedenle `..._WRONG_SETTING` → `..._NOT_CANONICAL` olarak
-// DEĞİŞTİ: artık "yanlış GUC" değil "kanonik olmayan ifade" soruluyor (yanlış
-// kolon/şekil de bu kuralın kapsamına girdi). **Bilinçli daraltma (madde 6):**
-// tenant tablosu kanonik dışında başka hiçbir politika BİÇİMİ kabul etmez —
-// ikinci PERMISSIVE politika, komut bazlı bölünmüş politika veya
-// `AS RESTRICTIVE` eki de artık bulgu üretir (kanonik olmayan `usingExpression`/
-// `withCheckExpression` taşıdıkları veya `policies.length` arttığı için ek
-// politika BAŞKA bir satır olarak değerlendirilip kendi `POLICY_*_NOT_CANONICAL`
-// bulgusunu üretir).
+// FIX turu 2 (security Tur 2 [high] S-7 bulgusu — KAYNAK D,
+// `UNEXPECTED_RELATION_KIND`): bu sürümün kurduğu sınır sıradan bir `CREATE
+// VIEW`/`CREATE MATERIALIZED VIEW` ile ATLANABİLİYORDU. `ALTER DEFAULT
+// PRIVILEGES … ON TABLES` (bootstrap-roles.sql bölüm 4) view/matview'ı DA
+// kapsar — `account` üzerine bir view yazıldığı AN `arkesoft_app`'e HİÇBİR
+// `GRANT` yazılmadan `arwd` hibe olur ve view SAHİBİNİN yetkisiyle çalıştığı
+// için kolon bazlı kısıtlamayı BAYPAS eder. ÜÇ TASARIM SEÇENEĞİ ÖLÇÜLDÜ:
+//   (A) Kaynak C'yi (`readTableGrants`) `relkind IN ('r','p','v','m','f')`'e
+//       genişletmek + RLS/indeks/`tenant_id` kurallarını `relkind`'e göre
+//       daraltmak — EN GENİŞ diff, üç kuralın yeniden sınanmasını gerektirir.
+//   (B) `readTables()`'ı (Kaynak "tablo okuyucusu") körlemesine genişletmek
+//       — REDDEDİLDİ: bu okuyucunun çıktısı RLS/indeks/`tenant_id`
+//       kurallarını besliyor, view'da bunların HİÇBİRİ yapısal olarak
+//       YOKTUR → üç YENİ yanlış pozitif açardı (ilk tepki kuralı GEVŞETMEK
+//       olurdu, §10 md 6 ihlali).
+//   (C) SEÇİLDİ — bağımsız, yeni bir okuyucu (Kaynak D) + yeni, taksonomiden
+//       BAĞIMSIZ bir kural: `public`te `relkind IN ('v','m','f')` olan HER
+//       nesne bulgu üretir. Bugün sayı SIFIR (ölçüldü) → yanlış pozitif
+//       SIFIR, mesaj net, diff EN KÜÇÜK, mevcut üç kuralın (RLS/indeks/
+//       tenant_id) davranışı DEĞİŞMEZ.
+// `UNEXPECTED_TABLE_LEVEL_GRANTEE`'nin beklenen kümesi `{appRoleName,
+// authRoleName, tableOwner}` OLDUĞU için Kaynak C'yi tek başına
+// genişletmek YETMEZDİ — `arkesoft_app` KÜMEDE olduğundan kural
+// ATEŞLENMEZ; bu yüzden (C) `UNCLASSIFIED_TABLE`in (katalog→taksonomi,
+// Kaynak "tablo okuyucusu" temelli) GÖRMEDİĞİ boşluğu KENDİ bağımsız
+// kaynağıyla kapatır, grantee SORUSU SORMAZ.
+//
+// GÜNCELLEME (ROADMAP v0.0.14.1, T-015/ST-C — ADR-0008'in v0.0.14'e vadeli
+// borcu, architect "Bağlayıcı yetki beyanı" + kullanıcı kararı 2026-11-05):
+// yedi yeni kural + üç özne genişletmesi eklendi. Beklenti verisi (hangi
+// tablo sır taşıyor, hangi şekilde) `src/tenancy.ts`'te YAŞAR — bu dosyaya
+// LİTERAL GİRMEZ (K-E5/AC9'un AYNI deseni, GUC adı için zaten kurulu): bu
+// veri `LintCatalogOptions.authRole` üzerinden TEK, OPSİYONEL bir nesne
+// olarak geçer.
+//
+// FIX turu 1 (qa Tur 1 [medium] QA-1 bulgusu): `authRole` eskiden ÜÇ AYRI
+// opsiyonel alandı (`authRoleName?`, `authSecretBearingTables?`,
+// `authRoleTablePrivilegeExpectations?`) — "hep ya da hiç" olması gereken üç
+// alan BAĞIMSIZ opsiyoneldi. `qa` mutasyonla kanıtladı: `authRoleName`
+// çıkarıldığında TypeScript hata VERMEDİ ve beş auth-rolü kuralı bozuk veri
+// karşısında SESSİZCE `[]` döndürdü — yapısal koruma YOKTU. Çözüm: TEK İÇ
+// İÇE opsiyonel alan (`authRole?: { roleName; secretBearingTables;
+// tablePrivilegeExpectations }`) — "hep ya da hiç" artık TİPTE zorlanır: ya
+// üçü BİRDEN geçirilir ya HİÇBİRİ (nesnenin kendisi opsiyonel, İÇİ değil).
+// `lintCatalog`'un üçlü `undefined` kontrolü TEK kontrola indi (aşağıya bakın).
+//
+// OPSİYONEL OLMASININ GEREKÇESİ — TS TİPİ SEVİYESİNDE EXPAND/CONTRACT:
+// `__tests__/catalog-lint-live.isolation.test.ts` (ST-B'nin dondurduğu,
+// ST-E'nin yeni canlı kanıtlar yazdığı dosya) `lintCatalog()`'u BEŞ yerde
+// `authRole` alanını HİÇ GEÇİRMEDEN çağırıyor — o dosyaya bu alt görevde
+// DOKUNULMADI (handoff'un açık yasağı). Alan ZORUNLU olsaydı o dosya
+// DERLENMEZDİ. Opsiyonel bırakmak "önce ekle" (expand) adımıdır; o beş çağrı
+// noktasının `authRole`'u GEÇİRECEK hâle getirilmesi (tüket/contract) ileri
+// bir alt görevin işi — o zamana kadar auth rolüne özgü kurallar (aşağıda)
+// o çağrı noktası için SESSİZCE değerlendirilMEZ (yeni bulgu üretmez, eski
+// davranışı DEĞİŞTİRMEZ).
+//
+// `lintAppRoleDmlPrivileges`'İN TADİLİ (ROADMAP madde 3, "mevcut tablo
+// yetkisi kuralının üç tablo için kolon bazlı sorguya tadil edilmesi") BU
+// OPSİYONEL alanlara BAĞLI DEĞİLDİR — yukarıdaki dondurulmuş çağrı noktası
+// için de DOĞRU sonucu üretmesi GEREKİR (aksi hâlde ST-D'nin DDL'i uygulanır
+// uygulanmaz o dosyanın "sağlıklı durum" testi APP_ROLE_MISSING_DML_PRIVILEGE
+// ile KIRMIZIYA döner — gerçek bir regresyon, yeni kuralların "beklenen
+// kırmızısı" DEĞİL). Çözüm SNAPSHOT VERİSİNİN KENDİSİNDEN: bir tabloda EN AZ
+// BİR kolon seviyesi hibe (`columnGrants`, Kaynak B) VARSA o tablo artık
+// "kolon rejimi"ne geçmiş sayılır ve `arkesoft_app`'in o tabloda TAM DML
+// taşıması beklentisi ARTIK UYGULANMAZ (o tablonun `arkesoft_app` durumu
+// `APP_ROLE_RETAINS_SECRET_TABLE_PRIVILEGE`'ın öznesidir, bunun DEĞİL). Bu
+// çıkarım hiçbir tablo/rol adı LİTERALİ gerektirmez (K-E5/AC9 korunur) ve
+// ST-D'nin DDL'i uygulanmadan önce (`columnGrants` BOŞ, ST-B'nin ölçtüğü
+// taban) eski davranışı DEĞİŞTİRMEZ — yalnızca DDL uygulandıktan SONRA
+// devreye girer.
+//
+// FIX turu 3 (security Tur 3 [medium] S-15 bulgusu) — `UNEXPECTED_FUNCTION_
+// EXECUTE_PRIVILEGE` (FIX turu 2) YALNIZCA "hibe" eksenini (PUBLIC'e EXECUTE
+// verilmiş mi) soruyordu. ÖLÇÜLEN KAÇIŞ: `REVOKE EXECUTE ON FUNCTION … FROM
+// PUBLIC` + `GRANT EXECUTE ON FUNCTION … TO arkesoft_app` iki satırı
+// `hasPublicExecute`'u `false`'a düşürür ve bir `SECURITY DEFINER`
+// fonksiyonu bu kuraldan TAMAMEN KAÇIRIR — canlı ölçüldü: `arkesoft_app`
+// sıfır tablo yetkisiyle bu yoldan `account.password`'u OKUYABİLİYORDU.
+// `solid`'in ölçülmüş tasarım reçetesi (D ve E'nin karıştığı iki eksen,
+// E'nin İKİYE bölünmesi gerektiği) birebir uygulandı:
+//   - Okuyucu TEK KALDI (`readFunctionPrivileges`, `catalog-snapshot.ts`):
+//     `isSecurityDefiner` (`p.prosecdef`) ve `functionExecuteGrantees`
+//     (`pg_proc.proacl` + `aclexplode`) EKLENDİ — "ne var" sorusu orada.
+//   - İKİ AYRI KURAL KODU: mevcut `UNEXPECTED_FUNCTION_EXECUTE_PRIVILEGE`
+//     (hibe ekseni, DOKUNULMADI) + YENİ `UNEXPECTED_SECURITY_DEFINER_FUNCTION`
+//     (varlık ekseni, Kaynak D'nin `lintUnexpectedRelationKinds`'ıyla
+//     BİREBİR aynı taksonomi-bağımsız/koşulsuz desen — `authRole` kapısının
+//     DIŞINDA). Tek kod altında birleştirmek, ileride meşru bir `SECURITY
+//     DEFINER` için bir allowlist açıldığında İKİSİNİ BİRLİKTE sustururdu.
+//   - `pg_class`/`pg_proc` okuyucuları (Kaynak D/E) BİRLEŞTİRİLMEDİ — farklı
+//     sebeplerle değişen (relkind etiketi vs fonksiyon güvenlik niteliği) ve
+//     farklı çözümü olan iki eksen; ortaklaştırılacak şey en fazla "satır
+//     başına koşulsuz bulgu" deseni, bunun için yardımcı fonksiyon yazmak
+//     ERKEN SOYUTLAMA olurdu (solid'in gerekçesi).
 
 import type { CatalogSnapshot } from './catalog-snapshot.js'
 
-/** Linter'ın üretebileceği 20 bulgu kodu (dosya başı listesi, bağlayıcı). */
-export type TenantIsolationRule =
-  | 'MISSING_TABLE'
-  | 'MISSING_TENANT_ID_COLUMN'
-  | 'NULLABLE_TENANT_ID_COLUMN'
-  | 'WRONG_TENANT_ID_TYPE'
-  | 'MISSING_TENANT_ID_LEADING_INDEX'
-  | 'RLS_NOT_ENABLED'
-  | 'RLS_NOT_FORCED'
-  | 'MISSING_TENANT_POLICY'
-  | 'POLICY_MISSING_WITH_CHECK'
-  | 'POLICY_USING_NOT_CANONICAL'
-  | 'POLICY_WITH_CHECK_NOT_CANONICAL'
-  | 'POLICY_RESTRICTED_TO_ROLE'
-  | 'APP_ROLE_MISSING_DML_PRIVILEGE'
-  | 'UNCLASSIFIED_TABLE'
-  | 'TENANT_ID_ON_PLATFORM_TABLE'
-  | 'TENANT_ID_WITHOUT_TAXONOMY_ENTRY'
-  | 'APP_ROLE_IS_SUPERUSER_OR_BYPASSRLS'
-  | 'APP_ROLE_OWNS_TABLE'
-  | 'APP_ROLE_EXCESS_MIGRATIONS_LEDGER_PRIVILEGE'
-  | 'EMPTY_CATALOG_SNAPSHOT'
+/**
+ * Linter'ın üretebileceği TÜM bulgu kodları — TEK doğruluk kaynağı. Eleman
+ * sayısı ve "her kod en az bir fixture'da üretiliyor mu" sorusu
+ * `__tests__/catalog-lint.test.ts`'te MEKANİK olarak doğrulanır; burada
+ * sabit bir sayı YAZILMAZ (R-PM7'nin yapısal çözümü).
+ */
+export const TENANT_ISOLATION_RULES = [
+  'MISSING_TABLE',
+  'MISSING_TENANT_ID_COLUMN',
+  'NULLABLE_TENANT_ID_COLUMN',
+  'WRONG_TENANT_ID_TYPE',
+  'MISSING_TENANT_ID_LEADING_INDEX',
+  'RLS_NOT_ENABLED',
+  'RLS_NOT_FORCED',
+  'MISSING_TENANT_POLICY',
+  'POLICY_MISSING_WITH_CHECK',
+  'POLICY_USING_NOT_CANONICAL',
+  'POLICY_WITH_CHECK_NOT_CANONICAL',
+  'POLICY_RESTRICTED_TO_ROLE',
+  'APP_ROLE_MISSING_DML_PRIVILEGE',
+  'UNCLASSIFIED_TABLE',
+  'TENANT_ID_ON_PLATFORM_TABLE',
+  'TENANT_ID_WITHOUT_TAXONOMY_ENTRY',
+  'APP_ROLE_IS_SUPERUSER_OR_BYPASSRLS',
+  'APP_ROLE_OWNS_TABLE',
+  'APP_ROLE_EXCESS_MIGRATIONS_LEDGER_PRIVILEGE',
+  // T-015/ST-C — YENİ (ADR-0008 borcu, architect "Bağlayıcı yetki beyanı").
+  'APP_ROLE_RETAINS_SECRET_TABLE_PRIVILEGE',
+  'AUTH_ROLE_MISSING_COLUMN_PRIVILEGE',
+  'AUTH_ROLE_TABLE_LEVEL_PRIVILEGE_ON_SECRET_TABLE',
+  'AUTH_ROLE_MISSING_TABLE_PRIVILEGE',
+  'AUTH_ROLE_EXCESS_TABLE_PRIVILEGE',
+  'UNEXPECTED_COLUMN_LEVEL_GRANTEE',
+  // FIX turu 1, YENİ — security Tur 1 [medium] S-1 bulgusu (Kaynak C).
+  'UNEXPECTED_TABLE_LEVEL_GRANTEE',
+  'ROLE_HAS_EXCESS_ATTRIBUTE',
+  // FIX turu 2, YENİ — security Tur 2 [high] S-7 bulgusu (Kaynak D).
+  'UNEXPECTED_RELATION_KIND',
+  // FIX turu 2, YENİ — security Tur 2 [medium] S-8 bulgusu (Kaynak E).
+  'UNEXPECTED_FUNCTION_EXECUTE_PRIVILEGE',
+  // FIX turu 3, YENİ — security Tur 3 [medium] S-15 bulgusu (Kaynak E'nin
+  // "varlık" ekseni, `prosecdef`). AYRI koddur, `UNEXPECTED_FUNCTION_
+  // EXECUTE_PRIVILEGE`'in (hibe ekseni) GENİŞLETİLMİŞ hâli DEĞİL — solid'in
+  // bağlayıcı gerekçesi: tek kod altında birleştirmek, ileride meşru bir
+  // `SECURITY DEFINER` için allowlist açıldığında ikisini BİRLİKTE susturur.
+  'UNEXPECTED_SECURITY_DEFINER_FUNCTION',
+  'EMPTY_CATALOG_SNAPSHOT',
+] as const
 
-/** Tek bir bulgu. `tableName` tablo bazlı olmayan kurallarda (`EMPTY_CATALOG_SNAPSHOT`, rol kuralları) YOKTUR. */
+/** {@link TENANT_ISOLATION_RULES} elemanlarının birleşim tipi. */
+export type TenantIsolationRule = (typeof TENANT_ISOLATION_RULES)[number]
+
+/**
+ * Tek bir bulgu. `tableName` tablo bazlı olmayan kurallarda
+ * (`EMPTY_CATALOG_SNAPSHOT`, rol kuralları) YOKTUR.
+ *
+ * ⚠ AD/İÇERİK SAPMASI (solid Tur 3 [low] SD-10 bulgusu, BORÇ — bkz. handoff
+ * raporu "SD-10" bölümü, maliyeti ÖLÇÜLDÜ ve BU TURDA yeniden adlandırma
+ * YAPILMADI): alan adı `tableName` olsa da FIX turu 2'den (S-7/S-8) ve FIX
+ * turu 3'ten (S-15) itibaren bu alan tablo DIŞI nesne adları da taşır — VIEW/
+ * MATERIALIZED VIEW/FOREIGN TABLE (`UNEXPECTED_RELATION_KIND`) ve FONKSİYON
+ * adı (`UNEXPECTED_FUNCTION_EXECUTE_PRIVILEGE`,
+ * `UNEXPECTED_SECURITY_DEFINER_FUNCTION`). Davranış hatası YOK — yalnızca ad,
+ * taşıdığı veriyi artık tam yansıtmıyor.
+ */
 export type LintFinding = {
   readonly rule: TenantIsolationRule
   readonly tableName?: string
@@ -137,12 +276,47 @@ type TenantIsolationTaxonomy = {
   readonly platformLevelTables: readonly string[]
 }
 
+/**
+ * T-015/ST-C — `src/tenancy.ts`'teki `AuthRoleTablePrivilegeExpectation`
+ * ile YAPISAL OLARAK uyumlu (import EDİLMEZ, `TenantIsolationTaxonomy`'nin
+ * AYNI deseni — K-E5/AC9).
+ */
+type AuthRoleTablePrivilegeExpectationLike = {
+  readonly tableName: string
+  readonly columnLevel: boolean
+  readonly expectsTableDelete: boolean
+}
+
+/**
+ * T-015/ST-C, FIX turu 1 (qa Tur 1 [medium] QA-1 bulgusu) — auth rolüne özgü
+ * ÜÇ girdi artık BAĞIMSIZ opsiyonel ALANLAR değil, TEK bir opsiyonel İÇ İÇE
+ * nesnenin ÜYELERİ. "Hep ya da hiç" kısıtı böylece TİP SEVİYESİNDE zorlanır:
+ * nesnenin KENDİSİ opsiyoneldir (geçirilmeyebilir — dondurulmuş eski çağrı
+ * noktası için), ama geçirildiğinde ÜÇ alanın HEPSİ zorunludur (içindeki HİÇBİR
+ * alan opsiyonel DEĞİL) — bir alanı unutup diğerlerini geçirmek artık
+ * DERLENMEZ (aşağıdaki VACUITY kanıtına bakın, handoff raporunda tekrarlanır).
+ */
+type AuthRoleLintInput = {
+  readonly roleName: string
+  readonly secretBearingTables: readonly string[]
+  readonly tablePrivilegeExpectations: readonly AuthRoleTablePrivilegeExpectationLike[]
+}
+
 /** `lintCatalog`'un tüm girdileri (anlık görüntü hariç). */
 export type LintCatalogOptions = {
   readonly taxonomy: TenantIsolationTaxonomy
   /** `tenant-context.ts`'in `TENANT_CONTEXT_SETTING` sabiti — BURADA literal YAZILMAZ. */
   readonly tenantContextSetting: string
   readonly appRoleName: string
+  /**
+   * T-015/ST-C, FIX turu 1 — auth rolüne özgü ÜÇ girdi (rol adı, sır taşıyan
+   * tablolar, tablo yetkisi beklentileri) TEK bir opsiyonel nesnede. OPSİYONEL
+   * OLMASININ GEREKÇESİ: dosya başı notuna bakın — dondurulmuş eski çağrı
+   * noktası bu alanı henüz geçirmiyor, aşağıdaki altı kural o çağrı noktası
+   * için bu alan YOKKEN hiç değerlendirilMEZ (TS tipi seviyesinde
+   * expand/contract).
+   */
+  readonly authRole?: AuthRoleLintInput
 }
 
 const EXPECTED_TENANT_ID_TYPE = 'text'
@@ -317,8 +491,7 @@ function lintTenantScopedTable(
     // politika, komut bazlı bölünmüş politika (`FOR SELECT`/`FOR INSERT`) veya
     // `AS RESTRICTIVE` eki — HER satır, kendi ifadesi kanonikle byte-birebir
     // eşleşse BİLE — `POLICY_USING_NOT_CANONICAL`/`POLICY_WITH_CHECK_NOT_CANONICAL`
-    // üretir. Yeni kural KODU EKLENMEDİ; toplam 20 — mevcut iki kod bu
-    // çoğulluğu da kapsar.
+    // üretir.
     const isSinglePolicy = policies.length === 1
     const expectedExpression = buildCanonicalPolicyExpression(tenantContextSetting)
 
@@ -338,7 +511,7 @@ function lintTenantScopedTable(
       // USING ve WITH CHECK AYRI AYRI, TAM EŞİTLİKLE değerlendirilir — eski
       // alt dize kontrolü (`expressionReferencesSetting`, SİLİNDİ) `USING
       // ("owner_id" = current_setting(doğru GUC))` (yanlış KOLON) ve
-      // `WITH CHECK (… OR true)` (üst seviye OR) gibi vakaları 19 kuralın
+      // `WITH CHECK (… OR true)` (üst seviye OR) gibi vakaları tüm kuralların
       // TAMAMINDAN temiz geçiriyordu — bkz. dosya başı GÜNCELLEME notu.
       const isUsingCanonical = isCanonicalPolicyExpression(
         policy.usingExpression,
@@ -402,18 +575,45 @@ function lintTenantScopedTable(
   return findings
 }
 
+/**
+ * T-015/ST-C — `AUTH_SECRET_BEARING_TABLES`/benzer bir listeye KOLON
+ * SEVİYESİ hibe VEREN tabloların adlarını, Kaynak B'den (`columnGrants`)
+ * türetir. Bu kümede olan bir tablo artık "kolon rejimi"ne geçmiş sayılır —
+ * bkz. dosya başı "`lintAppRoleDmlPrivileges`'İN TADİLİ" notu.
+ */
+function tablesWithColumnLevelGrants(snapshot: CatalogSnapshot): ReadonlySet<string> {
+  return new Set(snapshot.columnGrants.map((grant) => grant.tableName))
+}
+
 function lintAppRoleDmlPrivileges(
   classifiedTables: readonly string[],
   snapshot: CatalogSnapshot,
   appRoleName: string,
 ): LintFinding[] {
   const findings: LintFinding[] = []
+  const columnGoverned = tablesWithColumnLevelGrants(snapshot)
 
   for (const tableName of classifiedTables) {
-    const privilege = snapshot.privileges.find((candidate) => candidate.tableName === tableName)
+    // T-015/ST-C TADİLİ (ROADMAP madde 3): bir tablo kolon seviyesi hibe
+    // taşıyorsa (Kaynak B'nin kanıtladığı "kolon rejimi") `appRoleName`in o
+    // tabloda TAM DML taşıması beklentisi burada ARTIK UYGULANMAZ — o
+    // tablonun `appRoleName` durumu `APP_ROLE_RETAINS_SECRET_TABLE_PRIVILEGE`'ın
+    // öznesidir, bunun DEĞİL. DDL (ST-D) uygulanmadan önce `columnGrants`
+    // BOŞTUR (ST-B'nin ölçtüğü taban) — bu dal o ana kadar HİÇ tetiklenmez,
+    // eski davranış DEĞİŞMEZ.
+    if (columnGoverned.has(tableName)) {
+      continue
+    }
+    const privilege = snapshot.privileges.find(
+      (candidate) => candidate.roleName === appRoleName && candidate.tableName === tableName,
+    )
     if (privilege === undefined) {
-      // Tablo katalogda hiç yoksa bu zaten MISSING_TABLE/UNCLASSIFIED_TABLE
-      // tarafından yakalanır — burada ikinci bir bulgu üretmek gürültü olur.
+      // Tablo katalogda hiç yoksa bu artık GERÇEKTEN `MISSING_TABLE`
+      // tarafından yakalanır (T-015/ST-C: `MISSING_TABLE`'ın öznesi
+      // `platformLevelTables`'ı da kapsayacak şekilde genişletildi, bkz.
+      // `lintPlatformLevelTableExistence`) — bu `continue` artık GERÇEKTEN
+      // gereksiz (eski yorum, "platform tabloları için YANLIŞ" olduğu
+      // architect tarafından ÖLÇÜLMÜŞTÜ; bu genişletmeden SONRA doğru).
       continue
     }
     if (
@@ -426,6 +626,36 @@ function lintAppRoleDmlPrivileges(
         rule: 'APP_ROLE_MISSING_DML_PRIVILEGE',
         tableName,
         message: `"${appRoleName}" rolü "${tableName}" üzerinde SELECT/INSERT/UPDATE/DELETE yetkilerinin tamamına sahip değil.`,
+      })
+    }
+  }
+
+  return findings
+}
+
+/**
+ * T-015/ST-C — `MISSING_TABLE`'ın özne genişletmesi (architect bulgusu:
+ * `lintAppRoleDmlPrivileges`'in sessiz `continue`'unun savunduğu "bu zaten
+ * yakalanır" iddiası platform seviyesi tablolar için YANLIŞTI —
+ * `MISSING_TABLE` eskiden YALNIZCA `lintTenantScopedTable` içinde üretiliyordu;
+ * bir platform tablosu katalogdan tamamen kaybolsa HİÇBİR kural görmüyordu).
+ * Bu fonksiyon o boşluğu kapatır: her platform seviyesi tablonun katalogda
+ * VAR OLDUĞUNU doğrular — kanıt fixture'ı: taksonomiden bir platform tablosu
+ * (örn. sır taşıyan bir tablo) katalogdan silinirse artık MISSING_TABLE düşer.
+ */
+function lintPlatformLevelTableExistence(
+  platformLevelTables: readonly string[],
+  snapshot: CatalogSnapshot,
+): LintFinding[] {
+  const findings: LintFinding[] = []
+
+  for (const tableName of platformLevelTables) {
+    const table = snapshot.tables.find((candidate) => candidate.tableName === tableName)
+    if (table === undefined) {
+      findings.push({
+        rule: 'MISSING_TABLE',
+        tableName,
+        message: `Taksonomide "platformLevelTables" altında listelenen tablo katalogda yok: "${tableName}".`,
       })
     }
   }
@@ -500,7 +730,8 @@ function lintMigrationsLedgerPrivilege(
   appRoleName: string,
 ): LintFinding[] {
   const privilege = snapshot.privileges.find(
-    (candidate) => candidate.tableName === MIGRATIONS_LEDGER_TABLE,
+    (candidate) =>
+      candidate.roleName === appRoleName && candidate.tableName === MIGRATIONS_LEDGER_TABLE,
   )
   if (privilege === undefined) {
     return []
@@ -523,27 +754,496 @@ function lintMigrationsLedgerPrivilege(
   return []
 }
 
-function lintAppRole(snapshot: CatalogSnapshot, appRoleName: string): LintFinding[] {
+/**
+ * T-015/ST-C — `APP_ROLE_IS_SUPERUSER_OR_BYPASSRLS` (özne genişletildi: artık
+ * `snapshot.roles`'taki HER rolü değerlendirir, eskiden yalnızca TEK BİR
+ * alanı okuyordu — bkz. dosya başı "GENİŞLET/TÜKET" notu, `catalog-
+ * snapshot.ts`'in devrettiği contract adımı) ve YENİ
+ * `ROLE_HAS_EXCESS_ATTRIBUTE` (öznesi İKİ ÇALIŞMA ZAMANI ROLÜ —
+ * `arkesoft_migrator` DEĞİL, onun `CREATEDB`'si meşru). İsim bazlı literal
+ * YOK — rol adı mesaja `role.roleName`'den gelir.
+ */
+function lintRoleAttributes(snapshot: CatalogSnapshot): LintFinding[] {
   const findings: LintFinding[] = []
 
-  if (snapshot.appRole.isSuperuser || snapshot.appRole.canBypassRls) {
-    findings.push({
-      rule: 'APP_ROLE_IS_SUPERUSER_OR_BYPASSRLS',
-      message: `"${appRoleName}" rolü süper kullanıcı veya BYPASSRLS taşıyor — RLS'i tamamen atlar.`,
-    })
-  }
-
-  for (const table of snapshot.tables) {
-    if (table.tableOwner === appRoleName) {
+  for (const role of snapshot.roles) {
+    if (role.isSuperuser || role.canBypassRls) {
       findings.push({
-        rule: 'APP_ROLE_OWNS_TABLE',
-        tableName: table.tableName,
-        message: `"${appRoleName}" "${table.tableName}" tablosunun sahibi — FORCE RLS sahibi de kapsasa bile çalışma zamanı rolü tablo SAHİBİ OLMAMALI.`,
+        rule: 'APP_ROLE_IS_SUPERUSER_OR_BYPASSRLS',
+        message: `"${role.roleName}" rolü süper kullanıcı veya BYPASSRLS taşıyor — RLS'i tamamen atlar.`,
+      })
+    }
+    if (role.canCreateDb) {
+      findings.push({
+        rule: 'ROLE_HAS_EXCESS_ATTRIBUTE',
+        message: `"${role.roleName}" rolü CREATEDB niteliğini taşıyor — çalışma zamanı rolleri bu niteliğe sahip OLMAMALI (migrator rolünün CREATEDB'si meşru, bu rol değerlendirmenin öznesi DEĞİL).`,
       })
     }
   }
 
   return findings
+}
+
+/**
+ * T-015/ST-C — `APP_ROLE_OWNS_TABLE` (özne genişletildi: artık
+ * `snapshot.roles`'taki HER rol — eskiden tek bir `appRoleName` parametresi
+ * alıyordu). İsim bazlı literal YOK — rol kümesi `snapshot.roles`'tan gelir.
+ */
+function lintRoleOwnsTable(snapshot: CatalogSnapshot): LintFinding[] {
+  const findings: LintFinding[] = []
+  const runtimeRoleNames = new Set(snapshot.roles.map((role) => role.roleName))
+
+  for (const table of snapshot.tables) {
+    if (runtimeRoleNames.has(table.tableOwner)) {
+      findings.push({
+        rule: 'APP_ROLE_OWNS_TABLE',
+        tableName: table.tableName,
+        message: `"${table.tableOwner}" "${table.tableName}" tablosunun sahibi — FORCE RLS sahibi de kapsasa bile çalışma zamanı rolü tablo SAHİBİ OLMAMALI.`,
+      })
+    }
+  }
+
+  return findings
+}
+
+/**
+ * T-015/ST-C, YENİ — `APP_ROLE_RETAINS_SECRET_TABLE_PRIVILEGE`: `appRoleName`
+ * sır taşıyan (`authSecretBearingTables`) bir tabloda HÂLÂ en az bir DML
+ * yetkisine sahipse düşer. Bu, ROADMAP madde 4'ün ("üç sır taşıyan tabloya
+ * tablo bazlı REVOKE") canlı kanıtının YARISIDIR — `arkesoft_app`'in payı.
+ */
+function lintAppRoleSecretTablePrivileges(
+  snapshot: CatalogSnapshot,
+  appRoleName: string,
+  authSecretBearingTables: readonly string[],
+): LintFinding[] {
+  const findings: LintFinding[] = []
+
+  for (const tableName of authSecretBearingTables) {
+    const privilege = snapshot.privileges.find(
+      (candidate) => candidate.roleName === appRoleName && candidate.tableName === tableName,
+    )
+    if (privilege === undefined) {
+      continue
+    }
+    if (privilege.canSelect || privilege.canInsert || privilege.canUpdate || privilege.canDelete) {
+      findings.push({
+        rule: 'APP_ROLE_RETAINS_SECRET_TABLE_PRIVILEGE',
+        tableName,
+        message:
+          `"${appRoleName}" rolü sır taşıyan "${tableName}" tablosunda hâlâ en az bir DML ` +
+          `yetkisine sahip (canSelect=${String(privilege.canSelect)}, canInsert=${String(privilege.canInsert)}, ` +
+          `canUpdate=${String(privilege.canUpdate)}, canDelete=${String(privilege.canDelete)}) — bu ` +
+          `tabloda "${appRoleName}" için HİÇBİR yetki beklenmiyor (REVOKE uygulanmamış olabilir).`,
+      })
+    }
+  }
+
+  return findings
+}
+
+type ColumnPrivilegeRow = CatalogSnapshot['columnPrivileges'][number]
+
+/**
+ * T-015/ST-C, YENİ — iki kural birden üretir (α/β/δ senaryolarının öznesi):
+ *   - `AUTH_ROLE_TABLE_LEVEL_PRIVILEGE_ON_SECRET_TABLE`: bir sütunun TABLO
+ *     seviyesi SELECT/INSERT/UPDATE'i varsa (α — anti-vacuity bekçisi, tasarım
+ *     yalnızca KOLON seviyesi bekliyor) — tablo başına TEK bulgu (kolon
+ *     sayısı kadar TEKRARLANMAZ).
+ *   - `AUTH_ROLE_MISSING_COLUMN_PRIVILEGE`: tablo seviyesi yoksa ve
+ *     SELECT/INSERT/UPDATE'in TAMAMI kolon seviyesinde de yoksa (δ — üç
+ *     kolondan biri eksik), mesaj tablo VE kolon adını taşır.
+ *   - Tablo seviyesi YOKKEN kolon seviyesi SELECT/INSERT/UPDATE'in ÜÇÜ de
+ *     VARSA (β — sağlıklı, `isFullyColumnGranted`) hiçbir bulgu ÜRETMEZ.
+ *     FIX turu 2 (solid Tur 1 [low] SD-5r bulgusu — SD-5'in ARTIĞI): bu
+ *     JSDoc eskiden `columnOnly` adlı bir SATIR ALANINA atıfta bulunuyordu —
+ *     `CatalogSnapshot['columnPrivileges']` (Kaynak A) öyle bir alan HİÇ
+ *     TAŞIMAZ (`catalog-snapshot.ts`'in dosya başı + `readColumnPrivilegesForRole`
+ *     doc'u: bu türetme BİLEREK okuyucuda YAPILMAZ, K-E5). Gerçek davranış
+ *     aşağıdaki `isFullyColumnGranted` yerel değişkenidir — beyan/gerçeklik
+ *     boşluğu burada KAPANDI.
+ */
+function lintAuthRoleSecretTableColumnPrivileges(
+  snapshot: CatalogSnapshot,
+  authRoleName: string,
+  authSecretBearingTables: readonly string[],
+): LintFinding[] {
+  const findings: LintFinding[] = []
+
+  for (const tableName of authSecretBearingTables) {
+    const columnsOfTable = snapshot.columns.filter((column) => column.tableName === tableName)
+    let tableLevelFindingEmitted = false
+
+    for (const column of columnsOfTable) {
+      const privilege: ColumnPrivilegeRow | undefined = snapshot.columnPrivileges.find(
+        (candidate) =>
+          candidate.roleName === authRoleName &&
+          candidate.tableName === tableName &&
+          candidate.columnName === column.columnName,
+      )
+      const hasTableSelect = privilege?.hasTableSelect ?? false
+      const hasTableInsert = privilege?.hasTableInsert ?? false
+      const hasTableUpdate = privilege?.hasTableUpdate ?? false
+      const isTableLevel = hasTableSelect || hasTableInsert || hasTableUpdate
+
+      if (isTableLevel) {
+        if (!tableLevelFindingEmitted) {
+          findings.push({
+            rule: 'AUTH_ROLE_TABLE_LEVEL_PRIVILEGE_ON_SECRET_TABLE',
+            tableName,
+            message:
+              `"${authRoleName}" rolü sır taşıyan "${tableName}" tablosunda TABLO bazlı bir ` +
+              'SELECT/INSERT/UPDATE yetkisine sahip — tasarım yalnızca KOLON bazlı yetki ' +
+              "bekliyor (anti-vacuity: tablo yetkisi varken has_column_privilege'in de true " +
+              'dönmesi beklenen bir yan etkidir, bu yüzden tablo seviyesi yetki KENDİSİ sorunun kaynağıdır).',
+          })
+          tableLevelFindingEmitted = true
+        }
+        continue
+      }
+
+      const hasColumnSelect = privilege?.hasColumnSelect ?? false
+      const hasColumnInsert = privilege?.hasColumnInsert ?? false
+      const hasColumnUpdate = privilege?.hasColumnUpdate ?? false
+      // FIX turu 1 (solid Tur 1 [low] SD-5 bulgusu — `isColumnOnlyPrivilege`
+      // dejenere veri alanı): bu noktaya ulaşıldığında `isTableLevel` YUKARIDA
+      // (satır 801) `false` olarak elendi — yani `hasTableSelect`/
+      // `hasTableInsert`/`hasTableUpdate`in ÜÇÜ de BU dalda GARANTİ false'tur.
+      // Genel-amaçlı `hasColumn && !hasTable` (ST-A0①'in anti-vacuity
+      // çıkarımı) bu çağrı noktasında `hasTable` HER ZAMAN false OLDUĞU için
+      // `hasColumn`a DEJENERE olurdu — eski `isColumnOnlyPrivilege()`
+      // yardımcısı bunu SAKLIYORDU ve JSDoc'u genel çıkarımı anlatırken
+      // GERÇEK davranışı (identity) YANSITMIYORDU. Yardımcı KALDIRILDI;
+      // doğrudan `hasColumnX` kullanılır — davranış DEĞİŞMEDİ, yalnızca
+      // beyan/gerçeklik boşluğu kapandı.
+      const isFullyColumnGranted = hasColumnSelect && hasColumnInsert && hasColumnUpdate
+
+      if (!isFullyColumnGranted) {
+        findings.push({
+          rule: 'AUTH_ROLE_MISSING_COLUMN_PRIVILEGE',
+          tableName,
+          message:
+            `"${authRoleName}" rolü "${tableName}.${column.columnName}" kolonunda SELECT/INSERT/UPDATE ` +
+            `yetkisinin tamamına sahip değil (hasColumnSelect=${String(hasColumnSelect)}, ` +
+            `hasColumnInsert=${String(hasColumnInsert)}, hasColumnUpdate=${String(hasColumnUpdate)}).`,
+        })
+      }
+    }
+  }
+
+  return findings
+}
+
+/**
+ * T-015/ST-C, YENİ — `AUTH_ROLE_MISSING_TABLE_PRIVILEGE` / `AUTH_ROLE_EXCESS_
+ * TABLE_PRIVILEGE`: `authRoleTablePrivilegeExpectations`teki HER giriş için
+ * tablo bazlı yetkiyi beklentiyle karşılaştırır.
+ *   - `columnLevel === false` (örn. `app_user`): tablo bazlı SELECT/INSERT/
+ *     UPDATE'in TAMAMI beklenir — eksikse MISSING.
+ *   - `expectsTableDelete`: tablo bazlı DELETE beklenip beklenmediğini
+ *     belirler (PostgreSQL'de DELETE kolon bazlı TANIMLI DEĞİL) — beklenirken
+ *     yoksa MISSING, beklenMEZken varsa EXCESS (en az yetki ihlali, örn.
+ *     `app_user` için DELETE verilmemesi gerekir — A-N1).
+ */
+function lintAuthRoleTablePrivilegeExpectations(
+  snapshot: CatalogSnapshot,
+  authRoleName: string,
+  expectations: readonly AuthRoleTablePrivilegeExpectationLike[],
+): LintFinding[] {
+  const findings: LintFinding[] = []
+
+  for (const expectation of expectations) {
+    const { tableName, columnLevel, expectsTableDelete } = expectation
+    const privilege = snapshot.privileges.find(
+      (candidate) => candidate.roleName === authRoleName && candidate.tableName === tableName,
+    )
+    if (privilege === undefined) {
+      continue
+    }
+
+    if (!columnLevel && (!privilege.canSelect || !privilege.canInsert || !privilege.canUpdate)) {
+      findings.push({
+        rule: 'AUTH_ROLE_MISSING_TABLE_PRIVILEGE',
+        tableName,
+        message:
+          `"${authRoleName}" rolü "${tableName}" üzerinde TABLO bazlı SELECT/INSERT/UPDATE ` +
+          `yetkilerinin tamamına sahip değil (canSelect=${String(privilege.canSelect)}, ` +
+          `canInsert=${String(privilege.canInsert)}, canUpdate=${String(privilege.canUpdate)}).`,
+      })
+    }
+
+    if (expectsTableDelete && !privilege.canDelete) {
+      findings.push({
+        rule: 'AUTH_ROLE_MISSING_TABLE_PRIVILEGE',
+        tableName,
+        message: `"${authRoleName}" rolü "${tableName}" üzerinde beklenen TABLO bazlı DELETE yetkisine sahip değil.`,
+      })
+    }
+
+    if (!expectsTableDelete && privilege.canDelete) {
+      findings.push({
+        rule: 'AUTH_ROLE_EXCESS_TABLE_PRIVILEGE',
+        tableName,
+        message: `"${authRoleName}" rolü "${tableName}" üzerinde beklenmeyen TABLO bazlı DELETE yetkisine sahip (en az yetki ihlali).`,
+      })
+    }
+  }
+
+  return findings
+}
+
+/**
+ * T-015/ST-C, YENİ — `AUTH_ROLE_EXCESS_TABLE_PRIVILEGE`'in ikinci kaynağı:
+ * beklenti listesinde (`authRoleTablePrivilegeExpectations`) HİÇ YER ALMAYAN
+ * bir tabloda `authRoleName`in herhangi bir DML yetkisi varsa düşer — "diğer
+ * tüm tablolar: hiçbir yetki yok" beyanının genel (catch-all) kapanışı.
+ * `_prisma_migrations` (`EXEMPT_TABLES`) BİLEREK hariç — o tablonun kendi
+ * kuralı (`lintMigrationsLedgerPrivilege`) var.
+ */
+function lintAuthRoleUnexpectedTablePrivileges(
+  snapshot: CatalogSnapshot,
+  authRoleName: string,
+  expectations: readonly AuthRoleTablePrivilegeExpectationLike[],
+): LintFinding[] {
+  const findings: LintFinding[] = []
+  const expectedTableNames = new Set(expectations.map((expectation) => expectation.tableName))
+
+  for (const privilege of snapshot.privileges) {
+    if (
+      privilege.roleName !== authRoleName ||
+      expectedTableNames.has(privilege.tableName) ||
+      EXEMPT_TABLES.has(privilege.tableName)
+    ) {
+      continue
+    }
+    if (privilege.canSelect || privilege.canInsert || privilege.canUpdate || privilege.canDelete) {
+      findings.push({
+        rule: 'AUTH_ROLE_EXCESS_TABLE_PRIVILEGE',
+        tableName: privilege.tableName,
+        message:
+          `"${authRoleName}" rolü beklenti tablosunda yer almayan "${privilege.tableName}" ` +
+          'tablosunda en az bir DML yetkisine sahip — bu role bu tabloda HİÇBİR yetki beklenmiyor.',
+      })
+    }
+  }
+
+  return findings
+}
+
+/**
+ * T-015/ST-C, YENİ — `UNEXPECTED_COLUMN_LEVEL_GRANTEE`: Kaynak B'nin
+ * (`columnGrants`) HER satırı için alıcının (`grantee`) `authRoleName`
+ * OLDUĞUNU doğrular. Beklenen küme `{authRoleName}` TEKİL — ST-A0③'ün ölçtüğü
+ * ampirik olgu: tablo SAHİBİ `grantee` olarak ASLA görünmez (yalnızca
+ * `grantor`), bu yüzden beklenen kümeye tablo sahibi EKLENMEZ (eklenseydi
+ * kural KALICI yanlış pozitif verirdi, R-PO6). PUBLIC hibesi `grantee`
+ * alanında `-` (tire) olarak gelir — birebir string eşitlik onu OTOMATİK
+ * "beklenmeyen" sayar, bu İSTENEN davranıştır. Bu kural şemanın HER YERİNDEKİ
+ * kolon hibelerini görür (taksonomi parametresi YOK, K-E5'in `columnGrants`
+ * için zaten kurulu deseni).
+ *
+ * FIX turu 1 (solid Tur 1 [low] S-4 bulgusu — `isGrantable` ölü veri alanı):
+ * `catalog-snapshot.ts` bu alanı parse edip taşıyordu ama HİÇBİR kural
+ * OKUMUYORDU (`security`'nin M4 mutasyonu — `WITH GRANT OPTION` — SURVIVED,
+ * 0 bulgu). Alıcı DOĞRU (`authRoleName`) olsa BİLE `WITH GRANT OPTION`
+ * taşıyan bir hibe KENDİSİ bir bulgu üretir — `authRoleName`in bu sır
+ * taşıyan kolonu BAŞKA bir role yeniden hibeleyebilmesi, en az yetki
+ * ilkesinin DOLAYLI bir ihlalidir (tasarım `authRoleName`in kendisinin bile
+ * yeniden hibeleme YETKİSİ taşımamasını bekler). İki koşul AYRI mesajla,
+ * AYNI kural kodunda birleştirilir (yeni bir kural kodu AÇMAK yerine —
+ * ikisi de "bu kolon hibesi beklenenden SAPIYOR" sorusunun bir biçimi).
+ */
+function lintColumnGrantGrantees(snapshot: CatalogSnapshot, authRoleName: string): LintFinding[] {
+  const findings: LintFinding[] = []
+
+  for (const grant of snapshot.columnGrants) {
+    const isUnexpectedGrantee = grant.grantee !== authRoleName
+    if (isUnexpectedGrantee) {
+      findings.push({
+        rule: 'UNEXPECTED_COLUMN_LEVEL_GRANTEE',
+        tableName: grant.tableName,
+        message:
+          `"${grant.tableName}.${grant.columnName}" kolonunda "${grant.privilegeType}" yetkisi ` +
+          `beklenmeyen bir alıcıya ("${grant.grantee}") verilmiş — beklenen tek alıcı "${authRoleName}".`,
+      })
+    } else if (grant.isGrantable) {
+      findings.push({
+        rule: 'UNEXPECTED_COLUMN_LEVEL_GRANTEE',
+        tableName: grant.tableName,
+        message:
+          `"${grant.tableName}.${grant.columnName}" kolonunda "${grant.privilegeType}" yetkisi ` +
+          `"${authRoleName}"a WITH GRANT OPTION ile verilmiş — alıcı DOĞRU ama yeniden hibeleme ` +
+          'yetkisi (is_grantable=true) beklenmiyor (en az yetki ihlali).',
+      })
+    }
+  }
+
+  return findings
+}
+
+/**
+ * T-015/ST-C, FIX turu 1, YENİ — `UNEXPECTED_TABLE_LEVEL_GRANTEE`: Kaynak
+ * C'nin (`tableGrants`, `pg_class.relacl`) HER satırı için alıcının
+ * `{appRoleName, authRoleName, table.tableOwner}` kümesinde OLDUĞUNU
+ * doğrular (security Tur 1 [medium] S-1 bulgusu — `lintColumnGrantGrantees`in
+ * SİMETRİĞİ, ama beklenen küme AYNI DEĞİL). AMPİRİK ÖLÇÜLMÜŞ ASİMETRİ
+ * (dosya başı notu): `relacl`de tablo SAHİBİ `grantee` olarak GÖRÜNÜR
+ * (`attacl`in tersine) — bu yüzden beklenen kümeye `table.tableOwner`
+ * EKLENİR, ve bu değer LİTERAL değil `snapshot.tables[].tableOwner`'dan
+ * okunur (tahmin edilseydi kural KALICI yanlış pozitif verirdi, S-1'in
+ * bağlayıcı kısıtı). Tablo katalogda bulunamazsa (olağan dışı, zaten
+ * `MISSING_TABLE`in öznesi) beklenen küme sahipsiz kalır — bu kuralın
+ * öznesi DEĞİL, savunma amaçlı.
+ *
+ * `isGrantable` (S-4, `lintColumnGrantGrantees`in AYNI deseni): alıcı
+ * BEKLENEN kümede OLSA BİLE `WITH GRANT OPTION` taşıyan bir tablo hibesi
+ * kendisi bir bulgu üretir.
+ */
+function lintTableGrantGrantees(
+  snapshot: CatalogSnapshot,
+  appRoleName: string,
+  authRoleName: string,
+): LintFinding[] {
+  const findings: LintFinding[] = []
+
+  for (const grant of snapshot.tableGrants) {
+    const table = snapshot.tables.find((candidate) => candidate.tableName === grant.tableName)
+    const expectedGrantees = new Set<string>([appRoleName, authRoleName])
+    if (table !== undefined) {
+      expectedGrantees.add(table.tableOwner)
+    }
+
+    const isUnexpectedGrantee = !expectedGrantees.has(grant.grantee)
+    if (isUnexpectedGrantee) {
+      findings.push({
+        rule: 'UNEXPECTED_TABLE_LEVEL_GRANTEE',
+        tableName: grant.tableName,
+        message:
+          `"${grant.tableName}" tablosunda "${grant.privilegeType}" yetkisi beklenmeyen bir ` +
+          `alıcıya ("${grant.grantee}") verilmiş — beklenen alıcılar: ${[...expectedGrantees].map((name) => `"${name}"`).join(', ')}.`,
+      })
+    } else if (grant.isGrantable) {
+      findings.push({
+        rule: 'UNEXPECTED_TABLE_LEVEL_GRANTEE',
+        tableName: grant.tableName,
+        message:
+          `"${grant.tableName}" tablosunda "${grant.privilegeType}" yetkisi "${grant.grantee}"a ` +
+          'WITH GRANT OPTION ile verilmiş — alıcı DOĞRU ama yeniden hibeleme yetkisi ' +
+          '(is_grantable=true) beklenmiyor (en az yetki ihlali).',
+      })
+    }
+  }
+
+  return findings
+}
+
+const RELATION_KIND_LABELS: Readonly<Record<'v' | 'm' | 'f', string>> = {
+  v: 'VIEW',
+  m: 'MATERIALIZED VIEW',
+  f: 'FOREIGN TABLE',
+}
+
+/**
+ * FIX turu 2, YENİ — `UNEXPECTED_RELATION_KIND` (security Tur 2 [high] S-7
+ * bulgusu, Kaynak D): `snapshot.unexpectedRelations`'ın (`public`te
+ * `relkind IN ('v','m','f')`) HER satırı için KOŞULSUZ bulgu üretir —
+ * taksonomi/grantee SORUSU SORMAZ (dosya başı notu, Tasarım Seçeneği C).
+ * Bugün `public`te bu kindlerden SIFIR nesne var (ölçüldü) — bu kuralın
+ * sağlıklı tabanda bulgu üretmemesi YAPISAL değil, EMPİRİK bir olgudur;
+ * ileride meşru bir view gerekirse (örn. raporlama) doğru hamle bu kuralı
+ * GEVŞETMEK değil, `src/tenancy.ts`'te bir allowlist EKLEMEKTİR (henüz
+ * böyle bir ihtiyaç YOK, bu yüzden allowlist bu turda AÇILMADI).
+ *
+ * `authRole` kapısının ARDINDA DEĞİLDİR — görünür nesne bir view/matview/
+ * foreign table olduğu sürece auth rolü yapılandırılmış olsun ya da olmasın
+ * değerlendirilir (bu, hangi rolün hibeyi aldığından BAĞIMSIZ bir katalog
+ * bütünlüğü sorusu, auth-rolüne-özgü bir soru DEĞİL).
+ */
+function lintUnexpectedRelationKinds(snapshot: CatalogSnapshot): LintFinding[] {
+  return snapshot.unexpectedRelations.map((relation) => ({
+    rule: 'UNEXPECTED_RELATION_KIND',
+    tableName: relation.relationName,
+    message:
+      `"${relation.relationName}" "public" şemasında bir ${RELATION_KIND_LABELS[relation.relationKind]} ` +
+      '— bu nesne tablo bazlı sınıflandırma/RLS/indeks kurallarının HİÇBİRİ tarafından görülmez ' +
+      '(`readTables()` yalnızca sıradan/bölümlenmiş tabloları okur) ve varsayılan yetki ' +
+      'mekanizması (`ALTER DEFAULT PRIVILEGES … ON TABLES`) onu da kapsayabilir — ELLE ' +
+      'incelenip ya taksonomiye (bir allowlist üzerinden) eklenmeli ya da kaldırılmalıdır.',
+  }))
+}
+
+/**
+ * FIX turu 2, YENİ — `UNEXPECTED_FUNCTION_EXECUTE_PRIVILEGE` (security
+ * Tur 2 [medium] S-8 bulgusu, Kaynak E): `snapshot.functionPrivileges`'ın
+ * `hasPublicExecute === true` olan HER satırı için bulgu üretir.
+ * `sql/bootstrap-roles.sql` bölüm 8'in BAĞLAYICI notu: bu sorunun veritabanı
+ * seviyesinde KAPATILMASI (gelecekteki fonksiyonlar için) bu Postgres
+ * sürümünde `ALTER DEFAULT PRIVILEGES` ile YAPISAL OLARAK mümkün değildir
+ * — bu kural o yüzden kapatma değil TESPİT (bir tripwire) rolünü üstlenir.
+ * Bugün `public`te SIFIR fonksiyon var (ölçüldü) — bu kuralın sağlıklı
+ * tabanda bulgu üretmemesi YAPISAL değil, EMPİRİK bir olgudur.
+ *
+ * `authRole` kapısının ARDINDA DEĞİLDİR — `lintUnexpectedRelationKinds`'ın
+ * AYNI gerekçesi (auth-rolüne-özgü bir soru DEĞİL).
+ */
+function lintUnexpectedFunctionExecuteGrantees(snapshot: CatalogSnapshot): LintFinding[] {
+  return snapshot.functionPrivileges
+    .filter((privilege) => privilege.hasPublicExecute)
+    .map((privilege) => ({
+      rule: 'UNEXPECTED_FUNCTION_EXECUTE_PRIVILEGE',
+      tableName: privilege.functionName,
+      message:
+        `"${privilege.functionName}" fonksiyonunu PUBLIC (dolayısıyla "arkesoft_app"/"arkesoft_auth" ` +
+        'dahil HERKES) yürütebilir — `SECURITY DEFINER` bir fonksiyonda bu, tablo sahibinin ' +
+        'yetkisiyle kolon/RLS kısıtlamasını baypas etmenin bir yolu olabilir. Bu fonksiyona ' +
+        'açıkça "REVOKE EXECUTE … FROM PUBLIC" uygulanmalı ve gereken rollere elle "GRANT EXECUTE" yazılmalı.',
+    }))
+}
+
+/**
+ * FIX turu 3, YENİ — `UNEXPECTED_SECURITY_DEFINER_FUNCTION` (security Tur 3
+ * [medium] S-15 bulgusu, Kaynak E'nin "varlık" ekseni): `snapshot.
+ * functionPrivileges`'ın `isSecurityDefiner === true` olan HER satırı için
+ * KOŞULSUZ bulgu üretir — `hasPublicExecute`'tan BAĞIMSIZDIR (bu, S-15'in
+ * tam ÖLÇTÜĞÜ kaçış: `REVOKE EXECUTE … FROM PUBLIC` sonrası `hasPublicExecute
+ * = false` olsa BİLE bu kural düşer). `lintUnexpectedRelationKinds`'ın
+ * (Kaynak D) BİREBİR taksonomi-bağımsız deseni: grantee/hibe SORUSU SORMAZ,
+ * `authRole` kapısının ARDINDA DEĞİLDİR.
+ *
+ * Mesaj, `snapshot.functionExecuteGrantees`'ten (Kaynak E'nin hibe ekseni,
+ * `aclexplode(proacl)`) o fonksiyona VERİLMİŞ adlandırılmış hibeleri
+ * TEŞHİS AMAÇLI listeler — bu BİR KARAR DEĞİL (ateşlenme koşulu yalnızca
+ * `isSecurityDefiner`dır), yalnızca operatöre "kime verilmiş" bilgisini taşır.
+ *
+ * AYRI kod, `UNEXPECTED_FUNCTION_EXECUTE_PRIVILEGE`'in GENİŞLETİLMİŞ hâli
+ * DEĞİL (solid'in bağlayıcı gerekçesi, dosya başı FIX turu 3 notu): tek kod
+ * altında birleştirmek, ileride meşru bir `SECURITY DEFINER` için bir
+ * allowlist açıldığında İKİSİNİ BİRLİKTE susturur.
+ */
+function lintUnexpectedSecurityDefinerFunctions(snapshot: CatalogSnapshot): LintFinding[] {
+  return snapshot.functionPrivileges
+    .filter((privilege) => privilege.isSecurityDefiner)
+    .map((privilege) => {
+      const grantees = snapshot.functionExecuteGrantees.filter(
+        (grant) => grant.functionName === privilege.functionName,
+      )
+      const granteeList =
+        grantees.length > 0
+          ? grantees.map((grant) => `"${grant.grantee}" (${grant.privilegeType})`).join(', ')
+          : '(açık bir EXECUTE hibesi yok — varsayılan PUBLIC geçerli)'
+
+      return {
+        rule: 'UNEXPECTED_SECURITY_DEFINER_FUNCTION' as const,
+        tableName: privilege.functionName,
+        message:
+          `"${privilege.functionName}" SECURITY DEFINER olarak tanımlı — tablo sahibinin yetkisiyle ` +
+          'çalışır ve bu, PUBLIC EXECUTE hibesinden BAĞIMSIZ olarak kolon/RLS kısıtlamasını ' +
+          'baypas etmenin bir yolu olabilir ("REVOKE EXECUTE … FROM PUBLIC" TEK BAŞINA bu riski ' +
+          `KAPATMAZ — bkz. "UNEXPECTED_FUNCTION_EXECUTE_PRIVILEGE" ile birlikte değerlendirin). ` +
+          `Şu anki adlandırılmış EXECUTE hibeleri: ${granteeList}. ELLE incelenip ya ` +
+          'gerekçelendirilip taksonomiye eklenmeli ya da SECURITY INVOKER olarak yeniden yazılmalıdır.',
+      }
+    })
 }
 
 /**
@@ -571,6 +1271,10 @@ export function lintCatalog(
     findings.push(...lintTenantScopedTable(tableName, snapshot, options.tenantContextSetting))
   }
 
+  // T-015/ST-C: MISSING_TABLE'ın öznesi artık platform seviyesi tabloları da
+  // kapsar (architect bulgusu — bkz. fonksiyonun kendi doc'u).
+  findings.push(...lintPlatformLevelTableExistence(options.taxonomy.platformLevelTables, snapshot))
+
   const classifiedTables = [
     ...options.taxonomy.tenantScopedTables,
     ...options.taxonomy.platformLevelTables,
@@ -579,9 +1283,57 @@ export function lintCatalog(
 
   findings.push(...lintCatalogToTaxonomy(snapshot, options.taxonomy))
 
-  findings.push(...lintAppRole(snapshot, options.appRoleName))
+  findings.push(...lintRoleAttributes(snapshot))
+  findings.push(...lintRoleOwnsTable(snapshot))
 
   findings.push(...lintMigrationsLedgerPrivilege(snapshot, options.appRoleName))
+
+  // FIX turu 2, YENİ — security Tur 2 [high] S-7 bulgusu (Kaynak D). `authRole`
+  // kapısının DIŞINDA/ÖNCESİNDE — dondurulmuş eski çağrı noktası (bu alanı
+  // HİÇ geçirmeyen) DAHİL her çağrıda değerlendirilir (auth-rolüne-özgü bir
+  // soru DEĞİL, bkz. fonksiyonun kendi doc'u).
+  findings.push(...lintUnexpectedRelationKinds(snapshot))
+
+  // FIX turu 2, YENİ — security Tur 2 [medium] S-8 bulgusu (Kaynak E). AYNI
+  // gerekçeyle `authRole` kapısının DIŞINDA.
+  findings.push(...lintUnexpectedFunctionExecuteGrantees(snapshot))
+
+  // FIX turu 3, YENİ — security Tur 3 [medium] S-15 bulgusu (Kaynak E'nin
+  // varlık ekseni). AYNI gerekçeyle `authRole` kapısının DIŞINDA, `hasPublicExecute`'tan
+  // BAĞIMSIZ (dosya başı FIX turu 3 notu).
+  findings.push(...lintUnexpectedSecurityDefinerFunctions(snapshot))
+
+  // T-015/ST-C, FIX turu 1 (QA-1) — auth rolüne özgü kurallar (kod sayısı
+  // `TENANT_ISOLATION_RULES`te — R-PM7 dersi: burada SABİT bir sayı
+  // YAZILMAZ): dosya başı "OPSİYONEL OLMASININ GEREKÇESİ" notu. `authRole`
+  // TEK bir nesne olarak geçirildiğinde (ST-E'nin yeni canlı dosyası ve bu
+  // paketin fixture testleri) değerlendirilir; dondurulmuş eski çağrı
+  // noktası bu alanı HİÇ geçirmediği için bu blok onun için SESSİZCE
+  // atlanır — üçlü `undefined` kontrolü artık TEK kontrol (vacuity riski
+  // kapandı: nesnenin bir üyesini unutup diğerlerini geçirmek DERLENMEZ).
+  if (options.authRole !== undefined) {
+    const {
+      roleName: authRoleName,
+      secretBearingTables,
+      tablePrivilegeExpectations,
+    } = options.authRole
+
+    findings.push(
+      ...lintAppRoleSecretTablePrivileges(snapshot, options.appRoleName, secretBearingTables),
+    )
+    findings.push(
+      ...lintAuthRoleSecretTableColumnPrivileges(snapshot, authRoleName, secretBearingTables),
+    )
+    findings.push(
+      ...lintAuthRoleTablePrivilegeExpectations(snapshot, authRoleName, tablePrivilegeExpectations),
+    )
+    findings.push(
+      ...lintAuthRoleUnexpectedTablePrivileges(snapshot, authRoleName, tablePrivilegeExpectations),
+    )
+    findings.push(...lintColumnGrantGrantees(snapshot, authRoleName))
+    // FIX turu 1, YENİ — security Tur 1 [medium] S-1 bulgusu (Kaynak C).
+    findings.push(...lintTableGrantGrantees(snapshot, options.appRoleName, authRoleName))
+  }
 
   return findings
 }

@@ -32,6 +32,13 @@ export { checkDatabaseConnection } from './health.js'
 
 export { isUniqueConstraintError } from './errors.js'
 
+// FIX turu 1 (security Tur 1 [medium] S-2(b) bulgusu, T-015) — ADDITIVE:
+// `apps/api`'nin açılışta BİR KEZ çağırması gereken negatif yetenek probu.
+// Bu fonksiyonun NE ZAMAN koşacağı ve başarısızlığın açılışı düşürüp
+// düşürmeyeceği `apps/api`'nin DI/yaşam döngüsü kararıdır (bkz. `auth-role-
+// guard.ts` dosya başı notu) — `packages/db` yalnızca koşturulabilir yardımcıyı sağlar.
+export { assertAuthRoleIsRestricted, AuthRoleNotRestrictedError } from './auth-role-guard.js'
+
 export { PLATFORM_LEVEL_TABLES, TENANT_SCOPED_TABLES } from './tenancy.js'
 
 export { DEMO_SEED } from './seed-data.js'

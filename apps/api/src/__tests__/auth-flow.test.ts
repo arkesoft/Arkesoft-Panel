@@ -605,24 +605,49 @@ describe('AuthController — sağlayıcı seviyesi hata ÖLÇÜMÜ (ulaşılamay
   // KENDİSİNİN reddetmesi) bu sürümde HTTP üzerinden ÜRETİLEMEDİ — sınıf ve
   // `try/catch` architect'in "HATA SINIFLARI" tablosunun BAĞLAYICI kararı
   // olarak KORUNUYOR (gerçekten beklenmedik bir çöküş için savunma katmanı).
-  it('sağlayıcı hatası Better Auth tarafından İÇERİDE yakalanır → 500, forward edilir (AuthProviderFailedError DEVREYE GİRMEZ)', async () => {
-    const testApp = await createTestApp({
-      apiEnv: {
-        ...BASE_ENV,
-        DATABASE_URL: 'postgresql://arkesoft_app:wrong@127.0.0.1:1/arkesoft?schema=public',
-      },
-    })
-    app = testApp.app
+  // T-015 FIX turu 1, madde 2 (security S-2(b)) GÜNCELLEMESİ — `AuthPrismaClientResource`
+  // artık `onModuleInit`'te `assertAuthRoleIsRestricted()`'ı AÇILIŞTA (bootstrap)
+  // çalıştırıyor (bkz. `auth.module.ts` dosya başı yorumu). Bu prob KENDİSİ bir
+  // sorgu çalıştırdığı için ulaşılamayan bir `DATABASE_AUTH_URL` artık İSTEK
+  // ZAMANINDA DEĞİL, AÇILIŞTA yakalanır — `createTestApp()` REDDEDER, HTTP
+  // sunucusu HİÇ AYAĞA KALKMAZ. Bu TEST yalnızca AÇILIŞ/KABLOLAMA invariant'ını
+  // (DI yaşam döngüsü) doğrular — bozuk/ulaşılamayan bir auth bağlantısı artık
+  // trafiği HİÇ KABUL ETMİYOR (ÖLÇÜLDÜ: `pnpm --filter @arkesoft/api test` bu
+  // override İLE önce AÇILIŞ reddi üretti; test bu yeni sınıra göre YENİDEN
+  // yazıldı).
+  //
+  // T-015 FIX turu 2 GÜNCELLEMESİ (solid'in SRP reçetesi — qa QA-3/QA-4, solid
+  // SD-9): yukarıdaki "ÜRETİLEMİYOR" iddiası YANLIŞTI — "Better Auth içeride
+  // yakalar → 500, boş gövde" davranışı üretim boot kapısına BAĞIMLI OLMAYAN
+  // bir fixture'la (`AuthPrismaClientResourceBootProbeFixture`,
+  // `createTestApp({ bypassAuthBootProbe: true })`) YENİDEN üretilebilir ve
+  // DOĞRULANIR — bkz. `auth-secret-leak.test.ts`'in "İSTEK ANINDA ulaşılamayan
+  // DB" bloğu (`response.status === 500`, `response.text === ''`,
+  // `AuthProviderFailedError`'ın 503'ü DEVREYE GİRMEDİ). Bu dosyada DEĞİŞİKLİK
+  // YOK — tek doğruluk kaynağı tekrarlanmadı, yalnızca bu YANLIŞ beyan düzeltildi.
+  it('ulaşılamayan DATABASE_AUTH_URL → AÇILIŞ reddedilir (fail-closed probu, request HİÇ ulaşmaz)', async () => {
+    const { stream, getFullText } = createMemoryLogStream()
 
-    const response = await request(app.getHttpServer())
-      .post('/auth/sign-up/email')
-      .send({ name: 'S5 Kullanıcı', email: uniqueEmail(), password: SIGN_UP_PASSWORD })
+    // GÜNCELLEME (ROADMAP v0.0.14.1, T-015/ST-F): `AuthPrismaClientResource`
+    // artık `env.DATABASE_AUTH_URL`'i okuyor (`env.DATABASE_URL` DEĞİL) —
+    // "ulaşılamayan veritabanı" senaryosunu üretmek için override edilecek
+    // alan BUDUR. `DATABASE_URL` override'ı artık bu istemciyi ETKİLEMEZ
+    // (kasıtlı anti-fallback, `auth.module.ts:79` yorumu).
+    await expect(
+      createTestApp({
+        stream,
+        apiEnv: {
+          ...BASE_ENV,
+          DATABASE_AUTH_URL: 'postgresql://arkesoft_auth:wrong@127.0.0.1:1/arkesoft?schema=public',
+        },
+      }),
+    ).rejects.toThrow()
 
-    expect(response.status).toBe(500)
-    // Better Auth'un KENDİ ürettiği boş gövde — bizim `AppErrorBody` tel
-    // sözleşmemiz (`code`/`message`/`details`/`requestId`) BURADA YOK; bu
-    // `AuthController`'ın OLDUĞU GİBİ forward ettiğinin kanıtı.
-    expect(response.body).toEqual({})
+    // Test VAKUM DEĞİL — hata GERÇEKTEN loglandı (sessizce yutulmadı) VE
+    // bağlantı şifresi ("wrong") hata metninde YOK (K-A12/security endişesi).
+    const fullLogText = getFullText()
+    expect(fullLogText).toContain('açılış durduruluyor')
+    expect(fullLogText).not.toContain('wrong')
   }, 15_000)
 })
 

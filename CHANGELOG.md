@@ -25,6 +25,15 @@ pnpm changeset
 
 <!-- Changesets bu çizginin altına yazar. Elle girdi eklemeyin. -->
 
+## 0.5.0 — 2026-11-05
+
+- Parola, oturum ve doğrulama belirteçlerini tutan tablolar artık veritabanı seviyesinde de
+  ayrı ve en az yetkili bir kimlik doğrulama rolüyle korunuyor; uygulamanın günlük
+  çalıştığı rol bu tablolara artık hiç erişemiyor. Operatör notu: kurulumunuzda yeni bir
+  ortam değişkeni (`DATABASE_AUTH_URL`) zorunlu hale geldi — `.env` dosyanıza
+  `.env.example`'daki satırı ekleyip `pnpm db:bootstrap`'i yeniden çalıştırmanız gerekiyor,
+  aksi halde giriş/kayıt akışı açılışta hata verir. [v0.0.14.1]
+
 ## 0.4.0 — 2026-11-04
 
 - Ekip yönetimi geldi: mağaza sahibi artık ekibini panele davet edebiliyor, davet e-posta ile

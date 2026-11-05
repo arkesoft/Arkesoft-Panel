@@ -29,7 +29,7 @@ import { readCatalogSnapshot } from '../catalog-snapshot.js'
 import type { TransactionClient } from '../client.js'
 import { TENANT_CONTEXT_SETTING } from '../tenant-context.js'
 import { PLATFORM_LEVEL_TABLES, TENANT_SCOPED_TABLES } from '../tenancy.js'
-import { testAppPrisma, testMigrationPrisma } from './helpers/test-client.js'
+import { getTestAuthPrisma, testAppPrisma, testMigrationPrisma } from './helpers/test-client.js'
 
 /** AC3 probunun tablo adlarının ORTAK öneki — DoD'un yetim-tablo kontrolü bunu kullanır. */
 const PROBE_TABLE_PREFIX = 'catalog_lint_probe_'
@@ -69,6 +69,12 @@ async function runProbeAndRollback<T>(body: (tx: TransactionClient) => Promise<T
 
 describe('catalog-lint — canlı katalog (AC2/AC3)', () => {
   let appRoleName: string
+  // T-015/ST-B: `readCatalogSnapshot`'ın yeni imzası ikinci bir rol adı ister.
+  // `getTestAuthPrisma()` BİLEREK `beforeAll` İÇİNDE çağrılır (modül
+  // seviyesinde DEĞİL) — test-client.ts'in tembellik gerekçesi (R-PO1/R-PO2):
+  // bu dosyayı yükleyen `vitest list` (CI `guards` işi) `DATABASE_AUTH_URL`
+  // tanımsızken bile ÇÖKMEMELİ.
+  let authRoleName: string
 
   beforeAll(async () => {
     const rows = z
@@ -79,10 +85,19 @@ describe('catalog-lint — canlı katalog (AC2/AC3)', () => {
       throw new Error('current_user sorgusu boş döndü — beklenmeyen ortam.')
     }
     appRoleName = role.roleName
+
+    const authRows = z
+      .array(z.object({ roleName: z.string() }))
+      .parse(await getTestAuthPrisma().$queryRaw`SELECT current_user::text AS "roleName"`)
+    const authRole = authRows[0]
+    if (authRole === undefined) {
+      throw new Error('arkesoft_auth current_user sorgusu boş döndü — beklenmeyen ortam.')
+    }
+    authRoleName = authRole.roleName
   })
 
   it('sağlıklı durum: canlı şema taksonomiyle tutarlı — hiçbir bulgu YOK', async () => {
-    const snapshot = await readCatalogSnapshot(testMigrationPrisma, appRoleName)
+    const snapshot = await readCatalogSnapshot(testMigrationPrisma, { appRoleName, authRoleName })
     const findings = lintCatalog(snapshot, {
       taxonomy: {
         tenantScopedTables: TENANT_SCOPED_TABLES,
@@ -109,7 +124,7 @@ describe('catalog-lint — canlı katalog (AC2/AC3)', () => {
             WITH CHECK (tenant_id = current_setting('app.tenant_id', true))
         `
 
-        const snapshot = await readCatalogSnapshot(tx, appRoleName)
+        const snapshot = await readCatalogSnapshot(tx, { appRoleName, authRoleName })
         return lintCatalog(snapshot, {
           taxonomy: {
             tenantScopedTables: [...TENANT_SCOPED_TABLES, tableName],
@@ -143,7 +158,7 @@ describe('catalog-lint — canlı katalog (AC2/AC3)', () => {
         await tx.$executeRaw`ALTER TABLE catalog_lint_probe_policy FORCE ROW LEVEL SECURITY`
         // KASITLI OLARAK politika YOK.
 
-        const snapshot = await readCatalogSnapshot(tx, appRoleName)
+        const snapshot = await readCatalogSnapshot(tx, { appRoleName, authRoleName })
         return lintCatalog(snapshot, {
           taxonomy: {
             tenantScopedTables: [...TENANT_SCOPED_TABLES, tableName],
@@ -169,7 +184,7 @@ describe('catalog-lint — canlı katalog (AC2/AC3)', () => {
         await tx.$executeRaw`CREATE TABLE catalog_lint_probe_taxonomy (id text PRIMARY KEY, tenant_id text NOT NULL)`
         // KASITLI OLARAK taksonomiye EKLENMİYOR (aşağıdaki taxonomy'de yok).
 
-        const snapshot = await readCatalogSnapshot(tx, appRoleName)
+        const snapshot = await readCatalogSnapshot(tx, { appRoleName, authRoleName })
         return lintCatalog(snapshot, {
           taxonomy: {
             tenantScopedTables: TENANT_SCOPED_TABLES,
@@ -218,7 +233,7 @@ describe('catalog-lint — canlı katalog (AC2/AC3)', () => {
             WITH CHECK (true)
         `
 
-        const snapshot = await readCatalogSnapshot(tx, appRoleName)
+        const snapshot = await readCatalogSnapshot(tx, { appRoleName, authRoleName })
         return lintCatalog(snapshot, {
           taxonomy: {
             tenantScopedTables: [...TENANT_SCOPED_TABLES, tableName],

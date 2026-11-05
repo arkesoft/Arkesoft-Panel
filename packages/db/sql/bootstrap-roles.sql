@@ -58,6 +58,19 @@ BEGIN
 END
 $do_create_app$;
 
+-- `arkesoft_auth` (ROADMAP v0.0.14.1, T-015/ST-A, ADR-0008 borcu): kimlik
+-- doğrulama rolü. Yalnızca üç hash/belirteç tablosunu (kolon bazlı) ve
+-- `app_user`'ı (tablo bazlı, DELETE hariç) okur/yazar — başka hiçbir tabloya
+-- erişemez. Tablo/kolon `GRANT`/`REVOKE`'u ST-D'nin işi (bu dosyanın §7'si);
+-- bu adım yalnızca rolün VAR OLMASINI sağlar, hiçbir yetkiyi DEĞİŞTİRMEZ.
+DO $do_create_auth$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'arkesoft_auth') THEN
+    CREATE ROLE arkesoft_auth LOGIN PASSWORD 'arkesoft_auth_dev_only';
+  END IF;
+END
+$do_create_auth$;
+
 -- `arkesoft_migrator`: `CREATEDB` (shadow DB için, A-E2), tabloların SAHİBİ
 -- olacak (aşağıda), `NOBYPASSRLS` (K-E2/V2/CLAUDE.md §10.4 — BYPASSRLS asla).
 ALTER ROLE arkesoft_migrator WITH
@@ -77,6 +90,20 @@ ALTER ROLE arkesoft_app WITH
   NOCREATEROLE
   NOBYPASSRLS
   PASSWORD 'arkesoft_app_dev_only';
+
+-- `arkesoft_auth`: kimlik doğrulama rolü (architect "Bağlayıcı yetki beyanı",
+-- T-015). `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`, `NOBYPASSRLS` — en az
+-- yetki, DIĞER İKİ rolle BİREBİR aynı nitelik kümesi (yalnızca DML, DDL hakkı
+-- yok). Tablo/kolon yetkisi (SELECT/INSERT/UPDATE kolon bazlı, DELETE tablo
+-- bazlı üç tabloda; `app_user`'da DELETE HARİÇ tablo bazlı) bu dosyanın §7'si
+-- — ST-D'nin işi, BURADA verilmez.
+ALTER ROLE arkesoft_auth WITH
+  LOGIN
+  NOSUPERUSER
+  NOCREATEDB
+  NOCREATEROLE
+  NOBYPASSRLS
+  PASSWORD 'arkesoft_auth_dev_only';
 
 -- =============================================================================
 -- 2) Sahiplik devri — pg_tables VE pg_type (enum'lar) — `format('%I')` ile
@@ -122,6 +149,16 @@ $do_own_enums$;
 
 GRANT USAGE, CREATE ON SCHEMA public TO arkesoft_migrator;
 GRANT USAGE ON SCHEMA public TO arkesoft_app;
+
+-- `arkesoft_auth`: yalnızca `USAGE` — `CREATE` YOK (ADR-0008 borcu, T-015/
+-- ST-A). ⛔ Bu rol için `ALTER DEFAULT PRIVILEGES` BİLEREK AÇILMAZ (architect
+-- K-A17/mevcut karar 1): `arkesoft_app`'in aşağıdaki (§4) blanket "gelecekte
+-- eklenen her tabloya otomatik DML" mekanizması bu role KASITLI olarak
+-- UYGULANMAZ — gelecekte eklenen her tablo `arkesoft_auth` için varsayılan
+-- olarak KAPALI gelsin (fail-closed). Üç hash/belirteç tablosuna ve
+-- `app_user`'a kolon/tablo bazlı yetki ELLE ve AÇIKÇA verilir (§7, ST-D'nin
+-- işi) — yeni bir tablo eklenince bu role OTOMATİK yetki AKMAZ.
+GRANT USAGE ON SCHEMA public TO arkesoft_auth;
 
 -- =============================================================================
 -- 4) DML yetkisi — mevcut tablolar + gelecekteki tablolar (AC9 parametrikliği)
@@ -194,3 +231,172 @@ BEGIN
   END IF;
 END
 $do_revoke_migrations_ledger$;
+
+-- =============================================================================
+-- 7) arkesoft_auth — sır taşıyan üç tabloda kolon bazlı yetki + arkesoft_app'in
+--    bu üç tablodaki yetkisinin tablo bazlı REVOKE'u (ROADMAP v0.0.14.1,
+--    T-015/ST-D, ADR-0008'in v0.0.14'e vadeli borcunun kapanışı)
+-- =============================================================================
+--
+-- SIRA KISITI (bağlayıcı, T-015/pm R-PM1/R-PM2/architect K-A17): bu bölüm
+-- `catalog-lint.ts`'in kolon yetkisi kural sınıfından (ST-C) SONRA, AYNI
+-- commit'te uygulanır — sıra ters olsaydı linter bu REVOKE'u uyguladığı AN
+-- (DDL ile tadil edilmiş kural arasındaki pencerede) bulgu üretir ve CI
+-- kırmızıya döner (§10 md 6 — "linteri gevşetme baskısı").
+--
+-- KAPSAM (kullanıcı kararı 2026-11-05, R-PM6 — po'nun revize ettiği ROADMAP
+-- madde 4): yalnızca `account`/`session`/`verification`. `tenant`/`app_user`
+-- KAPSAM DIŞI — `arkesoft_app` onları hâlâ tam DML ile yönetir
+-- (ADR-0008:53'ün ölçtüğü canlı kullanım `tenant` 32, `user` 5,
+-- `tenantMembership` 1); `app_user` AŞAĞIDA AYRI bir blokta
+-- `arkesoft_auth`a hibe alır ama `arkesoft_app`tan REVOKE EDİLMEZ (ikisi de
+-- bu tabloya erişir — Better Auth `findUserByEmail`, `internal-adapter.mjs:585`).
+--
+-- IF EXISTS ZORUNLU (R-PM2, `_prisma_migrations` emsalinin BİREBİR deseni,
+-- yukarıdaki bölüm 6'ya bakın): bootstrap `migrate deploy`'dan ÖNCE koşar,
+-- o anda bu üç tablo ve `app_user` HENÜZ YOKTUR (taze veritabanı) —
+-- koşulsuz `REVOKE`/`GRANT` "relation does not exist" ile PATLAR. CI zaten
+-- İKİ GEÇİŞLİ (`.github/actions/prepare-db/action.yml:54-56` → `:65-67` →
+-- `:82-84`) — ikinci geçişte bu tablolar `migrate deploy` tarafından
+-- OLUŞTURULMUŞ olur ve blok GERÇEKTEN uygulanır. Yerel TEK geçişli
+-- `pnpm db:bootstrap` bunu uygulamaz — ama artık SESSİZ DEĞİL: canlı
+-- izolasyon probu (ST-E) bunu fail-closed yakalar.
+--
+-- KOLON LİSTESİ ELLE YAZILMAZ: `information_schema.columns` üzerinde dönen
+-- `DO` döngüsü `format(...)` ile her kolona `GRANT SELECT, INSERT, UPDATE`
+-- üretir — şemaya yeni bir kolon eklenince bir SONRAKİ `pnpm db:bootstrap`
+-- koşusu KENDİ KENDİNE iyileşir; linter (ST-C) de sapmayı CI'da yakalar
+-- (iki yönlü kapalı, R-PM2 KARAR 2).
+--
+-- DELETE KOLON BAZLI VERİLEMEZ (PostgreSQL'de kolon yetkisi yalnızca
+-- SELECT/INSERT/UPDATE/REFERENCES için TANIMLIDIR) — bu yüzden TABLO bazlı,
+-- AYRI bir `GRANT DELETE` ile verilir (architect "Bağlayıcı yetki beyanı").
+--
+-- SEKANS `GRANT USAGE` EKLENMEDİ (K-A11, ST-A0⑤'in ölçtüğü olgu): dört
+-- tablonun 36 kolonunda `pg_get_serial_sequence` boş, `public` şemasında
+-- `pg_sequences` 0 satır (hepsi `cuid(2)` metin PK, Prisma uygulama
+-- seviyesinde üretir) — gereksiz yetki eklenmedi.
+DO $do_secret_table_privileges$
+DECLARE
+  secret_table_name text;
+  column_record RECORD;
+BEGIN
+  FOREACH secret_table_name IN ARRAY ARRAY['account', 'session', 'verification']
+  LOOP
+    IF EXISTS (
+      SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = secret_table_name
+    ) THEN
+      -- `arkesoft_app`in bu tablodaki TÜM (tablo bazlı) yetkisini al —
+      -- `APP_ROLE_RETAINS_SECRET_TABLE_PRIVILEGE`'ın kapandığı yer.
+      EXECUTE format('REVOKE ALL ON public.%I FROM arkesoft_app', secret_table_name);
+
+      -- `arkesoft_auth`u BAŞTAN AL (idempotency + aşağıdaki hatanın temizliği):
+      -- bu koşunun kendisi KOLON bazlı yetki veriyor, ama Postgres'in `GRANT`
+      -- söz dizimi hatalı yazılırsa (parantezsiz bırakılan privilege TABLO
+      -- bazlı olur) tablo seviyesi SIZINTI üretebilir — AMPİRİK OLARAK
+      -- ÖLÇÜLDÜ (ilk ST-D koşusunda `relacl`de "arkesoft_auth=ar.../..."
+      -- göründü). `REVOKE ALL` her koşuda SIFIRDAN başlar, bir sonraki
+      -- `GRANT` adımı DOĞRU şekli YENİDEN kurar — çalışma zamanı garantisi
+      -- kalıntıya BAĞIMLI DEĞİL.
+      EXECUTE format('REVOKE ALL ON public.%I FROM arkesoft_auth', secret_table_name);
+
+      -- Her kolona KOLON bazlı SELECT/INSERT/UPDATE — `AUTH_ROLE_MISSING_
+      -- COLUMN_PRIVILEGE`/`AUTH_ROLE_TABLE_LEVEL_PRIVILEGE_ON_SECRET_TABLE`nin
+      -- kapandığı yer. Kolon adı literali YOK — `%I` + `format()`.
+      --
+      -- ⚠⚠ SÖZ DİZİMİ UYARISI (ampirik olarak ÖLÇÜLDÜ — ilk ST-D koşusu):
+      -- PostgreSQL'in `GRANT` söz dizimi `(kolon listesi)`'ni YALNIZCA
+      -- KENDİSİNDEN ÖNCE gelen privilege'e uygular — `GRANT SELECT, INSERT,
+      -- UPDATE (col) ON …` YAZILIRSA SELECT ve INSERT TABLO BAZLI, yalnızca
+      -- UPDATE kolon bazlı olur (`relacl`de "arkesoft_auth=ar.../…" olarak
+      -- GÖRÜLDÜ — tam olarak bu anti-vacuity kuralının YAKALAMASI GEREKEN
+      -- kusur). Doğru biçim: HER privilege'in kendi `(kolon)` yan tümcesini
+      -- TAŞIMASI — `%1$I` pozisyonel biçimlendiricisiyle AYNI kolon adı ÜÇ
+      -- KEZ tekrarlanır.
+      FOR column_record IN
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = secret_table_name
+      LOOP
+        EXECUTE format(
+          'GRANT SELECT (%1$I), INSERT (%1$I), UPDATE (%1$I) ON public.%2$I TO arkesoft_auth',
+          column_record.column_name,
+          secret_table_name
+        );
+      END LOOP;
+
+      -- TABLO bazlı DELETE (DELETE kolon bazlı tanımlı değil) —
+      -- `AUTH_ROLE_MISSING_TABLE_PRIVILEGE`nin kapandığı yer.
+      EXECUTE format('GRANT DELETE ON public.%I TO arkesoft_auth', secret_table_name);
+    END IF;
+  END LOOP;
+END
+$do_secret_table_privileges$;
+
+-- `app_user`: TABLO bazlı SELECT/INSERT/UPDATE, DELETE YOK (A-N1 — en az
+-- yetki; `user.deleteUser` ucu `auth-instance.ts`'te AÇILMAMIŞ). Better
+-- Auth'un `findUserByEmail`'i bu tabloya bakar (`internal-adapter.mjs:585`)
+-- ve Better Auth TEK Prisma istemcisi kullandığı için bu erişim başka bir
+-- role DEVREDİLEMEZ (kullanıcı kararı 2026-11-05, ROADMAP madde 1 düzeltmesi).
+-- `arkesoft_app`tan REVOKE EDİLMEZ — bu tablo kapsam dışı (yukarıdaki not).
+DO $do_app_user_auth_privileges$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'app_user'
+  ) THEN
+    GRANT SELECT, INSERT, UPDATE ON public.app_user TO arkesoft_auth;
+  END IF;
+END
+$do_app_user_auth_privileges$;
+
+-- =============================================================================
+-- 8) Fonksiyon yürütme hakkı — MEVCUT fonksiyonlarda PUBLIC'ten REVOKE
+--    (FIX turu 2, security Tur 2 [medium] S-8 bulgusu — YOL (a)'nın
+--    EMPİRİK OLARAK ÇALIŞAN yarısı, bkz. aşağıdaki AMPİRİK ÖLÇÜM notu)
+-- =============================================================================
+--
+-- ÖLÇÜLEN AÇIK (M14): PostgreSQL'de bir fonksiyon `SECURITY DEFINER` ile
+-- oluşturulup HİÇBİR `GRANT` yazılmazsa `pg_proc.proacl` NULL kalır — VE
+-- tablo/sekansın TERSİNE, fonksiyonlar için EXECUTE yetkisinin VARSAYILANI
+-- PUBLIC'TİR. Böyle bir fonksiyon tablo SAHİBİNİN (`arkesoft_migrator`)
+-- yetkisiyle çalışır ve kolon bazlı kısıtlamayı BAYPAS edebilir.
+--
+-- ⚠⚠ AMPİRİK ÖLÇÜM (FIX turu 2, `db` ST-A0 emsali — canlı Postgres 17.11'de
+-- transaction+ROLLBACK içinde BEŞ bağımsız deneme): `ALTER DEFAULT
+-- PRIVILEGES … REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC` — mimari'nin ilk
+-- önerdiği "YOL (a)'nın tam hâli" — PUBLIC'ten ÖNCE HİÇ `GRANT` yazılmamış
+-- bir (rol, şema, 'f') üçlüsünde HİÇBİR KATALOG SATIRI üretmez (ampirik
+-- ölçüm: `pg_default_acl`'de satır sayısı komuttan ÖNCE ve SONRA BİREBİR
+-- aynı kaldı, HEM `FOR ROLE arkesoft_migrator` HEM `arkesoft_migrator`'a
+-- doğrudan bağlanıp AYNI komutu kendi rolü için çalıştırarak İKİ YOLDAN
+-- doğrulandı) — bu yüzden YENİ oluşturulan bir fonksiyonun `proacl`'ı NULL
+-- KALMAYA devam eder ve `arkesoft_app` EXECUTE edebilmeyi SÜRDÜRÜR. Daha da
+-- çarpıcısı: (rol,şema,'f') üçlüsü için BAŞKA bir role (`arkesoft_auth`)
+-- `GRANT EXECUTE` ile bir satır MATERYALİZE edildiğinde bile, o satır
+-- YENİ fonksiyonun `proacl`'ında sabit PUBLIC girdisiyle (`=X/<sahip>`)
+-- BİRLİKTE görünür — yani (rol,şema,'f') için VAROLAN bir satır PUBLIC'in
+-- hibesini SİLMEZ, yalnızca EKLER. Sonuç: bu mekanizma üzerinden
+-- `public`e eklenecek bir SONRAKİ fonksiyonun varsayılanını fail-closed
+-- yapmak bu Postgres sürümünde YAPISAL OLARAK mümkün DEĞİL (mimari'nin
+-- "YOL (a)" önerisi bu KISIMDA ÇALIŞMIYOR — bu, mimari'nin değil, Postgres'in
+-- `ALTER DEFAULT PRIVILEGES`/fonksiyon ACL etkileşiminin ÖLÇÜLMÜŞ bir
+-- sınırıdır).
+--
+-- KARAR: bu bölüm yalnızca MEVCUT (bugün SIFIR, ölçüldü: `pg_proc` → 0
+-- satır) fonksiyonlardan PUBLIC'in EXECUTE'unu ALIR — bu kısım AMPİRİK
+-- OLARAK doğrulandı ve ÇALIŞIR (gerçek bir fonksiyon üzerinde ölçüldü:
+-- `REVOKE` öncesi `has_function_privilege('arkesoft_app', …, 'EXECUTE')`
+-- = true, SONRASI = false). GELECEKTEKİ fonksiyonlar için KAPATMA (a) BU
+-- MEKANİZMAYLA MÜMKÜN OLMADIĞI için TESPİT (b) ZORUNLU HÂLE GELDİ —
+-- `catalog-snapshot.ts`'teki `readFunctionPrivileges` (Kaynak E) +
+-- `catalog-lint.ts`'teki `UNEXPECTED_FUNCTION_EXECUTE_PRIVILEGE` kuralı:
+-- `public`teki HER fonksiyon için PUBLIC'in (hâlâ) EXECUTE edip ETMEDİĞİNİ
+-- `has_function_privilege('public', …, 'EXECUTE')` ile sorar — bugün SIFIR
+-- fonksiyon olduğu için yanlış pozitif SIFIR, ilk fonksiyon eklendiği AN
+-- (PUBLIC hibesi varsayılan olarak VAR OLACAĞI için) kural ATEŞLENİR ve
+-- açık bir `REVOKE EXECUTE … FROM PUBLIC` ile o fonksiyona ÖZEL kapatılması
+-- ZORUNLU kılınır.
+--
+-- İDEMPOTENT: `REVOKE … FROM PUBLIC` sıfır fonksiyonla da hatasız (hiçbir şey
+-- yapmaz).
+REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;

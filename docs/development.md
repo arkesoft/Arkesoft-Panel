@@ -347,7 +347,7 @@ değildir.**
 - `db:verify` — doğrulama (`prisma validate`, `format --check`, `migrate diff`)
 - `db:bootstrap` — roller provisioning (`arkesoft_migrator`, `arkesoft_app`, sahiplik, grant)
 
-### Üç kademeli geri alma (v0.0.13+)
+### Dört kademeli geri alma (v0.0.13+, kademe 4: v0.0.14.1+)
 
 RLS ve rol ayrımını tam geri almak istiyorsanız, sırayla uygulayın:
 
@@ -383,14 +383,56 @@ DATABASE_URL="$DATABASE_BOOTSTRAP_URL" pnpm exec prisma db execute \
 TABLE … OWNER TO`) ve `REVOKE` yapıyor — bootstrap süper kullanıcısı gerekir. Çevresel
 önek, `arkesoft_app` rolü yerine bootstrap URL'sini işleme geçirir.
 
-**`db:rollback-roles` npm script'i yoktur.** Doğrudan `pnpm exec` ile çağırılmalı.
+**`pnpm db:rollback-roles`** script'i artık vardır (v0.0.14.1'den itibaren, kök
+`package.json` ve `packages/db/package.json`) ve yukarıdaki `pnpm exec`/`prisma db
+execute` çağrısıyla aynı dosyayı koşturur; ikisi de geçerlidir.
 
 Bu komut bootstrap adımının etkisini geri alır: sahipliği `arkesoft` rolüne devirir, `GRANT`
 ve `ALTER DEFAULT PRIVILEGES`'i iptal eder. **`DROP ROLE` YAPILMAZ** — roller küme
 seviyesinde yaşar, silme bu script'in kapsamının dışındadır (bkz. ADR-0007, K-E2).
 
-**Uyarı:** Her adım `pnpm test:isolation`'ı kırmızıya düşürür — bu bilinçli tasarım. Kapatma bir
-işlem değildir, imkânsızlığın adımlarıdır.
+**Uyarı:** Kademe 1-3'ün her adımı `pnpm test:isolation`'ı kırmızıya düşürür — bu bilinçli
+tasarım. Kapatma bir işlem değildir, imkânsızlığın adımlarıdır. ⚠ **Kademe 4'ün istisnası
+aşağıda** — aynı "kırmızı" sonuç farklı bir sebepten gelir.
+
+#### 4. Kimlik rolü ayrımını geri al (v0.0.14.1+) — dördüncü kademe, SIRAYLA İLK çalışır
+
+```bash
+pnpm db:rollback-auth-role
+```
+
+⚠⚠ **Numara eklenme sırasını kaydeder, yürütme sırasını DEĞİL.** Gerçek yürütme sırası
+**4 → 1 → 2 → 3**'tür: kademe 1-3 (yukarıdaki `pnpm db:rollback-roles`) artan yıkıcılıkta
+bir **kill-switch merdiveni**dir ve `arkesoft_app`'ten **her şeyi** `REVOKE` eder; kademe 4
+ise yalnızca v0.0.14.1'in **deltasını** (kolon `GRANT` + tablo `REVOKE`) tersler ve
+kataloğu v0.0.14'ün durumuna döndürür. Kademe 3 **önce** koşarsa `arkesoft_app` zaten
+hiçbir tabloda yetki taşımaz ve kademe 4'ün "yetkiyi geri ver" adımı **tutarsız bir ara
+durum** yaratır. Bu yüzden **iki ayrı dosya, iki ayrı script**
+(`sql/rollback-roles.sql` ≠ `sql/rollback-auth-role.sql`, `pnpm db:rollback-roles` ≠
+`pnpm db:rollback-auth-role`) — tek script'e birleştirmek, operatör sadece bu sürümün
+deltasını geri almak isterken geliştirme veritabanını kademe 1-3'ün kill-switch'ine sokar.
+
+**"Başlangıç durumuna döndü" ≠ "linter yeşil".** Kademe 4'ten sonra `pnpm test:isolation`
+**beklenen biçimde KIRMIZIDIR** (`APP_ROLE_RETAINS_SECRET_TABLE_PRIVILEGE` +
+`AUTH_ROLE_MISSING_COLUMN_PRIVILEGE` + `AUTH_ROLE_MISSING_TABLE_PRIVILEGE`) — kod (yeni
+kurallar) katalogdan **daha yeni** olduğu için. Bu bir hata değil, **kuralların
+çalıştığının kanıtıdır**; kademe 1-3'ün kırmızısıyla aynı görünüp farklı bir sebepten
+gelir. Yeşile dönüşün yolu: **`pnpm db:bootstrap`'i yeniden koştur** (bootstrap §7'yi
+tekrar uygular). Ayrıntı ve gerekçe: `docs/adr/0017-veritabani-seviyesi-rol-ayrimi-ve-kolon-yetkisi.md`.
+
+⚠ **Üç sır taşıyan tablonun (`account`/`session`/`verification`) veya `app_user`'ın
+şeması değişirse** (yeni kolon), kolon hibesi bootstrap'ın `DO` döngüsüyle **otomatik**
+genişler ama bu yalnızca `pnpm db:bootstrap` **yeniden koşturulduğunda** olur — migration
+uygulandıktan sonra bu adım unutulursa yeni kolon `arkesoft_auth`'a hibelenmez ve giriş
+`42501` ile düşer. Azaltma iki yönlü: bootstrap kendi kendine iyileşir, katalog linter'ı
+da eksikliği CI'da yakalar (gürültülü, sessiz değil).
+
+⚠ **İlk `SECURITY DEFINER` fonksiyon eklendiğinde** `pnpm test:isolation` **kırmızıya
+düşecek** (`UNEXPECTED_SECURITY_DEFINER_FUNCTION`) ve operatör/geliştirici **elle**
+`REVOKE EXECUTE … FROM PUBLIC` yazmak ve gereken `GRANT`'i vermek zorunda kalacak — bu,
+PostgreSQL'in `ALTER DEFAULT PRIVILEGES`/fonksiyon ACL etkileşiminin ölçülmüş bir sınırı
+(bkz. Ölçüm disiplini (k)) ve `security`'nin kabul ettiği bir davranış: _"arıza modu
+fail-closed ve gürültülü"_. Bkz. CLAUDE.md §7, `SECURITY DEFINER` maddesi.
 
 ### `withTenant()` kullanımı
 
@@ -424,7 +466,10 @@ v0.0.13'ten itibaren yeni bir tenant'a bağlı tablo eklendiğinde şema linter'
 4. `pnpm test:isolation` çalıştır — linter bu tabloyu otomatik kontrol eder ve RLS politikası bulunmazsa **FAIL** verir.
 5. `migration.sql`'ye RLS `ENABLE`, `FORCE`, `CREATE POLICY` yaz (bkz. `packages/db/prisma/migrations/20261028153016_rls_tenant_isolation/migration.sql` şablonu).
 
-Linter 20 kuralla tüm izolasyon şartlarını kontrol eder: tenant_id tipi, indeks, RLS, politika, rol yetkileri vb.
+Linter, `packages/db/src/catalog-lint.ts`'teki `TENANT_ISOLATION_RULES` dizisinde tanımlı
+kural kümesiyle tüm izolasyon şartlarını kontrol eder (kanonik sayım o diziden okunur,
+burada tekrar edilmiyor — bkz. kural (g) aşağıda): tenant_id tipi, indeks, RLS, politika,
+rol yetkileri, kolon yetkisi vb.
 
 #### Taksonomiye tablo eklemenin DÖRT mekanizması (v0.0.14+)
 
@@ -436,7 +481,7 @@ kanonik liste `packages/db/src/tenancy.ts`'te yaşıyor ve v0.0.14'te **kaynak a
 yere** kopyalanmış bir taksonomi sayısının dördü birden bayatlamış olarak bulundu (bkz. _Ölçüm
 disiplini_ (g)).
 
-1. **Canlı katalog linter'ı** (`packages/db/src/catalog-lint.ts`, 20 kural) — yeni tablo için `tenant_id` kolonunu/tipini/`NOT NULL`'ını, RLS `ENABLE` + `FORCE`'unu, kanonik `USING`/`WITH CHECK` politikasını ve uygulama rolünün DML yetkisini arar.
+1. **Canlı katalog linter'ı** (`packages/db/src/catalog-lint.ts`, kural kümesi `TENANT_ISOLATION_RULES`'ta yaşar) — yeni tablo için `tenant_id` kolonunu/tipini/`NOT NULL`'ını, RLS `ENABLE` + `FORCE`'unu, kanonik `USING`/`WITH CHECK` politikasını, uygulama rolünün DML yetkisini ve (v0.0.14.1'den itibaren) kimlik rolünün kolon yetkisini arar.
 2. **Migration kümesi linter'ı** (`packages/db/src/__tests__/helpers/migration-set.ts`) — `"tenant_id" TEXT NOT NULL` kolonunu **ve** `tenant_id` **öncü kolonlu** bir `CREATE UNIQUE INDEX`'i şart koşar. ⚠ Bu şart, tablonun doğal bir bileşik benzersizliği olup olmadığına göre iki farklı sonuç verir — aşağıdaki ayrım.
 3. **Prob tamlığı kapısı** (`packages/db/src/__tests__/helpers/tenant-isolation-suite.ts`) — tablo için bir `TenantScopedProbe` yazılmasını **zorlar**; eksikse `skip` değil, gerçek bir `expect` başarısızlığı üretir.
 4. **Yedi zorunlu izolasyon senaryosu** — prob kaydedildiği an yeni tablo için de koşar (çapraz okuma, `WITH CHECK` INSERT reddi, "bulunamadı" semantiği, varlık/yetki oracle'ı, hata gövdesi, havuz sızıntısı).
@@ -1235,6 +1280,18 @@ runbook'una eklenecek **dördüncü kademe** ile birlikte **o sürümün işidir
 yazılmadı, çünkü yazılmış ama gerçekleşmemiş bir prosedür, hiç yazılmamış olandan daha
 tehlikelidir (ADR-0008'in kendi dersi).
 
+✅ **Vaat karşılandı (v0.0.14.1).** İkinci operatör kırılması geldi: `DATABASE_AUTH_URL`
+artık koşulsuz zorunlu ve geçiş + geri alma adımları yazıldı — bkz. yukarıdaki
+"Dört kademeli geri alma" → kademe 4 ve `.env.example:73`. Operatörün yapacağı iki iş:
+mevcut `.env`'e satırı elle eklemek (`pnpm env:init` var olan dosyayı güncellemez) ve
+`pnpm db:bootstrap`'i yeniden koşturmak. Ayrıntı ve gerekçe: ADR-0017.
+
+`pnpm env:check` artık **dördüncü** bir doğrulama bloğu taşıyor: `DATABASE_AUTH_URL`'i
+`databaseAuthEnvSchema`'ya göre denetler. ⚠ **Düzeltme:** bu komutun yalnızca şema
+doğrulaması yaptığı, **hiçbir I/O yapmadığı** (gerçek bir veritabanı bağlantısı
+kurmadığı) ölçüldü (`check-env.ts`) — önceki bir ölçümde geçen _"bağlantıyı da
+kuruyor"_ ifadesi **yanlıştı**, doğrusu budur.
+
 ---
 
 ## Ölçüm disiplini (v0.0.11+)
@@ -1400,5 +1457,80 @@ durumdaydı.
 devre dışı bırakan bir deney kurun; ve üretilmiş bir dosyayı biçimlendirmek yerine **ignore
 edin** — başka bir ajanın (veya aracın) ürettiği dosyada `prettier --write` çalıştırmak
 `AGENT_BASELINE.md` §5 ihlalidir.
+
+### (i) Kolon `GRANT` sözdizimi — parantez yalnızca KENDİSİNDEN HEMEN ÖNCEKİ privilege'e uygulanır
+
+PostgreSQL'de `GRANT SELECT, INSERT, UPDATE (col) ON tbl` yazmak kolon kısıtlamasını
+**yalnızca `UPDATE`'e** uygular; `SELECT` ve `INSERT` **tablo seviyesine sızar**. Doğru
+biçim her privilege için ayrı parantez:
+`GRANT SELECT (%1$I), INSERT (%1$I), UPDATE (%1$I) ON tbl` (`packages/db/sql/bootstrap-roles.sql:322`).
+v0.0.14.1'de `relacl`'de ampirik olarak ölçüldü; düzeltilmeseydi kolon yetkisi kuralı
+**inşa gereği vacuous** olacaktı — tablo seviyesi `SELECT` varsa `has_column_privilege`
+**her zaman** `true` döner (bkz. aşağıdaki (j)).
+
+### (j) Üç ACL kataloğu, üç farklı grantee semantiği
+
+`pg_attribute.attacl` (kolon hibeleri), `pg_class.relacl` (tablo hibeleri) ve
+`pg_proc.proacl` (fonksiyon hibeleri) **aynı görünmüyor**: `attacl`'de tablo **sahibi**
+`grantee` olarak **görünmez** (ölçüldü: `owner_row_count = 0`); `relacl` ve `proacl`'de
+sahip **görünür**. Beklenen-grantee kümesini bir kataloğun semantiğinden diğerine
+**kopyalama** — her biri için **ayrı ölç**. Kopyalanırsa kural kalıcı yanlış pozitif
+verir ve ilk tepki kuralı gevşetmek olur (CLAUDE.md §10 madde 6 ihlali).
+
+### (k) `ALTER DEFAULT PRIVILEGES … REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC` ÇALIŞMIYOR
+
+Yaygın anılan deyimin **tersi**: PUBLIC'ten önce hiç `GRANT` yazılmamışken bu komut
+`pg_default_acl`'de satır üretmez ve yeni fonksiyonun `proacl`'ı `NULL` kalıp PUBLIC
+EXECUTE'u sürdürür (`db` beş bağımsız denemeyle ölçtü, Orkestratör bağımsız doğruladı).
+Mevcut fonksiyonlar için `REVOKE EXECUTE ON ALL FUNCTIONS … FROM PUBLIC` çalışır;
+gelecekteki fonksiyonlar için **kapatma** bu Postgres sürümünde yapısal olarak
+mümkün değil, **tespit** (katalog linter'ı) ile kapanıyor (`bootstrap-roles.sql` §8'de
+bağlayıcı not).
+
+### (l) `ALTER DEFAULT PRIVILEGES … ON TABLES` view ve matview'ı DA kapsar
+
+Bir tabloya yazılan bir view, **hiçbir `GRANT` yazılmadan** uygulama rolüne sahibinin
+yetkisiyle erişim verir ve kolon kısıtlamasını baypas eder (`security` ölçtü: sıfır
+`GRANT` ile `SELECT FROM <view>` → tüm satırlar döndü, taksonomi tabanlı kural **0**
+bulgu verdi). Bağımlı/türetilmiş nesne (view, matview, foreign tablo, fonksiyon)
+eklerken katalog linter'ının görüş alanını birlikte genişlet — bkz. CLAUDE.md §7.
+
+### (m) `42501` Prisma'da `error.code`'da DEĞİL
+
+`$queryRaw` → `error.code = 'P2010'`; ORM çağrıları (`.create()` vb.) →
+`error.code = 'P2039'`. SQLSTATE (`42501` dahil) her ikisinde de
+`error.meta.driverAdapterError.cause.originalCode`'da taşınır.
+`error.code === '42501'` **asla doğru olmaz** — assert her zaman `originalCode`
+üzerinden yazılmalı.
+
+### (n) turbo `strict` envMode kök komutlarda shell-exported değişkeni İLETMEZ
+
+`DATABASE_AUTH_URL="…" pnpm test` (kök, turbo üzerinden) **düşer**;
+`DATABASE_AUTH_URL="…" pnpm --filter <paket> test` (turbo'yu atlar) **geçer**. Sebep:
+turbo'nun varsayılan `strict` envMode'u shell-exported değişkeni çocuk sürece iletmiyor.
+Geçici çözüm: `--env-mode=loose` CLI bayrağı. ⭐ **CI'da sorun doğmuyor** çünkü `.env`
+CI'da **gerçek dosya** olarak doğuyor (`pnpm env:init` = `cp .env.example .env`) ve
+`vitest.config.ts` dosyaları `process.loadEnvFile` ile **dosyadan** okuyor — bu karar
+`turbo.json:63-66`'da zaten belgeli. `--env-mode=loose` **kalıcı bir gereklilik değil**,
+`.env`'inde ilgili satır olmayan geliştirici için **geçici kolaylık**.
+
+### (o) Yerel kapı CI'ın ÜST KÜMESİ DEĞİL
+
+`guards` işi **CI-only**; `pnpm lint`/`typecheck`/`test`/`build` kapsamında değildir.
+T-014 FIX 2'de aynı sınıf CI'ı fiilen kırdı (bir adım düşünce sonraki adımlar
+`skipped` oldu ve arkalarında kırmızı saklandı); v0.0.14.1'de bu ders **yeniden
+uygulanarak** (ST-F'den sonra AC12a yeniden ölçülerek) önlendi. Yeni bir zorunlu env
+veya modül seviyesi okuma eklerken `ci.yml`'in `create-env:'false'` olan job'larını
+(`guards`) **ayrıca** ölç — yerelde yeşil görünmesi CI'da yeşil olacağını kanıtlamaz.
+
+### (p) Aynı sayıyı aynı sorguyla üret
+
+İki ajan aynı veriyi farklı sorgularla ölçüp farklı sayı raporlayabilir ve **ikisi de
+doğru olabilir** — biri filtre uyguluyor, diğeri uygulamıyor olabilir, veya biri satır
+sayısını, diğeri distinct bir alt kümeyi ölçüyor olabilir. v0.0.14.1'de `attacl` satırı
+bir ajan tarafından **27** (distinct kolon), başka bir ajan tarafından **81**
+(`aclexplode` satırı, 27 kolon × 3 privilege) raporlandı — çelişki değil, farklı
+soruların yanıtı. Çelişen iki sayı görürsen önce **hangi sorgunun hangi soruyu
+sorduğunu** doğrula, birini "yanlış" ilan etmeden önce.
 
 ---

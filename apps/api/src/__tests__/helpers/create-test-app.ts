@@ -96,6 +96,7 @@ import type { Logger } from 'pino'
 import { z } from 'zod'
 
 import { AppModule } from '../../app.module.js'
+import { AuthPrismaClientResource } from '../../auth/auth.module.js'
 import type { ApiEnv } from '../../config/api-env.js'
 import { API_ENV } from '../../config/config.tokens.js'
 import type { HealthCheck } from '../../health/health-check.types.js'
@@ -104,6 +105,7 @@ import { ArkesoftNestLogger } from '../../logging/arkesoft-nest-logger.js'
 import { ROOT_LOGGER } from '../../logging/logging.tokens.js'
 import { createRootLogger } from '../../logging/root-logger.js'
 import { RedisService } from '../../redis/redis.service.js'
+import { AuthPrismaClientResourceBootProbeFixture } from './auth-prisma-client-resource-boot-probe-fixture.js'
 
 /** `platform:auth:*` anahtarları `redisService.client.scanStream`'den TOPLU `del`'e geçer — `KEYS` KULLANILMAZ. */
 const RATE_LIMIT_KEY_SCAN_PATTERN = 'platform:auth:*'
@@ -169,6 +171,18 @@ export type CreateTestAppOptions = {
    * `AppModule` doğrudan kök modül olarak kullanılır.
    */
   readonly smokeControllers?: readonly Type<unknown>[]
+  /**
+   * T-015 FIX turu 2 EKLEMESİ (additive, solid'in SRP reçetesi — qa QA-3/QA-4,
+   * solid SD-9): `true` verilirse `AuthPrismaClientResource`'un ÜRETİM
+   * `onModuleInit`'i (gerçek `assertAuthRoleIsRestricted` DB probu, fail-closed)
+   * `AuthPrismaClientResourceBootProbeFixture` İLE DEĞİŞTİRİLİR — açılış artık
+   * `DATABASE_AUTH_URL`'in DOĞRULUĞUNA bağımlı DEĞİLDİR, bu yüzden istek-fazı
+   * testleri bozuk bir bağlantıyı İLK SORGU anında (istek sırasında) gözlemleyebilir.
+   * Verilmezse (varsayılan, `false`) davranış ÖNCEKİ sürümle BİREBİR aynıdır —
+   * gerçek üretim boot kapısı devrede kalır. Üretim sınıfının KENDİSİ bu
+   * seçenekten BAĞIMSIZ, DEĞİŞMEDEN kalır (fixture yorumu, ayrı dosya).
+   */
+  readonly bypassAuthBootProbe?: boolean
 }
 
 export type TestApp = {
@@ -223,6 +237,12 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
 
   if (options.healthChecks !== undefined) {
     moduleBuilder.overrideProvider(HEALTH_CHECKS).useValue(options.healthChecks)
+  }
+
+  if (options.bypassAuthBootProbe === true) {
+    moduleBuilder
+      .overrideProvider(AuthPrismaClientResource)
+      .useClass(AuthPrismaClientResourceBootProbeFixture)
   }
 
   const moduleRef = await moduleBuilder.compile()
