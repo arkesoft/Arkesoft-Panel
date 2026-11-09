@@ -122,6 +122,9 @@
 
 import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
+import { createAuthMiddleware, getSessionFromCtx, isAPIError } from 'better-auth/api'
+import type { AuthMiddleware } from 'better-auth/api'
+import { twoFactor } from 'better-auth/plugins/two-factor'
 import type { Auth, BetterAuthOptions } from 'better-auth'
 import type { AuthPrismaDatabase } from '@arkesoft/db'
 import { AppError, maskEmail } from '@arkesoft/errors'
@@ -133,6 +136,10 @@ import { AUTH_BASE_PATH } from './auth-delegated-paths.js'
 import type { MailTransport } from './mail/mail-transport.types.js'
 import { renderMailMessage } from './mail/messages.js'
 import type { MailMessageKey } from './mail/messages.js'
+import {
+  ACCOUNT_LOCKOUT_DURATION_SECONDS,
+  ACCOUNT_LOCKOUT_MAX_FAILED_ATTEMPTS,
+} from './two-factor/account-lockout.constants.js'
 
 export type CreateAuthInstanceOptions = {
   readonly env: ApiEnv
@@ -168,6 +175,30 @@ function buildAuthLinkUrl(baseUrl: string, path: string, token: string): string 
  */
 function resolveEventLogger(fallback: PinoLogger): PinoLogger {
   return tryGetRequestContext()?.logger ?? fallback
+}
+
+/**
+ * FIX turu 3, madde ② (security tur3, `low`) — `logger`'ın bağlı
+ * (`.child()`) zincirinde `userId` ZATEN var mı diye SORAR. `.bindings()`
+ * pino'nun KENDİ API'si (`pino.d.ts:113-115`, "Returns an object containing
+ * all the current bindings") — `child()` zincirinin TAMAMINI TEK, BİRLEŞTİRİLMİŞ
+ * bir nesneye indirger (anahtar başına son değer), bu yüzden "BU anahtar
+ * ZATEN bağlı mı" sorusuna GÜVENİLİR bir cevap verir — `context.auth.kind
+ * === 'authenticated'` kontrolü (İLK denenen, DAHA DAR sinyal) BUNU
+ * YETERİNCE KAPSAMAZ: `/two-factor/verify-totp`'un "kurulum onayı" dalı
+ * (`totp/index.mjs:175-180`) AYNI İSTEK İÇİNDE önce `session.create.after`'ı
+ * (ki EXEMPT bir yolda `userId`'yi bu kancanın KENDİSİ `child()` İLE
+ * BAĞLAR), SONRA `session.delete.after`'ı tetikler — `auth.kind` HÂLÂ
+ * `'exempt'`dir (middleware bunu DEĞİŞTİRMEZ) ama `context.logger` BU
+ * NOKTADA ZATEN `userId` TAŞIR (AYNI İSTEK içindeki ÖNCEKİ kancadan).
+ * `.bindings()` kontrolü middleware'DEN mi yoksa AYNI isteğin ÖNCEKİ bir
+ * kancasından mı geldiğine BAKMAKSIZIN doğru cevabı verir
+ * (`two-factor-event-log-duplicate-userid.test.ts` İLE ÖLÇÜLDÜ — İLK
+ * deneme, `auth.kind` kontrolü, `disable`'ın "oturum sonlandırıldı" olayını
+ * KAÇIRDI).
+ */
+function loggerAlreadyHasUserId(logger: PinoLogger): boolean {
+  return 'userId' in logger.bindings()
 }
 
 async function sendAuthMail(
@@ -293,6 +324,265 @@ function createBetterAuthLogger(logger: PinoLogger): NonNullable<BetterAuthOptio
   }
 }
 
+const TWO_FACTOR_ENABLE_PATH = '/two-factor/enable'
+const TWO_FACTOR_VERIFY_TOTP_PATH = '/two-factor/verify-totp'
+// FIX turu 1, madde 2/F2 (`medium`) — `disable`/`generate-backup-codes`
+// denetim boşluğu (dosya başı yorumuna EKLENEN bölüm, `createTwoFactorEventHook`
+// altında).
+const TWO_FACTOR_DISABLE_PATH = '/two-factor/disable'
+const TWO_FACTOR_GENERATE_BACKUP_CODES_PATH = '/two-factor/generate-backup-codes'
+
+// `TWO_FACTOR_VERIFY_TOTP_PATH`İN (yukarıda) İKİ FARKLI session.create ANLAMI
+// olduğu ÖLÇÜLDÜ (FIX turu 1, madde 2/F2, handoff'un "kurulum onayında" ifadesi) —
+// `isNonLoginSessionCreation` (altta) açıklar.
+
+/**
+ * `session.create.after`'ın (altta) "giriş başarılı" ETİKETİNİ YANLIŞ
+ * KULLANDIĞI iki yol — FIX turu 1, madde 2/F2. `disable` KESİNLİKLE
+ * ULAŞILABİLİR (Better Auth'un `disableTwoFactor`'ı `internalAdapter.
+ * createSession()` çağırır, ÖLÇÜLDÜ — `plugins/two-factor/index.mjs:227`).
+ * `enable` (`method:'otp'` dalı, `options?.skipVerificationOnEnable` AÇIKKEN)
+ * BUGÜN ERİŞİLEMEZ — `auth-instance.ts` `otpOptions` GEÇMEZ, bu dal
+ * `OTP_NOT_CONFIGURED` (400) ile daha ÖNCE durur (`auth-delegated-paths.ts`
+ * dosya başı yorumunun AYNI ölçümü) VE `skipVerificationOnEnable` BİLEREK
+ * AYARLANMADI — bu yüzden `method:'totp'` dalı da `createSession`
+ * ÇAĞIRMAZ. İKİSİ DE buraya BİLEREK EKLENDİ (dead code BUGÜN, ama path tabanlı
+ * kontrol GENELDİR — `otpOptions` ileride yapılandırılırsa davranış OTOMATİK
+ * doğru kalır, ikinci bir "unutulan satır" riski taşımaz).
+ */
+const NON_LOGIN_SESSION_CREATION_PATHS: ReadonlySet<string> = new Set([
+  TWO_FACTOR_DISABLE_PATH,
+  TWO_FACTOR_ENABLE_PATH,
+])
+
+/**
+ * `ctx.context.returned`'ın (`unknown`) `{method: 'totp' | 'otp', ...}`
+ * şeklinde olup olmadığını okur — `extractProviderErrorFields`'ın (yukarıda)
+ * AYNI "typeof nesne kontrolü + daraltma" deseni, Zod YOK (bu alan dış
+ * dünyadan değil, kendi sürecimizin bellek içi nesnesi — CLAUDE.md §4'ün
+ * Zod zorunluluğu HTTP gövdesi/env/webhook/JSONB içindir).
+ */
+function extractTwoFactorEnableMethod(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined
+  }
+  const method = (value as Record<string, unknown>)['method']
+  return typeof method === 'string' ? method : undefined
+}
+
+/** `{user: {id: string}}` şeklindeki başarı gövdesinden `userId`'yi okur. */
+function extractTwoFactorUserId(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined
+  }
+  const user = (value as Record<string, unknown>)['user']
+  if (typeof user !== 'object' || user === null) {
+    return undefined
+  }
+  const id = (user as Record<string, unknown>)['id']
+  return typeof id === 'string' ? id : undefined
+}
+
+/**
+ * Better Auth'un `APIError.body.code`'unu okur — `describeBetterAuthLogCause`
+ * ile AYNI ilke: yalnızca YAPILANDIRILMIŞ, enum benzeri alan (sabit bir
+ * kümeden gelen SCREAMING_SNAKE_CASE kod, ör. `'INVALID_CODE'`); `.message`
+ * (serbest metin) HİÇ OKUNMAZ.
+ */
+function extractApiErrorCode(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined
+  }
+  const body = (value as Record<string, unknown>)['body']
+  if (typeof body !== 'object' || body === null) {
+    return undefined
+  }
+  const code = (body as Record<string, unknown>)['code']
+  return typeof code === 'string' ? code : undefined
+}
+
+/**
+ * `databaseHooks.session.create.after`'ın İKİNCİ parametresi — Better Auth
+ * `createWithHooks()` içinde `toRun(created, context)` İLE çağırır (ÖLÇÜLDÜ,
+ * `db/with-hooks.mjs:39`; tip imzası `@better-auth/core`'da `context:
+ * GenericEndpointContext | null` — FIX turu 1, madde 2/F2). BU tipi `apps/api`
+ * `@better-auth/core`'u DOĞRUDAN bağımlılık OLARAK EKLEMEDEN (yeni ana
+ * bağımlılık YASAK, CLAUDE.md §2) `unknown` + daraltma ile okur —
+ * `extractTwoFactorEnableMethod`'un (yukarıda) AYNI "bellek içi nesne, Zod
+ * GEREKMEZ" ilkesi.
+ */
+function extractAuthEndpointPath(context: unknown): string | undefined {
+  if (typeof context !== 'object' || context === null) {
+    return undefined
+  }
+  const path = (context as Record<string, unknown>)['path']
+  return typeof path === 'string' ? path : undefined
+}
+
+/**
+ * `context.context.session`'ın (NESTED — `createAuthMiddleware`'in `ctx.
+ * context.session`'IYLA AYNI alan, `createTwoFactorEventHook`'un ZATEN
+ * okuduğu) DOLU olup olmadığını okur. `/two-factor/verify-totp`'un "kurulum
+ * onayı" dalı (`totp/index.mjs`, "ZATEN bir oturumu VARKEN" çağrılır — AYNI
+ * `isSignIn = !session.session` ayrımı) BU alanı DOLU bırakır; giriş-sırası
+ * (challenge çerezi) tamamlaması İSE bu noktada HENÜZ oturum YOKTUR
+ * (`session.session === null`, dosya başı yorumunun "etkinleştirildi" ayrımı
+ * İLE AYNI ÖLÇÜM).
+ */
+function hasExistingSessionAtCreation(context: unknown): boolean {
+  if (typeof context !== 'object' || context === null) {
+    return false
+  }
+  const inner = (context as Record<string, unknown>)['context']
+  if (typeof inner !== 'object' || inner === null) {
+    return false
+  }
+  const session = (inner as Record<string, unknown>)['session']
+  return session !== null && session !== undefined
+}
+
+/**
+ * `true` → bu `session.create` çağrısı bir GİRİŞ TAMAMLANMASI DEĞİL, bir 2FA
+ * durum değişikliğinin (`disable`, `verify-totp`'un kurulum onayı dalı,
+ * ileride `enable`/`otp`) YAN ETKİSİDİR — `databaseHooks.session.create.
+ * after` (altta) bunu "giriş başarılı" DIŞINDA bir etiketle loglar.
+ * `context === null` (programatik/HTTP-dışı çağrı, BUGÜN gözlenmemiş) →
+ * FAIL-SOFT `false` (ÖNCEKİ davranış KORUNUR, görünürlük KAYBOLMAZ).
+ *
+ * `/two-factor/verify-totp` İKİ anlam TAŞIYABİLDİĞİ için (dosya başı
+ * GÜNCELLEME yorumu) sabit kümenin (`NON_LOGIN_SESSION_CREATION_PATHS`)
+ * DIŞINDA, İKİNCİ bir sinyalle (`hasExistingSessionAtCreation`) AYRI ele
+ * alınır — path TEK BAŞINA yeterli değildir.
+ */
+function isNonLoginSessionCreation(context: unknown): boolean {
+  const path = extractAuthEndpointPath(context)
+  if (path === undefined) {
+    return false
+  }
+  if (NON_LOGIN_SESSION_CREATION_PATHS.has(path)) {
+    return true
+  }
+  if (path === TWO_FACTOR_VERIFY_TOTP_PATH) {
+    return hasExistingSessionAtCreation(context)
+  }
+  return false
+}
+
+/**
+ * 2FA olay logu (ROADMAP v0.0.15, T-016/S4) — "kurulum başladı",
+ * "etkinleştirildi", "doğrulama başarısız", "kilitlendi". Better Auth'un
+ * üst düzey `hooks.after`'ı (ÖLÇÜLDÜ, `better-auth/dist/api/dispatch.mjs`
+ * `runAfterHooks`): endpoint handler'ı BİR `APIError` FIRLATSA BİLE bu hook
+ * ÇALIŞIR — dispatch katmanı hatayı `ctx.context.returned`'a YAZAR, SONRA
+ * `after` hook'larını çalıştırır (hata YUTULMAZ, CLAUDE.md §10.16 — bu hook
+ * yalnızca GÖZLEMLER, yanıtı DEĞİŞTİRMEZ). Hiçbir sırrı (`totpURI`/
+ * `backupCodes`/girilen kod) LOG NESNESİNE KOYMAZ — `PINO_REDACT_PATHS`'e
+ * (S8) GÜVENEREK sır loglamak CLAUDE.md §4/görev talimatınca YASAK, bu
+ * yüzden bu alanlar hiç OKUNMAZ.
+ *
+ * "etkinleştirildi" ayrımı (yalnızca `/two-factor/verify-totp` başarılı VE
+ * GÖNDEREN istek zaten GEÇERLİ bir oturum çerezi taşıyor): Better Auth'un
+ * eklentisi `verified:false → true` geçişini SADECE bu durumda yapar
+ * (`totp/index.mjs:148`, `isSignIn && twoFactor.verified === false` TOTP_NOT_
+ * ENABLED ile REDDEDİLİR — yani bir giriş-sırası 2FA tamamlaması asla "ilk
+ * onay" OLAMAZ). İmzalı oturum çerezinin varlığı `getSessionFromCtx()` ile
+ * (sessionMiddleware'in KENDİSİNİN kullandığı AYNI genel fonksiyon, `better-
+ * auth/api`'den içe aktarılır) okunur — giriş-sırası 2FA tamamlaması bu
+ * çerezi TAŞIMAZ (kimlik doğrulama HENÜZ tamamlanmadı), bu yüzden rutin bir
+ * 2FA girişi burada "etkinleştirildi" olarak YANLIŞ ETİKETLENMEZ; o olay
+ * `auth-instance.ts`'in MEVCUT `databaseHooks.session.create.after`'ı
+ * (yukarıda) üzerinden ZATEN "giriş başarılı" olarak loglanır (YENİ bir satır
+ * GEREKMEZ).
+ *
+ * ÖLÇÜLMÜŞ SINIR (dürüstçe kayıtlı, `AuthProviderFailedError`'ın dosya başı
+ * yorumuyla AYNI disiplin): zaten etkinleştirilmiş bir 2FA'yı OTURUM AÇIKKEN
+ * TEKRAR doğrulamak (normal bir kullanıcı akışı DEĞİL, ama uç noktanın
+ * TEKNİK OLARAK izin verdiği bir çağrı) da "etkinleştirildi" olarak loglanır
+ * — bu durumda zaten `verified` DEĞİŞMEZ, yalnızca log BİR KEZ daha yazılır.
+ * Güvenlik açısından zararsız (yanlış pozitif bir "etkinleştirme" kaydı,
+ * veri sızıntısı/yetki atlatma DEĞİL); ikinci bir DB okuması EKLEMEDEN bunu
+ * ayırt etmenin bir yolu YOK.
+ */
+function createTwoFactorEventHook(logger: PinoLogger): AuthMiddleware {
+  return createAuthMiddleware(async (ctx) => {
+    if (ctx.path === TWO_FACTOR_ENABLE_PATH) {
+      const returned: unknown = ctx.context.returned
+      if (!isAPIError(returned) && extractTwoFactorEnableMethod(returned) === 'totp') {
+        // FIX turu 3, madde ② (security tur3, `low`) — `userId` İKİNCİ KEZ
+        // GEÇİRİLMEZ: `/two-factor/enable` `AUTH_EXEMPT_PATHS`'TE YOK (dosya
+        // başı yorumu) → `AuthContextMiddleware` bu istek için `context.
+        // logger`'ı `child({userId})` İLE ZATEN BAĞLAMIŞTIR
+        // (`auth-context.middleware.ts:100`) — ikinci kez geçirmek NDJSON
+        // satırında `userId` anahtarını İKİ KEZ üretirdi (ÖLÇÜLDÜ, `auth.
+        // guard.ts`'in `kiracı üyeliği yok` dalındaki AYNI emsal/düzeltme).
+        resolveEventLogger(logger).info({}, '2FA kurulumu başladı')
+      }
+      return
+    }
+
+    if (ctx.path === TWO_FACTOR_VERIFY_TOTP_PATH) {
+      const returned: unknown = ctx.context.returned
+
+      if (isAPIError(returned)) {
+        const errorCode = extractApiErrorCode(returned)
+        if (errorCode === 'ACCOUNT_TEMPORARILY_LOCKED') {
+          resolveEventLogger(logger).warn({}, '2FA doğrulaması kilitlendi')
+        } else if (errorCode === 'INVALID_CODE') {
+          resolveEventLogger(logger).warn({}, '2FA doğrulaması başarısız')
+        }
+        return
+      }
+
+      // Giriş-sırası 2FA tamamlaması bu çerezi TAŞIMAZ (dosya başı yorumu) —
+      // `getSessionFromCtx` burada yalnızca GELEN isteği okur, YANIT olarak
+      // AZ ÖNCE yazılmış çerezi DEĞİL.
+      const existingSession = await getSessionFromCtx(ctx)
+      if (existingSession !== null) {
+        resolveEventLogger(logger).info(
+          { userId: extractTwoFactorUserId(returned) },
+          '2FA etkinleştirildi',
+        )
+      }
+      return
+    }
+
+    // FIX turu 1, madde 2/F2 (`medium`) — `disable`/`generate-backup-codes`
+    // İÇİN SIFIR olay logu VARDI (ÖLÇÜLDÜ). İkisi de `sessionMiddleware`/
+    // `sensitiveSessionMiddleware` ARDINDAN çalışır, bu yüzden `ctx.context.
+    // session` BAŞARI/BAŞARISIZLIK AYRIMINDAN BAĞIMSIZ DOLUDUR — parola
+    // YANLIŞSA BİLE oturum bellidir.
+    //
+    // FIX turu 3, madde ② (security tur3, `low`) — `userId` BURADAN ARTIK
+    // HİÇ OKUNMAZ/GEÇİRİLMEZ: bu iki yol da `AUTH_EXEMPT_PATHS`'TE YOK, bu
+    // yüzden `AuthContextMiddleware` `context.logger`'ı `child({userId})`
+    // İLE ZATEN BAĞLAMIŞTIR (`enable` dalındaki AYNI gerekçe, yukarıda) —
+    // ikinci kez geçirmek NDJSON satırında `userId` anahtarını İKİ KEZ
+    // üretirdi (ÖLÇÜLDÜ).
+    if (ctx.path === TWO_FACTOR_DISABLE_PATH) {
+      const returned: unknown = ctx.context.returned
+
+      if (isAPIError(returned)) {
+        resolveEventLogger(logger).warn({}, '2FA kapatma denemesi başarısız')
+      } else {
+        resolveEventLogger(logger).info({}, '2FA devre dışı bırakıldı')
+      }
+      return
+    }
+
+    if (ctx.path === TWO_FACTOR_GENERATE_BACKUP_CODES_PATH) {
+      const returned: unknown = ctx.context.returned
+
+      if (isAPIError(returned)) {
+        resolveEventLogger(logger).warn({}, '2FA yedek kod üretimi başarısız')
+      } else {
+        // ⚠ YEDEK KODLARIN KENDİSİ (`returned.backupCodes`) HİÇ OKUNMAZ —
+        // dosya başı yorumunun "hiçbir sırrı LOG NESNESİNE KOYMAZ" ilkesi.
+        resolveEventLogger(logger).info({}, '2FA yedek kodları yeniden üretildi')
+      }
+    }
+  })
+}
+
 /**
  * Yapılandırılmış Better Auth örneğini kurar. `database` parametresi
  * `AuthPrismaDatabase` (TAM istemci yüzeyi, `account`/`session`/
@@ -352,6 +642,27 @@ export function createAuthInstance(options: CreateAuthInstanceOptions): Auth {
       // ZORUNLU (A-G8) — bkz. dosya başı yorumu.
       cookieCache: { enabled: false },
     },
+    // ROADMAP v0.0.15 (T-016/S4) — `better-auth/plugins/two-factor`,
+    // BİLDİRİLMİŞ bir alt yol (A-PM3'ün ölçümü, Task raporu) — YENİ BİR ANA
+    // BAĞIMLILIK DEĞİL. `accountLockout` AÇIKÇA yapılandırılır (sihirli sayı
+    // gömülmez, `two-factor/account-lockout.constants.ts`'in dosya başı
+    // yorumu) — eklentinin KENDİ varsayılanıyla SAYISAL OLARAK AYNI (10/900)
+    // ama bu AÇIKÇA bir KARAR, ÖRTÜK bir varsayılana GÜVENME DEĞİL.
+    // `skipVerificationOnEnable` BİLEREK ayarlanmadı (varsayılan `false`) —
+    // "kurulum başladı"/"etkinleştirildi" iki AYRI olay olarak kalır
+    // (`createTwoFactorEventHook`'un dosya başı yorumu); `allowPasswordless`
+    // de BİLEREK ayarlanmadı (varsayılan `false`) — parola gerektirmeyen
+    // hesap bugün YOK (Better Auth'un `account` tablosu her kullanıcı için
+    // bir kimlik bilgisi taşır, K-A başka bir alt görevin kapsamı DEĞİL).
+    plugins: [
+      twoFactor({
+        accountLockout: {
+          enabled: true,
+          maxFailedAttempts: ACCOUNT_LOCKOUT_MAX_FAILED_ATTEMPTS,
+          durationSeconds: ACCOUNT_LOCKOUT_DURATION_SECONDS,
+        },
+      }),
+    ],
     advanced: {
       ipAddress: { disableIpTracking: true },
       useSecureCookies: env.NODE_ENV === 'production',
@@ -373,6 +684,16 @@ export function createAuthInstance(options: CreateAuthInstanceOptions): Auth {
     // Auth'un KENDİ iç API'si bu ikisini ayrı bir alanla AYIRMIYOR; bu
     // dürüst bir SAPMA olarak burada KAYDA geçer, icat edilmiş bir ayrım
     // DEĞİL.
+    //
+    // ROADMAP v0.0.15 (T-016/S4) — `hooks.after`: 2FA olay logu
+    // (`createTwoFactorEventHook`'un dosya başı yorumu). `databaseHooks`
+    // (altta) Better Auth'un VERİTABANI yaşam döngüsü kancalarıdır; BU alan
+    // ONUN YANINDA, istek/endpoint SEVİYESİNDE çalışan AYRI bir kanca
+    // ailesidir (`getHooks()`, `better-auth/dist/api/dispatch.mjs`) —
+    // `databaseHooks`'un YERİNİ ALMAZ, İKİSİ DE AKTİF.
+    hooks: {
+      after: createTwoFactorEventHook(logger),
+    },
     databaseHooks: {
       user: {
         create: {
@@ -392,7 +713,17 @@ export function createAuthInstance(options: CreateAuthInstanceOptions): Auth {
       },
       session: {
         create: {
-          after: (session: { readonly id: string; readonly userId: string }): Promise<void> => {
+          // FIX turu 1, madde 2/F2 (`medium`) — İKİNCİ parametre (`context`)
+          // EKLENDİ. ÖNCEKİ hâl `ctx.path`'i HİÇ OKUMADIĞI için `disable`'ın
+          // (ve ileride, bugün erişilemeyen `enable`/`otp`'nin) ÜRETTİĞİ
+          // oturumu da KOŞULSUZ "giriş başarılı" olarak etiketliyordu —
+          // saldırganın kurbanın 2FA'sını KAPATMASI loglarda SADECE "giriş
+          // başarılı" + "oturum sonlandırıldı" çifti olarak GÖRÜNÜYORDU
+          // (dosya başı GÜNCELLEME yorumuna bkz — `isNonLoginSessionCreation`).
+          after: (
+            session: { readonly id: string; readonly userId: string },
+            hookContext: unknown,
+          ): Promise<void> => {
             // FIX turu 2, madde 4 (security/qa tur2 S-5) — `/auth/sign-in/
             // email` `AUTH_EXEMPT_PATHS`'te olduğu için `AuthContextMiddleware`
             // bu isteğin `context.logger`'ına `userId` BAĞLAMAMIŞTI (giriş
@@ -400,20 +731,62 @@ export function createAuthInstance(options: CreateAuthInstanceOptions): Auth {
             // için `context.logger`'ı BURADAN SONRAKİ loglar (ör.
             // `RequestLoggingInterceptor`'ın `istek tamamlandı` özeti) İÇİN
             // `userId` İLE BAĞLARIZ — `AuthContextMiddleware`'in `tenantId`/
-            // `userId` child'lama deseniyle AYNI, TEK EK yazıcı.
+            // `userId` child'lama deseniyle AYNI, TEK EK yazıcı. BU bağlama
+            // yol AYRIMINDAN BAĞIMSIZDIR — her iki etiket de AYNI isteğin
+            // ÜRÜNÜ, korelasyon İKİSİNDE de gerekir.
+            //
+            // FIX turu 3, madde ② (security tur3, `low` — item②'nin KENDİ
+            // doğrulama testinde ORTAYA ÇIKAN İKİNCİ bir kaynak, ÖLÇÜLDÜ):
+            // bu hook `disable`'ın VE `verify-totp`'un "kurulum onayı"
+            // dalının KENDİ handler'LARI İÇİNDE de TETİKLENİR
+            // (`internalAdapter.createSession`, `better-auth/dist/plugins/
+            // two-factor/index.mjs:227` ve `totp/index.mjs:175`) — bu
+            // çağrılarda `context.logger`'da `userId` ZATEN olabilir (ya
+            // `AuthContextMiddleware`'den — `disable`/`enable` gibi EXEMPT
+            // OLMAYAN yollar — ya da AYNI isteğin ÖNCEKİ bir kancasından).
+            // Yukarıdaki yorumun varsayımı ("middleware userId
+            // BAĞLAMAMIŞTI") SADECE giriş-sırası (exempt, TEK kanca) çağrı
+            // için doğrudur. Koşulsuz `{userId}` + koşulsuz İKİNCİ
+            // `child({userId})` bu yüzden bu iki yolun ÜRETTİĞİ log
+            // satırlarında `userId` anahtarını İKİ/ÜÇ KEZ üretiyordu
+            // (`two-factor-event-log-duplicate-userid.test.ts` İLE
+            // ÖLÇÜLDÜ) — `loggerAlreadyHasUserId()` (yukarıda, dosya başı
+            // yorumu) GÜVENİLİR sinyaldir, `context.auth.kind ===
+            // 'authenticated'` (İLK denenen, YETERSİZ KALAN sinyal) DEĞİL.
             const context = tryGetRequestContext()
             const eventLogger = context?.logger ?? logger
-            eventLogger.info({ userId: session.userId, sessionId: session.id }, 'giriş başarılı')
-            if (context !== undefined) {
+            const message = isNonLoginSessionCreation(hookContext)
+              ? '2FA değişikliği sonrası oturum yenilendi'
+              : 'giriş başarılı'
+            const alreadyHasUserId = context !== undefined && loggerAlreadyHasUserId(context.logger)
+            eventLogger.info(
+              alreadyHasUserId
+                ? { sessionId: session.id }
+                : { userId: session.userId, sessionId: session.id },
+              message,
+            )
+            if (context !== undefined && !alreadyHasUserId) {
               context.logger = context.logger.child({ userId: session.userId })
             }
             return Promise.resolve()
           },
         },
         delete: {
+          // FIX turu 3, madde ② (security tur3, `low`) — AYNI gerekçe
+          // `session.create.after`'ın dosya başı GÜNCELLEME yorumuyla
+          // BİREBİR: bu kanca YALNIZCA `/auth/sign-out` (exempt) İÇİN
+          // DEĞİL, `/two-factor/disable`'ın (`index.mjs:235`) VE
+          // `verify-totp`'un "kurulum onayı" dalının (`totp/index.mjs:180`)
+          // KENDİ `deleteSession` çağrıları İÇİN de TETİKLENİR (ÖLÇÜLDÜ) —
+          // `loggerAlreadyHasUserId()` (dosya başı yorumu) AYNI sinyal.
           after: (session: { readonly id: string; readonly userId: string }): Promise<void> => {
-            resolveEventLogger(logger).info(
-              { userId: session.userId, sessionId: session.id },
+            const context = tryGetRequestContext()
+            const eventLogger = context?.logger ?? logger
+            const alreadyHasUserId = context !== undefined && loggerAlreadyHasUserId(context.logger)
+            eventLogger.info(
+              alreadyHasUserId
+                ? { sessionId: session.id }
+                : { userId: session.userId, sessionId: session.id },
               'oturum sonlandırıldı',
             )
             return Promise.resolve()

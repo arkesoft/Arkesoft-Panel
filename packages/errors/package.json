@@ -1,6 +1,6 @@
 {
   "name": "@arkesoft/errors",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "description": "AppError taban hiyerarşisi, hata gövdesi tel sözleşmesi ve redaction ilkelleri",
@@ -29,6 +29,7 @@
     "@arkesoft/config": "workspace:*",
     "@types/node": "catalog:",
     "eslint": "catalog:",
+    "pino": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

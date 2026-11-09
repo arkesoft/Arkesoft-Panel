@@ -124,6 +124,7 @@ describe('A-A2 — envanter kaynağının kendisi (ölçüm, varsayım değil)',
       ['session.me', 'query'],
       ['storefront.currentTenant', 'query'],
       ['tenant.current', 'query'],
+      ['tenant.updateSecurityPolicy', 'mutation'],
     ])
   })
 
@@ -173,10 +174,10 @@ describe('AC3 ayak (c) — KAPALI DÜNYA: beyan edilen yüzey = gerçek yüzey',
     expect([...inventory.keys()].sort()).toEqual(Object.keys(PROCEDURE_SURFACE).sort())
   })
 
-  it('kayıt sayıları eşit ve DOKUZ (tablonun boş olmadığının kanıtı)', () => {
+  it('kayıt sayıları eşit ve ON (tablonun boş olmadığının kanıtı; ROADMAP v0.0.15, T-016/S7)', () => {
     const inventory = readRouterInventory()
 
-    expect(Object.keys(PROCEDURE_SURFACE).length).toBe(9)
+    expect(Object.keys(PROCEDURE_SURFACE).length).toBe(10)
     expect(inventory.size).toBe(Object.keys(PROCEDURE_SURFACE).length)
   })
 
@@ -196,9 +197,9 @@ describe('AC3 ayak (c) — KAPALI DÜNYA: beyan edilen yüzey = gerçek yüzey',
     expect([...listRecordedPermissionUsages()].sort()).toEqual([...declaredPermissions()].sort())
   })
 
-  it('beş prosedür izinle kapılıdır (sayı LİTERAL — assert boş küme üzerinde yeşil yanmıyor)', () => {
-    expect(declaredPermissions().length).toBe(5)
-    expect(listRecordedPermissionUsages().length).toBe(5)
+  it('altı prosedür izinle kapılıdır (sayı LİTERAL — assert boş küme üzerinde yeşil yanmıyor; ROADMAP v0.0.15, T-016/S7)', () => {
+    expect(declaredPermissions().length).toBe(6)
+    expect(listRecordedPermissionUsages().length).toBe(6)
   })
 
   it('izinsiz beyan edilen yollar TAM OLARAK bilinen dört istisnadır (builder beyanı inceleme görünürlüğü)', () => {

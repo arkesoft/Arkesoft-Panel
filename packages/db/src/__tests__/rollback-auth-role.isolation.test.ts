@@ -22,14 +22,20 @@
 // yapıştırılır, sonra `pnpm db:bootstrap` ile yeşile döndürülür (bu dosyanın
 // kapsamı DIŞINDA, ST-G'nin raporunda).
 //
-// Tablo adları (`account`/`session`/`verification`/`app_user`) BURADA
-// LİTERAL — K-E5'in "literal yazılmaz" kısıtı ÜRETİM KODUNA (`catalog-
-// lint.ts`/`catalog-snapshot.ts`/`tenancy.ts`) aittir, TEST dosyalarına
-// UYGULANMAZ (ST-E'nin `GRANT SELECT ("token") ON public.session …` emsali).
+// DÜZELTME (FIX turu 2, solid M-5 dördüncü ayağı): sır taşıyan tablo adları
+// (`account`/`session`/`verification`/`two_factor`) ARTIK literal DEĞİL —
+// `applyRollbackAuthRoleDdl` bunları `AUTH_SECRET_BEARING_TABLES`'tan
+// (tenancy.ts) TÜRETİR (bkz. o fonksiyonun doc'u). Yalnızca `app_user`
+// (`AUTH_SECRET_BEARING_TABLES`'ın üyesi DEĞİL, üretim SQL'inde de AYRI bir
+// DO bloğu) BURADA LİTERAL kalır — K-E5'in "literal yazılmaz" kısıtı ÜRETİM
+// KODUNA (`catalog-lint.ts`/`catalog-snapshot.ts`/`tenancy.ts`) aittir, TEST
+// dosyalarına UYGULANMAZ (ST-E'nin `GRANT SELECT ("token") ON public.session
+// …` emsali) — tek bir sabit ad için bu yine geçerli.
 
 import { beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 
+import { Prisma } from '#prisma'
 import { lintCatalog, type LintCatalogOptions } from '../catalog-lint.js'
 import { readCatalogSnapshot, type CatalogSnapshot } from '../catalog-snapshot.js'
 import type { TransactionClient } from '../client.js'
@@ -136,20 +142,66 @@ describe('kademe 4 geri alma — AC4 rollback yarısı (T-015/ST-G, DDL transact
 
   /**
    * `sql/rollback-auth-role.sql`'in (kademe 4) BİREBİR semantiğini verilen
-   * transaction İÇİNDE uygular: üç sır taşıyan tabloda `arkesoft_auth`'un
+   * transaction İÇİNDE uygular: sır taşıyan HER tabloda `arkesoft_auth`'un
    * TÜM (kolon + tablo) yetkisini alır ve `arkesoft_app`'in v0.0.14'teki TAM
-   * DML'ini geri verir; `app_user`'da `arkesoft_auth`'un tablo bazlı
-   * SELECT/INSERT/UPDATE'ini alır. `REVOKE ALL` tek komutunun hem tablo HEM
-   * kolon seviyesi hibeyi temizlediği bu alt görevde AMPİRİK olarak
-   * ölçüldü (bkz. `sql/rollback-auth-role.sql` dosya başı notu).
+   * DML'ini geri verir; `app_user`'da `arkesoft_auth`'un tablo bazlı SELECT/
+   * INSERT/UPDATE'ini alır. `REVOKE ALL` tek komutunun hem tablo HEM kolon
+   * seviyesi hibeyi temizlediği bu alt görevde AMPİRİK olarak ölçüldü (bkz.
+   * `sql/rollback-auth-role.sql` dosya başı notu).
+   *
+   * NEDEN bu fonksiyon üretim betiğini DOSYADAN ÇALIŞTIRMIYOR (taklidin var
+   * olma sebebi): gerçek script `pnpm db:rollback-auth-role` →
+   * `prisma db execute --file sql/rollback-auth-role.sql` ÇAĞRISI AYRI bir alt
+   * SÜREÇ açar ve kendi bağlantısında COMMIT eder — bu testin ihtiyacı olan
+   * "uygula, katalogu ÖLÇ, SONRA `ROLLBACK` ile İZSİZ geri al" deseni
+   * (`runProbeAndRollback`, A-N2/ST-A0④) yalnızca AYNI `tx` BAĞLANTISINDA DDL
+   * çalıştırılırsa mümkündür. Bu yüzden DDL'in SEMANTİĞİ (REVOKE ALL + GRANT
+   * dörtlüsü) burada `tx.$executeRaw` ile TEKRAR İFADE EDİLMEK ZORUNDADIR —
+   * sebep ORTADAN KALKMADI, bu yüzden fonksiyonun KENDİSİ kaldırılmadı.
+   *
+   * DÜZELTME (ROADMAP v0.0.15, T-016/S3b — kök neden, FIX turu 2 solid M-5
+   * dördüncü ayağı): daha ÖNCE bu fonksiyon dört tablo adını (`account`,
+   * `session`, `verification`, `two_factor`) LİTERAL olarak taşıyordu —
+   * `sql/rollback-auth-role.sql`'in S2'de `two_factor` EKLENEREK güncellenen
+   * dış döngü dizisinin EL İLE TUTULAN BEŞİNCİ bir kopyasıydı. S2 üretim
+   * SQL'ini güncelledi ama bu kopyayı GÜNCELLEMEDİ — `expectedFindings`
+   * (AUTH_SECRET_BEARING_TABLES'tan TÜRETİLİR) bu DDL'den BAĞIMSIZ doğru
+   * hesaplanıyordu, bu yüzden `two_factor` için DDL uygulanmayınca 11 bulgu
+   * (1 APP_ROLE_RETAINS + 9 kolon + 1 tablo) hiç ÜRETİLMEDİ ve
+   * `findings.length` 34'te kaldı (beklenen 45) — `test:isolation` kırmızıya
+   * döndü, teşhis bir alt görev sürdü.
+   *
+   * ÇÖZÜM (YOL A — türetme, YOL B'ye [SQL'e karşı eşitlik assert'i] TERCİH
+   * EDİLDİ): tablo listesi artık `AUTH_SECRET_BEARING_TABLES`'tan (tenancy.ts
+   * — `auth-secret-tables-sql-consistency.test.ts`'in [FIX turu 1] ZATEN
+   * `sql/rollback-auth-role.sql`'in FOREACH dizisine karşı mekanik olarak
+   * eşitlediği TEK KAYNAK) TÜRETİLİYOR — BEŞİNCİ bir elle yazılmış liste
+   * YOK, dördüncü ayna ORTADAN KALKTI. (B) tercih edilmedi: SQL metnine karşı
+   * bir eşitlik assert'i eklemek aynayı yine TUTAR (yalnızca sessiz sapmayı
+   * engeller), (A) aynayı YOK EDER — iki tablo adı artık ÜÇ yerde değil İKİ
+   * yerde yazılı: `tenancy.ts` (kaynak) ve `sql/*.sql` (metin, consistency
+   * testiyle kaynağa bağlı). `app_user` bu döngünün DIŞINDA kalır — o
+   * `AUTH_SECRET_BEARING_TABLES`'ın üyesi DEĞİLDİR (tenancy.ts:198,
+   * `columnLevel: false` ile AYRI tutulur) ve üretim SQL'inde de AYRI bir DO
+   * bloğudur (§2) — buradaki tek satırlık literal bir "dizi aynası" değil,
+   * tek bir sabit tablo adıdır.
+   *
+   * Tanımlayıcı (identifier) olarak SQL metnine giren `tableName` için
+   * `$executeRawUnsafe` YASAK (CLAUDE.md §2, K-E12) — `Prisma.sql` etiketli
+   * şablonu + `Prisma.raw()` kullanılır (`auth-role-privileges.isolation.
+   * test.ts`'in [ST-E] BİREBİR izlediği emsal).
    */
   async function applyRollbackAuthRoleDdl(tx: TransactionClient): Promise<void> {
-    await tx.$executeRaw`REVOKE ALL ON public.account FROM arkesoft_auth`
-    await tx.$executeRaw`GRANT SELECT, INSERT, UPDATE, DELETE ON public.account TO arkesoft_app`
-    await tx.$executeRaw`REVOKE ALL ON public.session FROM arkesoft_auth`
-    await tx.$executeRaw`GRANT SELECT, INSERT, UPDATE, DELETE ON public.session TO arkesoft_app`
-    await tx.$executeRaw`REVOKE ALL ON public.verification FROM arkesoft_auth`
-    await tx.$executeRaw`GRANT SELECT, INSERT, UPDATE, DELETE ON public.verification TO arkesoft_app`
+    for (const tableName of AUTH_SECRET_BEARING_TABLES) {
+      await tx.$executeRaw(
+        Prisma.sql`REVOKE ALL ON public.${Prisma.raw(tableName)} FROM arkesoft_auth`,
+      )
+      await tx.$executeRaw(
+        Prisma.sql`GRANT SELECT, INSERT, UPDATE, DELETE ON public.${Prisma.raw(
+          tableName,
+        )} TO arkesoft_app`,
+      )
+    }
     await tx.$executeRaw`REVOKE ALL ON public.app_user FROM arkesoft_auth`
   }
 

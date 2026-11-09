@@ -13,7 +13,9 @@ import type { TenantStatusWire } from '../schemas/tenant-summary.schema.js'
 import type { JobReadPort } from '../ports/job-read.port.js'
 import type { MemberWritePort } from '../ports/member-write.port.js'
 import type { MembershipReadPort } from '../ports/membership-read.port.js'
+import type { SessionSecurityReadPort } from '../ports/session-security-read.port.js'
 import type { TenantReadPort } from '../ports/tenant-read.port.js'
+import type { TenantSecurityWritePort } from '../ports/tenant-security-write.port.js'
 import type { StorefrontTenantReadPort } from '../ports/storefront-tenant-read.port.js'
 import type { TrpcErrorFactoryPort } from '../ports/trpc-error-factory.port.js'
 
@@ -94,6 +96,24 @@ export interface TrpcPorts {
   readonly membershipRead: MembershipReadPort
   /** ROADMAP v0.0.14, T-014/S2 — ZORUNLU üye. `member.*` mutation'larının iş mantığı. */
   readonly memberWrite: MemberWritePort
+  /**
+   * ROADMAP v0.0.15, T-016/S7 — ZORUNLU üye (aynı kural, `memberWrite`'ın
+   * emsali): `tenant.updateSecurityPolicy` mutation'ının iş mantığı. Opsiyonel
+   * (`?`) YAPILMASI YASAK — bu nesneyi elle kuran her yerin portu DOLDURMASI
+   * gerekir, susturma değil.
+   */
+  readonly tenantSecurityWrite: TenantSecurityWritePort
+  /**
+   * ROADMAP v0.0.15, T-016 FIX turu 2/M-4 — ZORUNLU üye (AYNI kural,
+   * `tenantSecurityWrite`'ın emsali): `session.me`'nin `twoFactorEnabled`
+   * alanını doldurur (`app_user.two_factor_enabled`'ın KULLANICI seviyesi
+   * echo'su — KİRACIYA BAĞLI DEĞİL, `tenantSecurityWrite`'ın tersine
+   * `ctx.tenant.tenantId` İLE PARAMETRELENMEZ). Opsiyonel (`?`) YAPILMASI
+   * YASAK — bu nesneyi elle kuran her yerin (üretimde bir, testlerde iki yer)
+   * portu DOLDURMASI gerekir, bir typecheck hatasını susturmak için GEVŞETME
+   * değil.
+   */
+  readonly sessionSecurityRead: SessionSecurityReadPort
 }
 
 /**

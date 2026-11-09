@@ -1,0 +1,33 @@
+-- @arkesoft/db — `two_factor.verified` varsayılanını `true`'dan `false`'a
+-- çevirir (ROADMAP v0.0.15, T-016, FIX turu 1, `security` [low] F3 bulgusu).
+--
+-- GEREKÇE: `20261106073351_two_factor_and_security_policy/migration.sql`
+-- (DONMUŞ — bu dosyaya KESİNLİKLE DOKUNULMADI, checksum `_prisma_migrations`
+-- ile elle senkronlanmış) `verified` kolonunu `DEFAULT true` ile oluşturdu —
+-- Better Auth'un `two-factor` eklentisinin KENDİ şema bildirimiyle
+-- (`defaultValue: true`) BİREBİR eşleşen bir karardı. BUGÜN sömürülemez:
+-- tek yazıcı Better Auth'tur ve `enable` ucu `verified` alanını HER ZAMAN
+-- AÇIKÇA yazar (`!!options?.skipVerificationOnEnable`, bizim yapılandırmamızda
+-- `false`). AMA bu alanı AÇIKÇA göndermeyen her GELECEK yazıcı (yeni bir
+-- admin ucu, elle `INSERT`, başka bir eklenti) `DEFAULT true` yüzünden
+-- DOĞRULANMAMIŞ ama GÜVENİLEN bir ikinci faktör üretir — ikinci faktörün
+-- VARLIĞINI (`verified !== false`) giriş koşulu sayan her kod yolu bunu
+-- otomatik olarak KABUL eder. Davranışsal maliyeti SIFIR (mevcut tek yazıcı
+-- zaten açıkça `false` yazıyor) — fail-closed'a çevrilir.
+--
+-- YIKICI DEĞİL (CLAUDE.md §4/§10 madde 10): `DROP COLUMN` yok, `NOT NULL`
+-- EKLEMESİ yok — kolonun KENDİSİ zaten `NOT NULL`dur (bu migration onu
+-- DEĞİŞTİRMEZ), yalnızca bundan sonraki `INSERT`lerin `verified`i AÇIKÇA
+-- GEÇMEDİĞİNDE hangi değeri ALACAĞI değişir. Mevcut satırları ETKİLEMEZ —
+-- `ALTER COLUMN ... SET DEFAULT` geçmişe dönük UPDATE ÜRETMEZ (PostgreSQL
+-- semantiği). Veri taşıma SCRIPT'i GEREKMEZ (CLAUDE.md §5 madde 8) — hiçbir
+-- mevcut satırın `verified` DEĞERİ bu migration ile değişmez, yalnızca
+-- gelecekteki varsayılan davranış değişir.
+--
+-- EXPAND/CONTRACT'E İHTİYAÇ DUYMAZ (tek adımlı, geri alınabilir): bir önceki
+-- uygulama sürümü bu migration'dan SONRA da çalışır — `verified` alanını
+-- HER ZAMAN açıkça yazan tek yazıcı (Better Auth) davranış DEĞİŞTİRMEZ; alanı
+-- hiç yazmayan bir yazıcı YOKTUR (bugün). `DEFAULT`'un rollback'i de tek
+-- adımlı bir `SET DEFAULT true` olurdu — platform rollback'i şema
+-- rollback'i GEREKTİRMEZ.
+ALTER TABLE "two_factor" ALTER COLUMN "verified" SET DEFAULT false;

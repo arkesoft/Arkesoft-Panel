@@ -80,12 +80,19 @@
  * `tenant_id` kolonu TAŞIMAYAN platform seviyesi tablolar. Kiracı kimliğinin
  * kendisi bu tablolardadır; RLS politikası gerektirmez.
  */
+// GENİŞLETME (ROADMAP v0.0.15, T-016/S1+S2, architect "Veri modeli +
+// migration" + "T-015 listeleri" tablosu): `two_factor` (ALTINCI üye)
+// EKLENDİ. İkinci faktör (TOTP sırrı + yedek kodlar) KULLANICIYA aittir,
+// kiracıya değil — `session`/`account`/`verification`'ın gerekçesiyle
+// BİREBİR aynı ("bir hesap → birden fazla mağaza"). `TwoFactor.userId`
+// `@unique` (bkz. `prisma/schema.prisma`), `tenant_id` kolonu TAŞIMAZ.
 export const PLATFORM_LEVEL_TABLES = [
   'tenant',
   'app_user',
   'session',
   'account',
   'verification',
+  'two_factor',
 ] as const
 
 // GENİŞLETME (ROADMAP v0.0.14, T-014/S1, architect K-A0/K-A1): `audit_log`
@@ -135,11 +142,25 @@ export const TENANT_SCOPED_TABLES = [
 // dünya — iki yönlü `Exclude<>`).
 //
 // Kapsam DARALTILDI (kullanıcı kararı 2026-11-05, R-PM6 — po'nun revize
-// ettiği ROADMAP madde 4): tablo bazlı `REVOKE` yalnızca BU ÜÇ tabloya
+// ettiği ROADMAP madde 4): tablo bazlı `REVOKE` yalnızca BU tablolara
 // uygulanır — `tenant`/`app_user` KAPSAM DIŞI (ADR-0008:53'ün ölçtüğü canlı
 // kullanım `tenant` 32, `user` 5, `tenantMembership` 1 — literal daraltma
 // uygulamayı kırardı).
-export const AUTH_SECRET_BEARING_TABLES = ['account', 'session', 'verification'] as const
+//
+// GENİŞLETME (ROADMAP v0.0.15, T-016/S2, architect "T-015 listeleri"
+// tablosu/K-A5 DÜZELTME 1): `two_factor` EKLENDİ — `secret` ve
+// `backupCodes` kolonları (ikisi de uygulama seviyesinde şifreli) TOTP
+// sırrı/yedek kod taşır. ⚠ DÜZELTME 1 (task dosyasının ÇÜRÜTÜLEN ilk iddiası,
+// `bootstrap-roles.sql` doc'una bakın): dış `FOREACH` döngüsü SABİT LİTERAL
+// bir dizidir, kolon döngüsü İÇTEDİR — yeni tablo bu diziye ELLE eklenmeden
+// hiç ziyaret edilmez ve `arkesoft_app`'in `two_factor`'daki yetkisi
+// `ALTER DEFAULT PRIVILEGES` ile OTOMATİK gelip REVOKE EDİLMEZ.
+export const AUTH_SECRET_BEARING_TABLES = [
+  'account',
+  'session',
+  'verification',
+  'two_factor',
+] as const
 
 /**
  * `arkesoft_auth`ın bir tablo üzerindeki BEKLENEN yetki şekli. `columnLevel`
@@ -161,10 +182,18 @@ export type AuthRoleTablePrivilegeExpectation = {
 // DEVREDİLEMEZ. `app_user` için DELETE BEKLENMİYOR (A-N1: `user.deleteUser`
 // ucu `auth-instance.ts`'te AÇILMAMIŞ — en az yetki; açılırsa bu satır
 // güncellenir ve hata GÜRÜLTÜLÜ olur, sessiz değil).
+// GENİŞLETME (ROADMAP v0.0.15, T-016/S2, architect "T-015 listeleri"
+// tablosu — BAĞLAYICI NOT): `two_factor` kaydı `account`/`session`/
+// `verification` EMSALİNİ izler (`columnLevel: true, expectsTableDelete:
+// true`) — `app_user` EMSALİ (`columnLevel: false`) DEĞİL. Gerekçe:
+// `two_factor` da sır taşıyan bir tablodur (`secret`, `backupCodes`), tablo
+// bazlı yetki değil kolon bazlı yetki + ayrı tablo seviyesi `DELETE`
+// beklenir — tam `AUTH_SECRET_BEARING_TABLES`'ın üçüncü üyesiyle aynı şekil.
 export const AUTH_ROLE_TABLE_PRIVILEGE_EXPECTATIONS: readonly AuthRoleTablePrivilegeExpectation[] =
   [
     { tableName: 'account', columnLevel: true, expectsTableDelete: true },
     { tableName: 'session', columnLevel: true, expectsTableDelete: true },
     { tableName: 'verification', columnLevel: true, expectsTableDelete: true },
+    { tableName: 'two_factor', columnLevel: true, expectsTableDelete: true },
     { tableName: 'app_user', columnLevel: false, expectsTableDelete: false },
   ] as const

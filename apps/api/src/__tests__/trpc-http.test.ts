@@ -31,8 +31,10 @@ import type {
   JobReadPort,
   MemberWritePort,
   MembershipReadPort,
+  SessionSecurityReadPort,
   StorefrontTenantReadPort,
   TenantReadPort,
+  TenantSecurityWritePort,
   TrpcContext,
   TrpcRequestHandler,
 } from '@arkesoft/trpc/server'
@@ -170,6 +172,14 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
     expect(result.userId).toBe(userId)
     expect(typeof result.sessionId).toBe('string')
     expect(result.sessionId.length).toBeGreaterThan(0)
+    // ROADMAP v0.0.15, T-016 FIX turu 2/M-4 — `beforeAll`'da bu kullanıcı
+    // için 2FA kurulmadı, varsayılan `app_user.two_factor_enabled` değeri
+    // `false`'tur (`schema.prisma:154`); bu alanın GERÇEKTEN
+    // `SessionSecurityReadPort` üzerinden DOLDUĞUNUN kanıtı
+    // `session-me-two-factor-enabled.test.ts`'in iki hücreli testidir —
+    // burası yalnızca "tip/varlık doğru" sanity'sidir.
+    expect(typeof result.twoFactorEnabled).toBe('boolean')
+    expect(result.twoFactorEnabled).toBe(false)
   })
 
   it('AC7 — session.me yanıt JSON anahtar kümesinde token/password/hash/secret alt dizesi içeren anahtar YOK (programatik)', async () => {
@@ -182,7 +192,9 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
     )
 
     expect(leakedKeys).toEqual([])
-    expect(Object.keys(result).sort()).toEqual(['sessionId', 'userId'])
+    // ROADMAP v0.0.15, T-016 FIX turu 2/M-4 — `twoFactorEnabled` EKLENDİ
+    // (MINOR, katkısal); anahtar kümesi ARTIK ÜÇ alan.
+    expect(Object.keys(result).sort()).toEqual(['sessionId', 'twoFactorEnabled', 'userId'])
   })
 
   it("AC9(b)+AC10 — yalnızca test dosyasında tanımlı AppError alt sınıfı HTTP probe'undan VE tRPC yolundan AYNI gövdeyi üretir", async () => {
@@ -238,6 +250,19 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
       updateRole: () => Promise.reject(new ProbeDetailsError()),
       remove: () => Promise.reject(new ProbeDetailsError()),
     }
+    // ROADMAP v0.0.15, T-016/S7 — `TrpcPorts`'un ZORUNLU yeni üyesi. Bu probe
+    // `tenant.updateSecurityPolicy`'yi ÇAĞIRMAZ; stub yalnızca sözleşmeyi
+    // doldurmak için var, hiçbir assert buna dayanmaz.
+    const probeTenantSecurityWrite: TenantSecurityWritePort = {
+      updateSecurityPolicy: () => Promise.reject(new ProbeDetailsError()),
+    }
+    // ROADMAP v0.0.15, T-016 FIX turu 2/M-4 — `TrpcPorts`'un ZORUNLU yeni
+    // üyesi. Bu probe `session.me`'yi ÇAĞIRMAZ (hedef `tenant.current`);
+    // stub yalnızca sözleşmeyi doldurmak için var, hiçbir assert buna
+    // dayanmaz.
+    const probeSessionSecurityRead: SessionSecurityReadPort = {
+      isTwoFactorEnabled: () => Promise.reject(new ProbeDetailsError()),
+    }
     const context: TrpcContext = {
       requestId,
       logger: { info: () => undefined, warn: () => undefined, error: () => undefined },
@@ -245,10 +270,12 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
       tenant: { kind: 'resolved', tenantId: 'probe-tenant', slug: 'probe', status: 'active' },
       ports: {
         tenantRead: probeTenantRead,
+        tenantSecurityWrite: probeTenantSecurityWrite,
         storefrontTenantRead: probeStorefrontTenantRead,
         jobRead: probeJobRead,
         membershipRead: probeMembershipRead,
         memberWrite: probeMemberWrite,
+        sessionSecurityRead: probeSessionSecurityRead,
       },
       errors: {
         unauthenticated: () => new UnauthenticatedError(),

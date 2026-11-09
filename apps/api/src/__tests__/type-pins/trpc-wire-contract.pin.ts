@@ -18,8 +18,12 @@
 //      çalışma zamanı değer eşitliği (sıralanmış).
 //   2. `keyof TenantSummary` ⊂ `keyof Tenant`; `'planId'`/`'deletedAt'` ∉
 //      `keyof TenantSummary` (kullanıcı kararı 1'in derleyici-zorunlu hâli).
-//   3. `keyof SessionIdentity` ≡ `keyof CurrentUserIdentity` ("echo, DB
-//      okuması yok" iddiasının pini).
+//   3. `keyof CurrentUserIdentity` ⊂ `keyof SessionIdentity`; fazlalık TAM
+//      OLARAK `{'twoFactorEnabled'}`'a eşit (GÜNCELLEME, ROADMAP v0.0.15,
+//      T-016 FIX turu 2/M-4 — bu pin ÖNCEDEN TAM eşitlik denetliyordu,
+//      "echo, DB okuması yok" iddiasının pini; `twoFactorEnabled` eklenmesiyle
+//      o iddia yalnızca `userId`/`sessionId` için GEÇERLİ kaldı, aşağıdaki
+//      pin yorumuna bkz.).
 //   4. `TenantReadPortAdapter satisfies TenantReadPort`.
 //   5. ⚠ `JobStatusWire` ≡ `JobStatus` (@arkesoft/db) — pin 1'in BİREBİR
 //      ikizi (ROADMAP v0.0.11, T-013/S8). Tel sözleşmesi dörtlüyü KENDİ
@@ -40,6 +44,10 @@
 //      EŞİTLİĞİ + çalışma zamanı değer eşitliği (sıralanmış).
 //   9. `MembershipReadPortAdapter satisfies MembershipReadPort`.
 //  10. `MemberWritePortAdapter satisfies MemberWritePort`.
+//  11. `TenantSecurityWritePortAdapter satisfies TenantSecurityWritePort`
+//      (ROADMAP v0.0.15, T-016/S7 — PİN 4/7/9/10'un ikizi).
+//  12. `SessionSecurityReadPortAdapter satisfies SessionSecurityReadPort`
+//      (ROADMAP v0.0.15, T-016 FIX turu 2/M-4 — PİN 4/7/9/10/11'in ikizi).
 //
 // PİN KANITI (DoD): `TenantSummary`'ye `planId` ekleyerek TEK kasıtlı mutasyon
 // yapılıp `pnpm --filter @arkesoft/api typecheck`'in KIRILDIĞI ölçüldü (çıktı
@@ -72,14 +80,18 @@ import type {
   JobReadPort,
   MemberWritePort,
   MembershipReadPort,
+  SessionSecurityReadPort,
   TenantReadPort,
+  TenantSecurityWritePort,
 } from '@arkesoft/trpc/server'
 
 import type { CurrentUserIdentity } from '../../auth/auth-resolution.types.js'
 import type { JobReadPortAdapter } from '../../trpc/ports/job-read.port.adapter.js'
 import type { MemberWritePortAdapter } from '../../trpc/ports/member-write.port.adapter.js'
 import type { MembershipReadPortAdapter } from '../../trpc/ports/membership-read.port.adapter.js'
+import type { SessionSecurityReadPortAdapter } from '../../trpc/ports/session-security-read.port.adapter.js'
 import type { TenantReadPortAdapter } from '../../trpc/ports/tenant-read.port.adapter.js'
+import type { TenantSecurityWritePortAdapter } from '../../trpc/ports/tenant-security-write.port.adapter.js'
 
 // ---------------------------------------------------------------------------
 // PİN 1 — TenantStatusWire ≡ TenantStatus (tip) + çalışma zamanı değer eşitliği
@@ -182,12 +194,24 @@ export function pinTenantSummaryIsSubsetOfTenantAndExcludesPlanIdAndDeletedAt():
 type SessionIdentityExtraKeys = Exclude<keyof SessionIdentity, keyof CurrentUserIdentity>
 type SessionIdentityMissingKeys = Exclude<keyof CurrentUserIdentity, keyof SessionIdentity>
 
-type AssertNoExtraSessionIdentityKeys = SessionIdentityExtraKeys extends never
-  ? true
-  : [
-      'FAZLA ALAN — SessionIdentity içinde olup CurrentUserIdentity içinde olmayan',
-      SessionIdentityExtraKeys,
-    ]
+// ⚠⚠ GÜNCELLEME (ROADMAP v0.0.15, T-016 FIX turu 2/M-4) — bu pin ÖNCEDEN
+// `keyof SessionIdentity ≡ keyof CurrentUserIdentity` (TAM eşitlik)
+// denetliyordu: "`session.me` yolunda hiçbir DB okuması yok, ALS'teki
+// daraltma OLDUĞU GİBİ ECHO edilir" iddiasının derleyici-zorunlu kanıtı
+// (architect K5). `twoFactorEnabled` (`SessionSecurityReadPort` üzerinden AYRI
+// bir DB okumasıyla dolar — `apps/api/src/trpc/ports/
+// session-security-read.port.adapter.ts`) o TAM eşitliği KASITLI olarak
+// kırdı. Pin ŞİMDİ İKİ YARI iddia taşıyor, ikisi de hâlâ derleyici-zorunlu:
+//   (i) `CurrentUserIdentity`'nin HİÇBİR alanı eksik değil (eski "missing"
+//       denetimi DEĞİŞMEDİ — `userId`/`sessionId` HÂLÂ saf echo).
+//   (ii) `SessionIdentity`'nin fazlalığı TAM OLARAK `twoFactorEnabled`'dır —
+//        BAŞKA bir fazla alan (veya bu alanın kaldırılması) pin'i KIRAR.
+// Bu, `apps/api/src/auth/auth-resolution.types.ts` (bu alt görevin DOKUNMA
+// YASAĞI) DEĞİŞMEDEN `session.me`'nin DB okuyan TEK alanını genişletmenin
+// derleyici-zorunlu, isimle pinlenmiş karşılığıdır — "testi gevşetmek"
+// DEĞİL, invariant'ın KENDİSİNİN ADLANDIRILMIŞ EVRİMİ.
+type SessionIdentityUnexpectedExtraKeys = Exclude<SessionIdentityExtraKeys, 'twoFactorEnabled'>
+type SessionIdentityMissingExpectedExtraKey = Exclude<'twoFactorEnabled', SessionIdentityExtraKeys>
 
 type AssertNoMissingSessionIdentityKeys = SessionIdentityMissingKeys extends never
   ? true
@@ -196,17 +220,33 @@ type AssertNoMissingSessionIdentityKeys = SessionIdentityMissingKeys extends nev
       SessionIdentityMissingKeys,
     ]
 
+type AssertExtraSessionIdentityKeyIsExactlyTwoFactorEnabled =
+  SessionIdentityUnexpectedExtraKeys extends never
+    ? SessionIdentityMissingExpectedExtraKey extends never
+      ? true
+      : [
+          "EKSİK ALAN — 'twoFactorEnabled' SessionIdentity içinde YOK (M-4 regresyonu)",
+          SessionIdentityMissingExpectedExtraKey,
+        ]
+    : [
+        "FAZLA ALAN — SessionIdentity'de beklenen ('twoFactorEnabled') dışında ekstra alan",
+        SessionIdentityUnexpectedExtraKeys,
+      ]
+
 /**
- * ⚠ TİP PİNİ 3 — "`session.me` yolunda hiçbir DB okuması yok, ALS'teki
- * daraltma OLDUĞU GİBİ ECHO edilir" iddiasının derleyici-zorunlu kanıtı
- * (architect K5). `CurrentUserIdentity`'ye (`email`/`name` vb.) yeni bir alan
- * eklenip `SessionIdentity`'ye YANSITILMAZSA (veya tersi) bu pin KIRILIR.
+ * ⚠ TİP PİNİ 3 — `CurrentUserIdentity`'nin HİÇBİR alanı `SessionIdentity`'den
+ * eksik değil (echo invariant'ı, `userId`/`sessionId` için HÂLÂ geçerli) VE
+ * `SessionIdentity`'nin fazlalığı TAM OLARAK `{'twoFactorEnabled'}`'dır
+ * (M-4'ün DB okuyan TEK ek alanı, isimle pinlenmiş). `CurrentUserIdentity`'ye
+ * (`email`/`name` vb.) yeni bir alan eklenip `SessionIdentity`'ye
+ * YANSITILMAZSA, VEYA `SessionIdentity`'ye `twoFactorEnabled` DIŞINDA bir alan
+ * eklenirse, VEYA `twoFactorEnabled` KALDIRILIRSA bu pin KIRILIR.
  */
 export function pinSessionIdentityKeysExactlyMatchCurrentUserIdentity(): {
-  noExtra: AssertNoExtraSessionIdentityKeys
   noMissing: AssertNoMissingSessionIdentityKeys
+  extraIsExactlyTwoFactorEnabled: AssertExtraSessionIdentityKeyIsExactlyTwoFactorEnabled
 } {
-  return { noExtra: true, noMissing: true }
+  return { noMissing: true, extraIsExactlyTwoFactorEnabled: true }
 }
 
 // ---------------------------------------------------------------------------
@@ -409,4 +449,27 @@ export function pinMemberWritePortAdapterSatisfiesPort(
   adapter: MemberWritePortAdapter,
 ): MemberWritePortAdapter {
   return adapter satisfies MemberWritePort
+}
+
+/**
+ * ⚠ TİP PİNİ 11 — PİN 4/7/9/10'un ikizi (ROADMAP v0.0.15, T-016/S7).
+ * `TenantSecurityWritePortAdapter`'ın `TenantSecurityWritePort`'u BİREBİR
+ * karşıladığını `implements` bildirimine EK bir savunma olarak doğrular.
+ */
+export function pinTenantSecurityWritePortAdapterSatisfiesPort(
+  adapter: TenantSecurityWritePortAdapter,
+): TenantSecurityWritePortAdapter {
+  return adapter satisfies TenantSecurityWritePort
+}
+
+/**
+ * ⚠ TİP PİNİ 12 — PİN 4/7/9/10/11'in ikizi (ROADMAP v0.0.15, T-016 FIX turu
+ * 2/M-4). `SessionSecurityReadPortAdapter`'ın `SessionSecurityReadPort`'u
+ * BİREBİR karşıladığını `implements` bildirimine EK bir savunma olarak
+ * doğrular.
+ */
+export function pinSessionSecurityReadPortAdapterSatisfiesPort(
+  adapter: SessionSecurityReadPortAdapter,
+): SessionSecurityReadPortAdapter {
+  return adapter satisfies SessionSecurityReadPort
 }

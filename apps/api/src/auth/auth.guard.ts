@@ -37,12 +37,35 @@
 // uygun hatasına (404 `TenantNotFoundError` / 503 `TenantResolutionFailedError`)
 // çevirecek; burada TEKRARLANMAZ (PM R3'ün "tek kaynak" ruhu: bir karar, bir
 // zorlayıcı).
+//
+// GÜNCELLEME (ROADMAP v0.0.15, T-016/S6, ADR-0018) — ÜÇÜNCÜ zorlama kapısı
+// EKLENDİ (`TwoFactorComplianceService.assertOwnerCompliance`, ayrı dosya —
+// `two-factor-compliance.service.ts`): üyelik VARSA ve rol `owner`SA,
+// kiracının `requireTwoFactorForOwner` POLİTİKASI açıkken
+// aktörün KENDİ `app_user.twoFactorEnabled`'ı `false` olduğu durumda 403
+// `TWO_FACTOR_REQUIRED` FIRLAR. Bu kapı 2FA KURULUM/DOĞRULAMA uçlarını
+// (`/auth/two-factor/*`, Better Auth'a delege) KESMEZ — o uçlar
+// `TENANT_EXEMPT_PATHS`/`AUTH_EXEMPT_PATHS` ÜZERİNDEN `tenant.kind ===
+// 'exempt'`/`auth.kind === 'exempt'` dalına DÜŞER, bu switch'e HİÇ GİRMEZ
+// (S5'in allowlist işi — bu dosya o kümelere DOKUNMAZ, yalnızca davranışı
+// MİRAS alır).
+//
+// GÜNCELLEME (T-016 FIX turu 1, madde 3/M-1, solid) — `TwoFactorComplianceService`
+// ARTIK burada ELLE `new`'LENMİYOR, DI'DAN `@Inject` İLE alınıyor
+// (`auth.module.ts`'in `providers` dizisine EKLENDİ). ÖNCEKİ "mevcut test
+// imzasını koru" gerekçesi solid'in SOMUT senaryosuyla ÇÖZÜLDÜ: `new
+// AuthGuard(prismaServiceStub)` çağıran TEK test dosyası
+// (`auth-guard.test.ts`) ikinci argümanı DOLDURACAK şekilde GÜNCELLENDİ —
+// üretim tasarımı testi KORUMAK için EĞİLMEDİ (DIP).
 
 import { Inject, Injectable } from '@nestjs/common'
 import type { CanActivate, ExecutionContext } from '@nestjs/common'
 import type { Logger } from 'pino'
 
+import { TenantRole } from '@arkesoft/db'
+
 import type { CurrentUserIdentity } from './auth-resolution.types.js'
+import { TwoFactorComplianceService } from './two-factor-compliance.service.js'
 import { assertNever } from '../errors/assert-never.js'
 import { AuthProviderFailedError } from '../errors/domain/auth-provider-failed.error.js'
 import { TenantMembershipRequiredError } from '../errors/domain/tenant-membership-required.error.js'
@@ -53,7 +76,14 @@ import type { TenantResolution } from '../request-context/request-context.types.
 
 @Injectable()
 export class AuthGuard implements CanActivate {
-  constructor(@Inject(PrismaService) private readonly prismaService: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prismaService: PrismaService,
+    // FIX turu 1, madde 3/M-1 (solid) — DI'DAN `@Inject` İLE alınır
+    // (`auth.module.ts`'in `providers` dizisine EKLENDİ). Dosya başı
+    // GÜNCELLEME yorumu.
+    @Inject(TwoFactorComplianceService)
+    private readonly twoFactorCompliance: TwoFactorComplianceService,
+  ) {}
 
   async canActivate(_context: ExecutionContext): Promise<boolean> {
     const { auth, tenant, logger } = getRequestContext()
@@ -97,7 +127,7 @@ export class AuthGuard implements CanActivate {
         const membership = await this.prismaService.withTenant(tenantId, (tx) =>
           tx.tenantMembership.findUnique({
             where: { tenantId_userId: { tenantId, userId: identity.userId } },
-            select: { id: true },
+            select: { id: true, role: true },
           }),
         )
 
@@ -114,6 +144,15 @@ export class AuthGuard implements CanActivate {
           // İKİSİ de kaldırıldı).
           logger.warn('kiracı üyeliği yok')
           throw new TenantMembershipRequiredError(identity.userId, tenantId)
+        }
+
+        // S6 EKLEMESİ (ROADMAP v0.0.15, T-016/S6, ADR-0018) — İKİNCİ zorlama
+        // kapısı, SADECE `owner` rolü için: üyelik VAR ama kiracı owner için
+        // 2FA zorunlu kılmış VE aktörün KENDİSİ henüz kurmamış. YALNIZCA
+        // `owner` için sorgulanır — diğer roller BU kontrole HİÇ GİRMEZ (ekstra
+        // sorgu YOK, mevcut R2 maliyeti değişmez).
+        if (membership.role === TenantRole.owner) {
+          await this.twoFactorCompliance.assertOwnerCompliance(identity, tenantId, logger)
         }
 
         return true

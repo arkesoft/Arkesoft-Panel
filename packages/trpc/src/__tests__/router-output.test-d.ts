@@ -52,6 +52,8 @@ test('tenant.current çıktısı literal tel şekliyle TAM eşleşir (totoloji k
     name: string
     status: 'pending' | 'provisioning' | 'active' | 'suspended'
     primaryDomain: string | null
+    // ROADMAP v0.0.15, T-016/S7 — katkısal alan.
+    requireTwoFactorForOwner: boolean
   }>()
 })
 
@@ -64,11 +66,16 @@ test('tenant.current çıktısı export edilen TenantSummary tipiyle de eşleşi
 })
 
 test('session.me çıktısı literal tel şekliyle TAM eşleşir (totoloji karşıtı — şemadan TÜRETİLMEDİ)', () => {
-  // POZİTİF/JENERİK PİN — beklenen şekil LİTERAL (K5: `SessionIdentity` =
-  // {userId, sessionId}, DB okuması yok).
+  // POZİTİF/JENERİK PİN — beklenen şekil LİTERAL. GÜNCELLEME (ROADMAP
+  // v0.0.15, T-016 FIX turu 2/M-4): `twoFactorEnabled: boolean` EKLENDİ
+  // (public API MINOR — yalnızca ekleme). `userId`/`sessionId` HÂLÂ DB
+  // okumadan (K5); `twoFactorEnabled` ARTIK `SessionSecurityReadPort`
+  // üzerinden doldurulur (`session-identity.schema.ts`'in güncellenen
+  // başlık yorumu).
   expectTypeOf<RouterOutputs['session']['me']>().toEqualTypeOf<{
     userId: string
     sessionId: string
+    twoFactorEnabled: boolean
   }>()
 })
 
@@ -201,11 +208,11 @@ test("AC3 ayak (a) TİP DÜZEYİ PİNİ — permissionProcedure'ün girdisi TAM 
   expectTypeOf<Parameters<typeof permissionProcedure>[0]>().toEqualTypeOf<Permission>()
 })
 
-test('izin kataloğu TAM OLARAK iki izinden oluşur (literal, katalogdan TÜRETİLMEDİ)', () => {
+test('izin kataloğu TAM OLARAK üç izinden oluşur (literal, katalogdan TÜRETİLMEDİ)', () => {
   // Totoloji karşıtı: beklenen küme LİTERAL yazılır. Kataloğa bir izin
   // eklemek/çıkarmak bu satırı KIRAR — "ölü izin yok" ayağının (b) TİP
-  // düzeyindeki kardeşi.
-  expectTypeOf<Permission>().toEqualTypeOf<'job:read' | 'member:write'>()
+  // düzeyindeki kardeşi. ROADMAP v0.0.15, T-016/S7 — `security:write` eklendi.
+  expectTypeOf<Permission>().toEqualTypeOf<'job:read' | 'member:write' | 'security:write'>()
 })
 
 test('member.invite çıktısı literal tel şekliyle TAM eşleşir (totoloji karşıtı)', () => {

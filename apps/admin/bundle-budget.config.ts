@@ -68,4 +68,13 @@ export const FIRST_PAINT_ENTRY_POINTS: readonly FirstPaintEntryPointDeclaration[
  * O listeyi tam eşitliğe ÇEVİRME, yalnızca BU (muafiyet) listesi TAM
  * eşitlik taşır.
  */
-export const DELIBERATELY_LAZY_ROUTE_SRCS: readonly string[] = []
+// ROADMAP v0.0.15 (T-016/S10) EKLEMESİ — `/hesap/guvenlik` rotası
+// (`_app.hesap.guvenlik.tsx`, 2FA ekranları) hiçbir giriş noktasından
+// (`/` veya `/sign-in`) STATİK olarak import edilmiyor; TanStack Router'ın
+// `autoCodeSplitting`'i bunu KENDİ chunk'ına ayırıyor (ÖLÇÜLDÜ, `vite build`
+// sonrası `dist/.vite/manifest.json`'daki TAM `src` değeri aşağıda) — BİLEREK
+// tembel: kullanıcı bu rotaya gitmeden bu kodu indirmiyor, ilk boya bütçesini
+// BÜYÜTMÜYOR. Satır KALDIRILIRSA (perf) FAIL-CLOSED B bunu yakalar.
+export const DELIBERATELY_LAZY_ROUTE_SRCS: readonly string[] = [
+  'src/routes/_app.hesap.guvenlik.tsx?tsr-split=component',
+]

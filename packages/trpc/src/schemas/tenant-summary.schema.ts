@@ -25,6 +25,13 @@
 //   status         — panel pending/suspended'da UI'yi kapatmak zorunda
 //   primaryDomain  — "sitem hangi adreste" paneldeki en sık soru; null ise
 //                    henüz atanmamış (opsiyonel DEĞİL, yokluk null)
+//
+// GÜNCELLEME (ROADMAP v0.0.15, T-016/S7, architect md 2 — po R-PO6/kullanıcı
+// kararı ③): `requireTwoFactorForOwner` KATKISAL alan olarak EKLENDİ. ⭐ Bu,
+// `security:read` izni DOĞURMADAN okuma ihtiyacını karşılar (ölü izin kuralı,
+// `authz/permissions.ts:17-22`) — `tenant.current` ZATEN `tenantProcedure`
+// ile her üyeye açık, ayrı bir izinli okuma ucu İCAT EDİLMEZ. Yazma hâlâ
+// `security:write` ile kapılı TEK yoldan geçer (`tenant.updateSecurityPolicy`).
 
 import { z } from 'zod'
 
@@ -49,6 +56,7 @@ export const tenantSummarySchema = z.object({
   name: z.string(),
   status: tenantStatusSchema,
   primaryDomain: z.string().nullable(),
+  requireTwoFactorForOwner: z.boolean(),
 })
 
 /** {@link tenantSummarySchema}'nın çıkarılan tip karşılığı. */

@@ -3,7 +3,8 @@
 //
 // Bu dosya kapının ÜÇ iddiasını ölçer:
 //   1. Sır/PII taşıyan FAZLA anahtarlar kayda GİRMEZ (`z.object`'in soyma
-//      davranışı) — dört eylemin DÖRDÜ için, eylem listesi ve alan listesi
+//      davranışı) — eylem sözlüğünün (bugün BEŞ üye) HEPSİ için, eylem
+//      listesi ve alan listesi
 //      KAYNAKTAN OKUNARAK (tek bir alan adı bile bu dosyada kopyalanmaz).
 //   2. EKSİK/bozuk anahtar sessizce geçmez, FIRLATIR (`parse`, `safeParse`
 //      DEĞİL) — bozuk bir denetim izi yazmak, izin varlık sebebini ortadan
@@ -26,7 +27,7 @@ import { randomUUID } from 'node:crypto'
 import type { INestApplication } from '@nestjs/common'
 import { TenantStatus } from '@arkesoft/db'
 import type { TenantTransactionClient } from '@arkesoft/db'
-import type { InvitableRoleWire, TenantRoleWire } from '@arkesoft/trpc'
+import type { InvitableRoleWire } from '@arkesoft/trpc'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 
@@ -35,7 +36,7 @@ import {
   AUDIT_SUBJECT_FIELD_BY_ACTION,
   resolveAuditSubject,
 } from '../audit/audit-diff.schemas.js'
-import type { AuditAction, AuditLogEntry } from '../audit/audit-diff.schemas.js'
+import type { AuditAction, AuditDiffValue, AuditLogEntry } from '../audit/audit-diff.schemas.js'
 import { AUDIT_USER_AGENT_MAX_LENGTH, writeAuditLog } from '../audit/audit-log.writer.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { createTestApp } from './helpers/create-test-app.js'
@@ -58,13 +59,29 @@ const FORBIDDEN_DIFF_ENTRIES: Readonly<Record<string, string>> = {
 }
 
 /**
- * Her `diff` alanına verilen örnek değer. ⚠ TEK bir değer YETERLİ ve bu
- * ölçülmüş bir olgudur: dört şemanın alanları ya rol sözlüğünden ya da boş
- * olmayan dizeden oluşuyor; `'staff'` İKİSİ İÇİN DE geçerli bir girdidir.
- * Böylece alan adları bu dosyada TEK TEK yazılmadan, şemanın kendi
- * şeklinden türetilerek geçerli bir girdi kurulabiliyor.
+ * Eylem başına GEÇERLİ bir `diff` değeri (ROADMAP v0.0.15, T-016/S7 — TEK bir
+ * sabit beş şemanın BEŞİNE de uymuyor: `tenant_security_policy_changed`'in
+ * `from`/`to` alanları `'staff'`i REDDEDER, `'true'`/`'false'` BEKLER).
+ *
+ * ⚠ `SUBJECT_PROBE_ENTRY_BY_ACTION`'ın (aşağıda) AYNI deseni: beş eylemin
+ * BİREBİR literal birer girişi, `as const satisfies Record<AuditAction,
+ * AuditDiffValue>` ile TAMLIK zorlanır — eylem sözlüğüne değer eklemek bu
+ * tabloyu da kırar. "Kaynaktan kopyalanmaz" ilkesi ALAN ADLARI için geçerlidir
+ * (hiçbiri burada elle yazılmaz, aşağıdaki testler `diffFieldNamesOf`'tan
+ * okur); eylem başına GEÇERLİ ÖRNEK DEĞER ise doğası gereği literal olmak
+ * zorundadır (bir şemanın ne kabul ettiğini genel bir algoritmayla tahmin
+ * etmek — ör. rastgele değer deneme havuzu — kırılgandır ve `any` sızdırır).
  */
-const SAMPLE_FIELD_VALUE = 'staff' satisfies TenantRoleWire & InvitableRoleWire
+const LEGITIMATE_DIFF_VALUE_BY_ACTION = {
+  member_invited: { role: 'staff' },
+  member_invitation_accepted: {
+    role: 'staff',
+    invitationId: 'ac6-legit-davet-kimligi',
+  },
+  member_role_changed: { from: 'staff', to: 'admin' },
+  member_removed: { role: 'staff' },
+  tenant_security_policy_changed: { from: 'false', to: 'true' },
+} as const satisfies Record<AuditAction, AuditDiffValue>
 
 /** Şema şeklinin alan adlarını okur — dış veri değil, kaynak yapıdır; yine de daraltılarak okunur. */
 function diffFieldNamesOf(action: AuditAction): readonly string[] {
@@ -73,15 +90,11 @@ function diffFieldNamesOf(action: AuditAction): readonly string[] {
 
 /** `action` için geçerli bir `diff` girdisi + sır/PII anahtarları. */
 function buildSecretLadenDiffInput(action: AuditAction): Readonly<Record<string, string>> {
-  const legitimateFields = Object.fromEntries(
-    diffFieldNamesOf(action).map((field) => [field, SAMPLE_FIELD_VALUE]),
-  )
-
-  return { ...legitimateFields, ...FORBIDDEN_DIFF_ENTRIES }
+  return { ...LEGITIMATE_DIFF_VALUE_BY_ACTION[action], ...FORBIDDEN_DIFF_ENTRIES }
 }
 
 /**
- * `resolveAuditSubject`'in A-DB1 eşlemesine uyduğunu ölçmek için dört eylemin
+ * `resolveAuditSubject`'in A-DB1 eşlemesine uyduğunu ölçmek için eylem sözlüğünün HER üyesinin
  * geçerli birer girişi. ⚠ `satisfies Record<AuditAction, AuditLogEntry>` TAM
  * olduğu için eylem sözlüğüne değer eklemek bu tabloyu da kırar; ayrıca
  * birleşimin kendisi `member_invited` dalında `userId` alanını, diğer üç dalda
@@ -126,6 +139,17 @@ const SUBJECT_PROBE_ENTRY_BY_ACTION = {
     userAgent: null,
     diff: { role: 'staff' },
   },
+  // ROADMAP v0.0.15, T-016/S7 — beşinci eylem. `subject` eşlemesi `tenantId`
+  // (A-DB1'in ÜÇÜNCÜ anlamı) — satırın ZATEN VAR OLAN `tenantId` alanı,
+  // ayrı bir alan İCAT EDİLMEZ.
+  tenant_security_policy_changed: {
+    tenantId: 'ac6-subject-kiraci-kimligi',
+    action: 'tenant_security_policy_changed',
+    actorUserId: 'probe-actor',
+    ip: null,
+    userAgent: null,
+    diff: { from: 'false', to: 'true' },
+  },
 } as const satisfies Record<AuditAction, AuditLogEntry>
 
 /** Eylem sözlüğünün KANONİK listesi — `subject` eşleme tablosunun anahtarlarından okunur. */
@@ -142,7 +166,7 @@ describe('AC6 — `diff` yazma kapısı: sır/PII düşürme ve A-DB1 eşlemesi 
     expect(AUDIT_ACTIONS.length).toBeGreaterThanOrEqual(4)
   })
 
-  it('DÖRT eylemin DÖRDÜNDE DE sır/PII anahtarları DÜŞÜRÜLÜR; meşru alanlar AYNEN kalır', () => {
+  it('eylem sözlüğünün HEPSİNDE sır/PII anahtarları DÜŞÜRÜLÜR; meşru alanlar AYNEN kalır', () => {
     for (const action of AUDIT_ACTIONS) {
       const input = buildSecretLadenDiffInput(action)
       const expectedFields = diffFieldNamesOf(action)
@@ -169,10 +193,11 @@ describe('AC6 — `diff` yazma kapısı: sır/PII düşürme ve A-DB1 eşlemesi 
   it('EKSİK alan sessizce geçmez — kapı `parse` ile FIRLATIR (`safeParse` davranışı DEĞİL)', () => {
     for (const action of AUDIT_ACTIONS) {
       const fields = diffFieldNamesOf(action)
+      const legitimate: AuditDiffValue = LEGITIMATE_DIFF_VALUE_BY_ACTION[action]
 
       for (const omitted of fields) {
         const incomplete = Object.fromEntries(
-          fields.filter((field) => field !== omitted).map((field) => [field, SAMPLE_FIELD_VALUE]),
+          fields.filter((field) => field !== omitted).map((field) => [field, legitimate[field]]),
         )
 
         expect(

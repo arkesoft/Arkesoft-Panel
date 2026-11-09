@@ -26,8 +26,10 @@ import {
   createFakeErrorFactoryPort,
   createFakeJobReadPort,
   createFakeMembershipReadPort,
+  createFakeSessionSecurityReadPort,
   createFakeStorefrontTenantReadPort,
   createFakeTenantReadPort,
+  createFakeTenantSecurityWritePort,
   createHarness,
   createRecordingLogger,
   createRecordingMemberWritePort,
@@ -37,16 +39,35 @@ import type { TrpcContext } from '../context/trpc-context.types.js'
 import type { AppRouter } from '../routers/app.router.js'
 
 describe('session.me (protectedProcedure)', () => {
-  it('kimlikli context için yalnızca {userId, sessionId} döner', async () => {
+  it('kimlikli context için {userId, sessionId, twoFactorEnabled} döner (M-4, varsayılan port: false)', async () => {
     const harness = createHarness({
       auth: { kind: 'authenticated', userId: 'user_42', sessionId: 'session_42' },
     })
 
     const result = await harness.client.session.me.query()
 
-    expect(result).toEqual({ userId: 'user_42', sessionId: 'session_42' })
-    expect(Object.keys(result).sort()).toEqual(['sessionId', 'userId'])
+    expect(result).toEqual({
+      userId: 'user_42',
+      sessionId: 'session_42',
+      twoFactorEnabled: false,
+    })
+    expect(Object.keys(result).sort()).toEqual(['sessionId', 'twoFactorEnabled', 'userId'])
   })
+
+  it(
+    "twoFactorEnabled GERÇEKTEN ctx.ports.sessionSecurityRead'den okunur — " +
+      'port true dönerse çıktı da true (sabit/hardcode DEĞİL, vacuity karşıtı)',
+    async () => {
+      const harness = createHarness({
+        auth: { kind: 'authenticated', userId: 'user_42', sessionId: 'session_42' },
+        sessionSecurityRead: createFakeSessionSecurityReadPort(true),
+      })
+
+      const result = await harness.client.session.me.query()
+
+      expect(result.twoFactorEnabled).toBe(true)
+    },
+  )
 })
 
 describe('tenant.current (tenantProcedure) — başarı yolu', () => {
@@ -77,6 +98,9 @@ describe('publicProcedure — hermetik semantik (architect K4)', () => {
       tenant: { kind: 'absent' },
       ports: {
         tenantRead: createFakeTenantReadPort(HARNESS_TENANT_SUMMARY),
+        // ROADMAP v0.0.15, T-016/S7 — ZORUNLU üye; bu test `tenant.updateSecurityPolicy`
+        // ÇAĞIRMAZ, stub yalnızca sözleşmeyi doldurur.
+        tenantSecurityWrite: createFakeTenantSecurityWritePort(),
         storefrontTenantRead: createFakeStorefrontTenantReadPort(HARNESS_TENANT_SUMMARY),
         // ROADMAP v0.0.11, T-013/S8 — ZORUNLU üye (po R-P2); bu test
         // `job.*` ÇAĞIRMAZ, stub yalnızca sözleşmeyi doldurur.
@@ -85,6 +109,10 @@ describe('publicProcedure — hermetik semantik (architect K4)', () => {
         // test `member.*` ÇAĞIRMAZ, stub'lar yalnızca sözleşmeyi doldurur.
         membershipRead: createFakeMembershipReadPort('owner'),
         memberWrite: createRecordingMemberWritePort().port,
+        // ROADMAP v0.0.15, T-016 FIX turu 2/M-4 — ZORUNLU üye; bu test
+        // `session.me` ÇAĞIRMAZ (hedef ad-hoc `ping` router'ı), stub
+        // yalnızca sözleşmeyi doldurur.
+        sessionSecurityRead: createFakeSessionSecurityReadPort(),
       },
       errors: createFakeErrorFactoryPort(),
     }

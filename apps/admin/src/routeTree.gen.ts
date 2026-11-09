@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AuthSignInRouteImport } from './routes/_auth.sign-in'
+import { Route as AppHesapGuvenlikRouteImport } from './routes/_app.hesap.guvenlik'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -27,27 +28,36 @@ const AuthSignInRoute = AuthSignInRouteImport.update({
   path: '/sign-in',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppHesapGuvenlikRoute = AppHesapGuvenlikRouteImport.update({
+  id: '/hesap/guvenlik',
+  path: '/hesap/guvenlik',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/sign-in': typeof AuthSignInRoute
+  '/hesap/guvenlik': typeof AppHesapGuvenlikRoute
 }
 export interface FileRoutesByTo {
   '/sign-in': typeof AuthSignInRoute
   '/': typeof AppIndexRoute
+  '/hesap/guvenlik': typeof AppHesapGuvenlikRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/_auth/sign-in': typeof AuthSignInRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/hesap/guvenlik': typeof AppHesapGuvenlikRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/sign-in'
+  fullPaths: '/' | '/sign-in' | '/hesap/guvenlik'
   fileRoutesByTo: FileRoutesByTo
-  to: '/sign-in' | '/'
-  id: '__root__' | '/_app' | '/_auth/sign-in' | '/_app/'
+  to: '/sign-in' | '/' | '/hesap/guvenlik'
+  id:
+    '__root__' | '/_app' | '/_auth/sign-in' | '/_app/' | '/_app/hesap/guvenlik'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -78,15 +88,24 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSignInRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/hesap/guvenlik': {
+      id: '/_app/hesap/guvenlik'
+      path: '/hesap/guvenlik'
+      fullPath: '/hesap/guvenlik'
+      preLoaderRoute: typeof AppHesapGuvenlikRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
+  AppHesapGuvenlikRoute: typeof AppHesapGuvenlikRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
+  AppHesapGuvenlikRoute: AppHesapGuvenlikRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

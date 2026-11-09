@@ -43,6 +43,7 @@ export interface AppShellProps {
   readonly skipToContentLabel: string
   readonly navLabel: string
   readonly panelLabel: string
+  readonly accountSecurityLabel: string
   readonly userId: string
   readonly noStoreLabel: string
   readonly userMenuTriggerLabel: string
@@ -58,6 +59,7 @@ export function AppShell({
   skipToContentLabel,
   navLabel,
   panelLabel,
+  accountSecurityLabel,
   userId,
   noStoreLabel,
   userMenuTriggerLabel,
@@ -90,7 +92,11 @@ export function AppShell({
         onSignOut={onSignOut}
       />
       <div className="flex flex-1 flex-col md:flex-row">
-        <Sidebar navLabel={navLabel} panelLabel={panelLabel} />
+        <Sidebar
+          navLabel={navLabel}
+          panelLabel={panelLabel}
+          accountSecurityLabel={accountSecurityLabel}
+        />
         <main
           id="main-content"
           tabIndex={-1}

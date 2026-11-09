@@ -72,3 +72,14 @@ export const TRPC_URL = '/trpc'
  */
 export const AUTH_SIGN_IN_EMAIL_PATH = '/auth/sign-in/email'
 export const AUTH_SIGN_OUT_PATH = '/auth/sign-out'
+
+// ROADMAP v0.0.15 (T-016/S10) — `apps/api/src/auth/auth-delegated-paths.ts`
+// (S5'in dosyası, DOKUNMA) ALTI two-factor yolunu Better Auth'a delege
+// ediyor; bu altı sabit o allowlist'in panel tarafındaki BİREBİR karşılığı
+// (göreli, K5 — mutlak URL YOK, `VITE_*` YOK).
+export const AUTH_TWO_FACTOR_ENABLE_PATH = '/auth/two-factor/enable'
+export const AUTH_TWO_FACTOR_DISABLE_PATH = '/auth/two-factor/disable'
+export const AUTH_TWO_FACTOR_GET_TOTP_URI_PATH = '/auth/two-factor/get-totp-uri'
+export const AUTH_TWO_FACTOR_GENERATE_BACKUP_CODES_PATH = '/auth/two-factor/generate-backup-codes'
+export const AUTH_TWO_FACTOR_VERIFY_TOTP_PATH = '/auth/two-factor/verify-totp'
+export const AUTH_TWO_FACTOR_VERIFY_BACKUP_CODE_PATH = '/auth/two-factor/verify-backup-code'

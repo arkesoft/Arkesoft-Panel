@@ -497,12 +497,18 @@ describe('perf ikamesi ölçüm 1 — izinli istek üyelik satırını TAM İKİ
         expect(permitted.status).toBe(200)
         expect(requireRoleSpy.mock.calls.length).toBe(1)
         expect(inviteSpy.mock.calls.length).toBe(1)
-        // ⚠ TAM İKİ okuma ve İKİSİNİN DE KİM OLDUĞU belli: muhafız yalnızca
-        // varlığı (`id`), izin kapısı yalnızca rolü (`role`) okur. Sayıyı
-        // yazmak yetmez — hangi okumanın hangisi olduğu assert'lenirse
-        // "üçüncü okuma yok" iddiası ölçülebilir hâle gelir.
+        // ⚠ TAM İKİ okuma ve İKİSİNİN DE KİM OLDUĞU belli: muhafız artık
+        // varlık (`id`) İLE BİRLİKTE rolü de okur (ROADMAP v0.0.15, T-016/S6,
+        // ADR-0018 — owner 2FA zorlama kapısı AYNI okumaya BİNDİRİLDİ, YENİ
+        // bir üçüncü `tenantMembership` okuması EKLENMEDİ: S6'nın
+        // `TwoFactorComplianceService`'i `tenant`/`user` tablolarını okur,
+        // `tenantMembership`'e HİÇ DOKUNMAZ — bu yüzden "ÜÇÜNCÜ okuma YOK"
+        // iddiası BOZULMADI, sadece İLK okumanın `select` şekli büyüdü).
+        // İzin kapısı HÂLÂ ayrı, yalnızca rolü okur. Sayıyı yazmak yetmez —
+        // hangi okumanın hangisi olduğu assert'lenirse "üçüncü okuma yok"
+        // iddiası ölçülebilir hâle gelir.
         expect(membershipSelects).toEqual([
-          expect.objectContaining({ select: { id: true } }),
+          expect.objectContaining({ select: { id: true, role: true } }),
           expect.objectContaining({ select: { role: true } }),
         ])
 
@@ -522,8 +528,10 @@ describe('perf ikamesi ölçüm 1 — izinli istek üyelik satırını TAM İKİ
         // ⚠ İZİN KAPISI `next()`'TEN ÖNCE FIRLATIR: yazma portu HİÇ çağrılmaz
         // (sözleşme katmanının ölçtüğü sıra `apps/api` zincirinde de KORUNUYOR).
         expect(inviteSpy.mock.calls.length).toBe(0)
+        // S6 EKLEMESİ (yukarıdaki yorum) — AYNI gerekçe: İLK okuma artık
+        // `{id, role}` seçer.
         expect(membershipSelects).toEqual([
-          expect.objectContaining({ select: { id: true } }),
+          expect.objectContaining({ select: { id: true, role: true } }),
           expect.objectContaining({ select: { role: true } }),
         ])
       } finally {

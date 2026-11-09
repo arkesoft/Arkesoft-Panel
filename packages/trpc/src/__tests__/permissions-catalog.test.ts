@@ -16,11 +16,12 @@ import { PERMISSIONS, ROLE_PERMISSIONS } from '../authz/permissions.js'
 import { invitableRoleSchema, tenantRoleSchema } from '../schemas/member.schema.js'
 
 describe('izin kataloğu (PERMISSIONS)', () => {
-  it('TAM OLARAK iki izin içerir — A-PM2 bağlayıcı (ölü izin yazılmaz)', () => {
+  it('TAM OLARAK üç izin içerir — A-PM2 bağlayıcı (ölü izin yazılmaz)', () => {
     // ⚠ Küme EŞİTLİĞİ, `toContain` DEĞİL: `toContain` fazladan (ölü) bir izni
-    // GÖRMEZ ve AC3(b) tam olarak onu yasaklıyor.
-    expect([...PERMISSIONS]).toEqual(['job:read', 'member:write'])
-    expect(PERMISSIONS.length).toBe(2)
+    // GÖRMEZ ve AC3(b) tam olarak onu yasaklıyor. ROADMAP v0.0.15, T-016/S7
+    // — `security:write` eklendi (platformun ilk owner-münhasır izni).
+    expect([...PERMISSIONS]).toEqual(['job:read', 'member:write', 'security:write'])
+    expect(PERMISSIONS.length).toBe(3)
   })
 
   it('var olmayan uçların izinlerini İÇERMEZ (ROADMAP metnindeki adlar ÖRNEKTİR, teslim listesi değil)', () => {
@@ -102,11 +103,23 @@ describe('ROLE_PERMISSIONS — TOTAL eşleme (fail-closed)', () => {
     // kaçırabilirdi (ör. `staff`'a `member:write` eklenmesi ilk assert'ten
     // geçerdi).
     expect(ROLE_PERMISSIONS).toEqual({
-      owner: ['job:read', 'member:write'],
+      owner: ['job:read', 'member:write', 'security:write'],
       admin: ['job:read', 'member:write'],
       staff: ['job:read'],
       support: ['job:read'],
       readonly: ['job:read'],
     })
+  })
+
+  it("'security:write' YALNIZCA owner'da — platformun ilk owner-münhasır izni (ROADMAP v0.0.15, T-016/S7)", () => {
+    // ⚠ Vacuous DEĞİL: `admin` DAHİL diğer dört rolün hiçbirinin bu izni
+    // TAŞIMADIĞI ayrıca doğrulanır — yukarıdaki tam-eşitlik assert'i ile
+    // AYNI garantiyi iki bağımsız yoldan (küme filtreleme + literal nesne)
+    // ölçmek, birinin gözden kaçırdığını diğerinin yakalamasını sağlar.
+    const rolesWithSecurityWrite = tenantRoleSchema.options.filter((role) =>
+      ROLE_PERMISSIONS[role].includes('security:write'),
+    )
+
+    expect(rolesWithSecurityWrite).toEqual(['owner'])
   })
 })

@@ -9,8 +9,14 @@ import { forwardRef, type ButtonHTMLAttributes, type JSX } from 'react'
 import { cn } from '../lib/cn'
 import { FOCUS_RING_CLASS_NAMES } from '../tokens'
 
-/** v0.0.7'de yalnızca `'primary'` tüketiliyor (docs/ui/T-008.md bileşen eşlemesi). */
-export type ButtonVariant = 'primary'
+/**
+ * v0.0.7'de yalnızca `'primary'` tüketiliyordu. ROADMAP v0.0.15 (T-016/S10,
+ * docs/ui/T-016-iki-faktorlu-dogrulama.md "Mevcut bileşen genişletmeleri")
+ * `'secondary'` (outline — "Yeni yedek kodlar oluştur" vb.) ve
+ * `'destructive'` ("Devre dışı bırak") EKLER — ikisi de `tokens.ts`'teki
+ * ZATEN pinli kontrast çiftlerini kullanır, yeni token/test GEREKMEZ.
+ */
+export type ButtonVariant = 'primary' | 'secondary' | 'destructive'
 
 /** v0.0.7'de yalnızca `'md'` (44px dokunma hedefi) tüketiliyor. */
 export type ButtonSize = 'md'
@@ -57,6 +63,12 @@ function LoadingSpinner(): JSX.Element {
  */
 const VARIANT_CLASS_NAMES: Record<ButtonVariant, string> = {
   primary: 'bg-(--color-brand-500) text-(--color-text-inverse)',
+  // docs/ui/T-016 "Tasarım token'ları": "border (UI sınırı) / surface" (3) +
+  // "text-primary / surface" (4.5) — ikisi de `CONTRAST_PAIRS`'te ZATEN pinli.
+  secondary: 'border border-(--color-border) bg-(--color-surface) text-(--color-text-primary)',
+  // "text-inverse / danger-500 (destructive buton metni)" — `tokens.ts`'in
+  // kendi yorumu bu kullanımı T-008'den BERİ öngörmüştü (4.5, pinli).
+  destructive: 'bg-(--color-danger-500) text-(--color-text-inverse)',
 }
 
 const SIZE_CLASS_NAMES: Record<ButtonSize, string> = {

@@ -324,3 +324,38 @@ Bu karar aşağıdaki durumlar gerçekleşirse yeniden değerlendirilir:
   her ikisinde de `error.meta.driverAdapterError.cause.originalCode`'dadır.
   `.code === '42501'` **asla** doğru olmaz; bu teslimin tüm canlı yetki testleri
   `originalCode` üzerinden assert eder.
+
+---
+
+## Ek (v0.0.15, T-016) — Yeni sır taşıyan tablo eklerken dokunulacak altı nokta
+
+> **Not:** Bu bölüm append-only eklenmiştir. Yukarıdaki madde numaralandırması ve
+> metni **değişmemiştir**. Bu ek, ADR-0018'in `two_factor` tablosunu eklerken ölçtüğü
+> bir bakım gerçeğini kayda geçirir.
+
+Bu ADR'nin kurduğu mekanizma yeni bir sır taşıyan tablo eklendiğinde **tek bir yerden**
+genişlemiyor. Ölçülmüş gerçek: `bootstrap-roles.sql`'in **dış** döngüsü sabit bir
+**literal dizi**dir (`:291`) — hangi tabloların kolon bazlı `GRANT` alacağını bu dizi
+belirler. **İç** döngü ise `information_schema.columns` üzerinde çalışır — bir tabloya
+**yeni kolon** eklendiğinde bu iç döngü sayesinde hibe **otomatik genişler**, ama bir
+**yeni tablo** eklendiğinde dış dizi elle güncellenmediği sürece o tablo hiç
+görülmez.
+
+**Dokunma noktaları, dört değil altı:**
+
+1. `packages/db/src/tenancy.ts` → `AUTH_SECRET_BEARING_TABLES` dizisi (yeni tablo adı eklenir)
+2. `packages/db/src/tenancy.ts` → `PLATFORM_LEVEL_TABLES` dizisi (tablo platform seviyesindeyse)
+3. `packages/db/src/tenancy.ts` → `AUTH_ROLE_TABLE_PRIVILEGE_EXPECTATIONS` (yeni tablo için beklenen yetki kümesi)
+4. `packages/db/sql/bootstrap-roles.sql:291` → dış döngünün sabit literal dizisi (kolon `GRANT`'i tetikleyen taraf)
+5. `packages/db/sql/rollback-auth-role.sql:70` → dördüncü kademe geri almanın aynı tabloyu tersleyen DDL'i
+6. `packages/db/src/__tests__/rollback-auth-role.isolation.test.ts` → testin **kendi** DDL taklidi (literal mimari, üretim SQL'inden türetilmiyor)
+
+⚠ **Üç elle yazılmış ayna var ve hiçbiri tek kaynaktan türetilmiyor:** (1) `bootstrap-roles.sql:291`,
+(2) `rollback-auth-role.sql:70`, (3) `rollback-auth-role.isolation.test.ts`'in kendi DDL
+taklidi. Üçüncüsü T-016'nın S3b alt turunda **gerçekten eskidi** ve `test:isolation`'ı
+kırdı (`AssertionError: expected 34 to be 45`) — `two_factor` eklendiğinde taklit
+güncellenmemişti. Düzeltme **beklenen sayıyı sabitlemek değildi** (bu, bir sonraki
+tabloda aynı regresyonu tekrar üretirdi); taklit üretim SQL'iyle **yeniden hizalandı**.
+Bu üç aynanın tek bir kaynaktan (örn. `AUTH_SECRET_BEARING_TABLES` üzerinde döngüyle)
+üretilmesi **ayrı bir teknik borç** olarak kayıtlıdır (bkz. ROADMAP → Teknik Borç →
+Vadesi v0.1.0).

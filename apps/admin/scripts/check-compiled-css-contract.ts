@@ -86,7 +86,18 @@ const UI_SRC_DIR = join(REPO_ROOT, 'packages', 'ui', 'src')
 // genişletir (`TENANT_EXEMPT_PATHS` disiplininin aynısı — görünür inceleme).
 // ---------------------------------------------------------------------------
 const NAMESPACE_ALLOWED_PROPERTIES: ReadonlyMap<string, readonly string[]> = new Map([
-  ['--color-', ['color', 'background-color', 'border-color', '--tw-ring-color']],
+  // GÜNCELLEME (ROADMAP v0.0.15, T-016/S10): `accent-color` EKLENDİ —
+  // `packages/ui`'nin YENİ `Checkbox` bileşeni `accent-(--color-brand-500)`
+  // kullanıyor (docs/ui/T-016-iki-faktorlu-dogrulama.md "Yeni bileşen
+  // önerileri" — Radix GEREKTİRMEYEN native checkbox). Derlenmiş CSS'te
+  // ÖLÇÜLDÜ: Tailwind v4 bu sınıfı `accent-color: var(--color-brand-500)`
+  // bildirimine çeviriyor, `--color-` namespace'inin GERÇEK bir yeni
+  // tüketicisi (uydurma DEĞİL). ⚠ `accent-color`'ın render ettiği TAM piksel
+  // rengi tarayıcıya göre değişebilir — kontrastı `wcag` turunun
+  // `getComputedStyle` ile ayrıca ölçmesi gerekiyor (docs/ui'nin DOĞRULANAMADI
+  // notu); bu script yalnızca BİLDİRİMİN VARLIĞINI/namespace eşlemesini
+  // doğrular, kontrast oranını DEĞİL.
+  ['--color-', ['color', 'background-color', 'border-color', '--tw-ring-color', 'accent-color']],
   ['--font-size-', ['font-size']],
   ['--font-weight-', ['font-weight', '--tw-font-weight']],
   ['--radius-', ['border-radius']],

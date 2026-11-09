@@ -18,6 +18,7 @@ describe('resolveRateLimitPolicy — K3 eşikleri (MODÜL SABİTİ, env OKUNMAZ)
       accountLimit: 5,
       ipLimit: 20,
       resetAccountOnSuccess: true,
+      accountScopeSource: 'emailBody',
     })
   })
 
@@ -29,6 +30,7 @@ describe('resolveRateLimitPolicy — K3 eşikleri (MODÜL SABİTİ, env OKUNMAZ)
       accountLimit: 3,
       ipLimit: 10,
       resetAccountOnSuccess: false,
+      accountScopeSource: 'emailBody',
     })
   })
 
@@ -40,6 +42,7 @@ describe('resolveRateLimitPolicy — K3 eşikleri (MODÜL SABİTİ, env OKUNMAZ)
       accountLimit: 3,
       ipLimit: 10,
       resetAccountOnSuccess: false,
+      accountScopeSource: 'emailBody',
     })
   })
 
@@ -51,8 +54,49 @@ describe('resolveRateLimitPolicy — K3 eşikleri (MODÜL SABİTİ, env OKUNMAZ)
       accountLimit: 3,
       ipLimit: 10,
       resetAccountOnSuccess: false,
+      accountScopeSource: 'emailBody',
     })
   })
+
+  // T-016 FIX turu 1, madde 1/F1 (`high`) — altı yeni 2FA rotası. DÖRDÜ
+  // `sessionUserId` kapsamı (parola oracle'ı), İKİSİ
+  // `twoFactorChallengeOrSession` (kod/yedek kod tahmini).
+  it.each([
+    'POST /auth/two-factor/enable',
+    'POST /auth/two-factor/disable',
+    'POST /auth/two-factor/get-totp-uri',
+    'POST /auth/two-factor/generate-backup-codes',
+  ])(
+    '%s → hesap 5 / IP 20, "login" penceresi, `sessionUserId` kapsamı, SIFIRLANMAZ',
+    (routeKey) => {
+      const [method, path] = routeKey.split(' ', 2) as [string, string]
+      const policy = resolveRateLimitPolicy(method, path)
+      expect(policy).toEqual({
+        routeKey,
+        windowKind: 'login',
+        accountLimit: 5,
+        ipLimit: 20,
+        resetAccountOnSuccess: false,
+        accountScopeSource: 'sessionUserId',
+      })
+    },
+  )
+
+  it.each(['POST /auth/two-factor/verify-totp', 'POST /auth/two-factor/verify-backup-code'])(
+    '%s → hesap 5 / IP 20, "login" penceresi, `twoFactorChallengeOrSession` kapsamı, SIFIRLANMAZ',
+    (routeKey) => {
+      const [method, path] = routeKey.split(' ', 2) as [string, string]
+      const policy = resolveRateLimitPolicy(method, path)
+      expect(policy).toEqual({
+        routeKey,
+        windowKind: 'login',
+        accountLimit: 5,
+        ipLimit: 20,
+        resetAccountOnSuccess: false,
+        accountScopeSource: 'twoFactorChallengeOrSession',
+      })
+    },
+  )
 
   it.each([
     ['GET', '/health'],
@@ -61,7 +105,9 @@ describe('resolveRateLimitPolicy — K3 eşikleri (MODÜL SABİTİ, env OKUNMAZ)
     ['POST', '/auth/reset-password'],
     ['POST', '/auth/sessions/revoke'],
     ['GET', '/auth/sign-in/email'],
-  ])('oran sınırlı DÖRT rota DIŞINDAKİ her şey → undefined (%s %s)', (method, path) => {
+    ['POST', '/auth/two-factor/send-otp'],
+    ['POST', '/auth/two-factor/verify-otp'],
+  ])('oran sınırlı ON rota DIŞINDAKİ her şey → undefined (%s %s)', (method, path) => {
     expect(resolveRateLimitPolicy(method, path)).toBeUndefined()
   })
 

@@ -83,4 +83,12 @@ export const PROCEDURE_SURFACE = {
   'member.acceptInvitation': { builder: 'protected', operation: 'mutation' },
   'member.updateRole': { builder: 'permission', permission: 'member:write', operation: 'mutation' },
   'member.remove': { builder: 'permission', permission: 'member:write', operation: 'mutation' },
+  // ROADMAP v0.0.15, T-016/S7 — onuncu kayıt. `security:write` YALNIZCA
+  // `owner`'da (`authz/permissions.ts`); platformun ilk owner-münhasır
+  // izinli prosedürü.
+  'tenant.updateSecurityPolicy': {
+    builder: 'permission',
+    permission: 'security:write',
+    operation: 'mutation',
+  },
 } as const satisfies Readonly<Record<string, ProcedureSurfaceEntry>>

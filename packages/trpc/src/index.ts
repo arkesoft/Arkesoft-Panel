@@ -28,6 +28,15 @@
 export { tenantStatusSchema, tenantSummarySchema } from './schemas/tenant-summary.schema.js'
 export type { TenantStatusWire, TenantSummary } from './schemas/tenant-summary.schema.js'
 
+export {
+  tenantSecurityPolicySchema,
+  tenantSecurityPolicyUpdateInputSchema,
+} from './schemas/tenant-security.schema.js'
+export type {
+  TenantSecurityPolicy,
+  TenantSecurityPolicyUpdateInput,
+} from './schemas/tenant-security.schema.js'
+
 export { storefrontTenantSchema } from './schemas/storefront-tenant.schema.js'
 export type { StorefrontTenant } from './schemas/storefront-tenant.schema.js'
 

@@ -25,8 +25,10 @@ import {
   createFakeErrorFactoryPort,
   createFakeJobReadPort,
   createFakeMembershipReadPort,
+  createFakeSessionSecurityReadPort,
   createFakeStorefrontTenantReadPort,
   createFakeTenantReadPort,
+  createFakeTenantSecurityWritePort,
   createHarness,
   createRecordingLogger,
 } from './harness.js'
@@ -303,10 +305,12 @@ describe('MemberWritePort totalliği — port hatası tele YANSIR (resolver null
       },
       ports: {
         tenantRead: createFakeTenantReadPort(HARNESS_TENANT_SUMMARY),
+        tenantSecurityWrite: createFakeTenantSecurityWritePort(),
         storefrontTenantRead: createFakeStorefrontTenantReadPort(HARNESS_TENANT_SUMMARY),
         jobRead: createFakeJobReadPort(HARNESS_JOB_SUMMARY),
         membershipRead: createFakeMembershipReadPort('owner'),
         memberWrite: throwingMemberWrite,
+        sessionSecurityRead: createFakeSessionSecurityReadPort(),
       },
       errors: createFakeErrorFactoryPort(),
     }

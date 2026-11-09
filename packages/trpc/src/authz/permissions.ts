@@ -26,6 +26,17 @@
 // değerlendirildi ve reddedildi — üç yazma ucunun YETKİ SINIFI AYNIDIR
 // (hepsi kiracının üye listesini değiştirir). Ayrıştırmak iki ölü izin daha
 // üretirdi.
+//
+// GÜNCELLEME (ROADMAP v0.0.15, T-016/S7, architect md 2): `security:write`
+// EKLENDİ — üç izne çıktı. ⭐ PLATFORMUN İLK OWNER-MÜNHASIR İZNİ, bilinçli:
+// `tenant.updateSecurityPolicy` owner 2FA zorunluluğunu açıp kapatır ve bu
+// ayar OWNER'LARI kiracıdan kilitleyebilir (ADR-0018). `admin`'e vermek ALT
+// bir rolün ÜST bir role kısıt dayatmasına izin verirdi — bu platformun
+// yetki modelinde başka hiçbir izinde yoktur (bugüne kadarki ikisi de rol
+// HİYERARŞİSİ içinde aşağı doğru işliyordu). ⚠ `security:read` BİLEREK
+// YAZILMADI (`member:read`'in aynı gerekçesi, yukarıda) — okuma ihtiyacı
+// `tenant-summary.schema.ts`'e katkısal bir alanla karşılanır, ayrı bir
+// izin/prosedür DOĞURMAZ.
 
 import type { TenantRoleWire } from '../schemas/member.schema.js'
 
@@ -38,7 +49,7 @@ import type { TenantRoleWire } from '../schemas/member.schema.js'
  * kapılamak DERLEME HATASIDIR (AC3 ayak (a) — birincil mekanizma test değil,
  * `tsc`).
  */
-export const PERMISSIONS = ['job:read', 'member:write'] as const
+export const PERMISSIONS = ['job:read', 'member:write', 'security:write'] as const
 
 /** {@link PERMISSIONS}'ın literal birleşim tipi — `permissionProcedure`'ün girdi tipi. */
 export type Permission = (typeof PERMISSIONS)[number]
@@ -64,9 +75,12 @@ export type Permission = (typeof PERMISSIONS)[number]
  * `member:write` yalnızca `owner` ve `admin`'de: `staff`/`support`/`readonly`
  * kiracının üye listesini değiştiremez (ROADMAP v0.0.14 kabul kriteri —
  * `readonly` rolü yazma ucuna 403 alır).
+ *
+ * `security:write` YALNIZCA `owner`'da (ROADMAP v0.0.15, T-016/S7, architect
+ * md 2) — `admin` DAHİL hiçbir başka rol owner 2FA zorunluluğunu değiştiremez.
  */
 export const ROLE_PERMISSIONS: Readonly<Record<TenantRoleWire, readonly Permission[]>> = {
-  owner: ['job:read', 'member:write'],
+  owner: ['job:read', 'member:write', 'security:write'],
   admin: ['job:read', 'member:write'],
   staff: ['job:read'],
   support: ['job:read'],

@@ -191,6 +191,7 @@ function AppLayoutComponent(): JSX.Element {
       skipToContentLabel={MESSAGES.appShell.skipToContent}
       navLabel={MESSAGES.sidebar.navLabel}
       panelLabel={MESSAGES.sidebar.panel}
+      accountSecurityLabel={MESSAGES.sidebar.accountSecurity}
       userId={sessionQuery.data.userId}
       noStoreLabel={MESSAGES.topbar.noStoreSelected}
       userMenuTriggerLabel={MESSAGES.topbar.userMenu.trigger}

@@ -10,9 +10,38 @@
 // verilir, "sign-in → doğrudan dashboard" bu fonksiyonun YAPISINA GÖMÜLMEZ.
 // Hata dalında yanıt gövdesi `normalizePanelError`'a verilir — bu uçtaki
 // hata şekli Better Auth'un KENDİ gövdesidir (probe 4, zarf c).
+//
+// ⚠⚠ DÜZELTME (ROADMAP v0.0.15, T-016/S10, AC11 madde 3 — BAĞLAYICI):
+// ESKİDEN `response.ok` olan HER yanıt `'signed-in'` SAYILIYORDU. Canlı
+// ölçüm (docs/ux/T-016, S4): 2FA AÇIK bir hesapta `sign-in/email` **200**
+// döner VE gövdede `{twoFactorRedirect:true, twoFactorMethods:[...]}`
+// taşır — 401 BEKLEYEN bir kontrol YANLIŞTI, kullanıcı 2FA'sız doğrudan
+// panele düşüyordu. Artık HTTP durumu `ok` OLSA BİLE gövde Zod ile
+// ayrıştırılıp `twoFactorRedirect` alanına göre dallanıyor.
+import { z } from 'zod'
+
 import { normalizePanelError } from '../errors/normalize-panel-error.js'
 import type { PanelError } from '../errors/panel-error.js'
 import { AUTH_SIGN_IN_EMAIL_PATH, AUTH_SIGN_OUT_PATH } from '../app/panel-config.js'
+import { parseJsonSafely } from './http/parse-json-safely.js'
+
+/** Ölçülen 2FA-redirect gövdesi (docs/ux/T-016 "Canlı HTTP ölçümü"). */
+const twoFactorRedirectBodySchema = z.object({ twoFactorRedirect: z.literal(true) })
+
+/**
+ * Ölçülen 2FA-KAPALI başarı gövdesi — `user.twoFactorEnabled` alanı sunucunun
+ * HAM echo'sudur. DÜZELTME TURU 2 (T-016/M-4): bu alanın eski tüketicisi
+ * (`two-factor-status-store.ts`'in sekme-başına `sessionStorage` deposu)
+ * SİLİNDİ — tek doğruluk kaynağı artık `session.me` (`twoFactorEnabled:
+ * boolean`, zorunlu). Alan burada KALIYOR (sunucudan gelen gerçek veri,
+ * döküm/uydurma değil) ama bugün `_auth.sign-in.tsx` TARAFINDAN
+ * OKUNMUYOR — `auth-rest.ts` saf bir ayrıştırıcı olarak kalır (sunum/veri
+ * ayrımı), bir tüketici doğarsa (ör. "giriş anında 2FA durumunu
+ * optimistic göster") hazır bekler.
+ */
+const signedInUserTwoFactorSchema = z.object({
+  user: z.object({ twoFactorEnabled: z.boolean() }),
+})
 
 export interface SignInWithEmailInput {
   readonly email: string
@@ -26,19 +55,12 @@ export interface SignInWithEmailInput {
  * Türkçe metne çevirir.
  */
 export type SignInResult =
-  { readonly kind: 'signed-in' } | { readonly kind: 'error'; readonly error: PanelError }
+  | { readonly kind: 'signed-in'; readonly twoFactorEnabled: boolean | null }
+  | { readonly kind: 'two-factor-required' }
+  | { readonly kind: 'error'; readonly error: PanelError }
 
 export type SignOutResult =
   { readonly kind: 'signed-out' } | { readonly kind: 'error'; readonly error: PanelError }
-
-/** Yanıt gövdesini JSON olarak ayrıştırır; JSON DEĞİLSE (ör. HTML) `null` döner — fırlatmaz. */
-async function parseJsonSafely(response: Response): Promise<unknown> {
-  try {
-    return await response.json()
-  } catch {
-    return null
-  }
-}
 
 /** `POST /auth/sign-in/email` — düz `fetch`, tek orijin (`credentials: 'same-origin'`). */
 export async function signInWithEmail(input: SignInWithEmailInput): Promise<SignInResult> {
@@ -50,7 +72,18 @@ export async function signInWithEmail(input: SignInWithEmailInput): Promise<Sign
   })
 
   if (response.ok) {
-    return { kind: 'signed-in' }
+    const body = await parseJsonSafely(response)
+
+    const twoFactorRedirect = twoFactorRedirectBodySchema.safeParse(body)
+    if (twoFactorRedirect.success) {
+      return { kind: 'two-factor-required' }
+    }
+
+    const signedInUser = signedInUserTwoFactorSchema.safeParse(body)
+    return {
+      kind: 'signed-in',
+      twoFactorEnabled: signedInUser.success ? signedInUser.data.user.twoFactorEnabled : null,
+    }
   }
 
   const body = await parseJsonSafely(response)

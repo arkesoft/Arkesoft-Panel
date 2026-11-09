@@ -39,11 +39,14 @@ import type {
 import type { JobReadPort } from '../ports/job-read.port.js'
 import type { MemberWritePort } from '../ports/member-write.port.js'
 import type { MembershipReadPort } from '../ports/membership-read.port.js'
+import type { SessionSecurityReadPort } from '../ports/session-security-read.port.js'
 import type { TenantReadPort } from '../ports/tenant-read.port.js'
+import type { TenantSecurityWritePort } from '../ports/tenant-security-write.port.js'
 import type { StorefrontTenantReadPort } from '../ports/storefront-tenant-read.port.js'
 import type { TrpcErrorFactoryPort } from '../ports/trpc-error-factory.port.js'
 import type { Permission } from '../authz/permissions.js'
 import type { TenantSummary } from '../schemas/tenant-summary.schema.js'
+import type { TenantSecurityPolicyUpdateInput } from '../schemas/tenant-security.schema.js'
 import type { StorefrontTenant } from '../schemas/storefront-tenant.schema.js'
 import type { JobListPage, JobSummary } from '../schemas/job-summary.schema.js'
 import type {
@@ -156,6 +159,8 @@ export const HARNESS_TENANT_SUMMARY: TenantSummary = {
   name: 'Harness Tenant A.Ş.',
   status: 'active',
   primaryDomain: 'harness-tenant.arkesoft.app',
+  // ROADMAP v0.0.15, T-016/S7 — katkısal alan, varsayılan kapalı.
+  requireTwoFactorForOwner: false,
 }
 
 /**
@@ -171,6 +176,43 @@ export function createFakeTenantReadPort(summary: TenantSummary): TenantReadPort
       }
 
       return Promise.resolve(summary)
+    },
+  }
+}
+
+/**
+ * `TenantSecurityWritePort`'un sahte uygulaması (ROADMAP v0.0.15, T-016/S7).
+ * Port TOTAL'dır — bu sahte, girdiyi AYNEN yankılayan bir çıktı döner;
+ * "kendini kilitlememe" reddi veya denetim kaydı davranışı taşımaz (bunlar
+ * `apps/api`'nin adaptör/servis katmanının işidir, sözleşme testlerinin
+ * kapsamı değil). Varsayılan: herhangi bir çağrı FIRLAMAZ — bugün hiçbir test
+ * bu portu ÇAĞIRMIYOR, stub yalnızca `TrpcPorts`'un ZORUNLU alanını doldurmak
+ * için var.
+ */
+export function createFakeTenantSecurityWritePort(): TenantSecurityWritePort {
+  return {
+    updateSecurityPolicy(_tenantId, _actorUserId, input: TenantSecurityPolicyUpdateInput) {
+      return Promise.resolve({ requireTwoFactorForOwner: input.requireTwoFactorForOwner })
+    },
+  }
+}
+
+/**
+ * `SessionSecurityReadPort`'un sahte uygulaması (ROADMAP v0.0.15, T-016 FIX
+ * turu 2/M-4). Port TOTAL'dır ve FIRLATMAZ (port dosyasının kendi sözleşmesi)
+ * — bu sahte de aynı: hiçbir girdi için reddetmez, sabit bir boolean döner.
+ * Varsayılan `false` (`CreateHarnessOptions.sessionTwoFactorEnabled` ile
+ * GEÇERSİZ KILINABİLİR) — bugün `session.me`'yi çağıran hiçbir hermetik test
+ * YOK (`session.router.ts` `packages/trpc`'nin test edilen prosedürleri
+ * arasında değil, bkz. `procedures.test.ts`), stub yalnızca `TrpcPorts`'un
+ * ZORUNLU alanını doldurmak için var.
+ */
+export function createFakeSessionSecurityReadPort(
+  twoFactorEnabled = false,
+): SessionSecurityReadPort {
+  return {
+    isTwoFactorEnabled() {
+      return Promise.resolve(twoFactorEnabled)
     },
   }
 }
@@ -577,6 +619,8 @@ export interface CreateHarnessOptions {
   readonly tenant?: TrpcTenantState
   readonly tenantSummary?: TenantSummary
   readonly tenantRead?: TenantReadPort
+  readonly tenantSecurityWrite?: TenantSecurityWritePort
+  readonly sessionSecurityRead?: SessionSecurityReadPort
   readonly storefrontTenantRead?: StorefrontTenantReadPort
   // ⚠ İŞ OKUMA PORTU İÇİN PORT-DÜZEYİ OVERRIDE BİLEREK YOK (ROADMAP v0.0.11,
   // T-013/S8): bugün hiçbir test onu geçirmiyor ve KULLANILMAYAN bir override
@@ -675,6 +719,8 @@ export function createHarness(options: CreateHarnessOptions = {}): Harness {
     },
     ports: {
       tenantRead: options.tenantRead ?? createFakeTenantReadPort(tenantSummary),
+      // ROADMAP v0.0.15, T-016/S7 — ZORUNLU üye (`memberWrite`'ın emsali).
+      tenantSecurityWrite: options.tenantSecurityWrite ?? createFakeTenantSecurityWritePort(),
       storefrontTenantRead:
         options.storefrontTenantRead ?? createFakeStorefrontTenantReadPort(tenantSummary),
       // ROADMAP v0.0.11, T-013/S8 — ZORUNLU üye (po R-P2).
@@ -682,6 +728,8 @@ export function createHarness(options: CreateHarnessOptions = {}): Harness {
       // ROADMAP v0.0.14, T-014/S2 — İKİSİ DE ZORUNLU üye (po R-PM5).
       membershipRead: membershipRead.port,
       memberWrite: memberWrite.port,
+      // ROADMAP v0.0.15, T-016 FIX turu 2/M-4 — ZORUNLU üye (`tenantSecurityWrite`'ın emsali).
+      sessionSecurityRead: options.sessionSecurityRead ?? createFakeSessionSecurityReadPort(),
     },
     errors: options.errors ?? createFakeErrorFactoryPort(),
   }

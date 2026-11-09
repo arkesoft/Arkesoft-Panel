@@ -3,10 +3,20 @@
 //
 // `APP_GUARD` olarak `AuthModule` İÇİNDE sağlanır (`TenancyModule`'ün
 // `tenantGuardProvider` deseniyle AYNI — V-P2) — `app.module.ts`'E
-// DOKUNULMAZ. Bu guard yalnızca `rate-limit.policy.ts`'in tanıdığı DÖRT
+// DOKUNULMAZ. Bu guard yalnızca `rate-limit.policy.ts`'in tanıdığı ON
 // rotada (sign-in/email, sign-up/email, send-verification-email,
-// request-password-reset) devreye girer; diğer HER rota için `canActivate`
-// anında `true` döner (hiçbir Redis çağrısı YAPILMAZ).
+// request-password-reset + ALTI `/auth/two-factor/*` ucu, T-016 FIX turu
+// 1/F1) devreye girer; diğer HER rota için `canActivate` anında `true`
+// döner (hiçbir Redis çağrısı YAPILMAZ).
+//
+// GÜNCELLEME (T-016 FIX turu 1, madde 1/F1, `high`) — hesap kapsamının NASIL
+// çıkarılacağı artık `policy.accountScopeSource`'a göre ÜÇE AYRILIR
+// (`resolveAccountScopeValue`, aşağıda): `emailBody` (K3'ün ORİJİNAL dört
+// rotası, DEĞİŞMEDİ), `sessionUserId` (dört 2FA-kimlik-gerekli uç — ALS'teki
+// `RequestContext.auth`'u OKUR, `AuthContextMiddleware` bu rotalarda ZATEN
+// doldurmuştur, İKİNCİ bir oturum sorgusu YOK) ve
+// `twoFactorChallengeOrSession` (`verify-totp`/`verify-backup-code` — HAM
+// çerez başlığından, `two-factor-scope-cookie.ts`'in dosya başı yorumu).
 //
 // ⚠ VARLIK-SIZDIRMAZLIK (architect, BAĞLAYICI): sayaç Better Auth'un KENDİ
 // kullanıcı aramasına (controller'a) ULAŞMADAN ÖNCE, DB'ye HİÇ bakmadan
@@ -88,10 +98,11 @@ import type { RateLimitScope } from '../../errors/domain/rate-limit-exceeded.err
 import type { HttpRequestLike, HttpResponseWithLifecycle } from '../../http/http-request.types.js'
 import { getRequestContext } from '../../request-context/request-context.accessors.js'
 import { resolveClientIp } from './client-ip.js'
-import type { RateLimitWindowKind } from './rate-limit.policy.js'
+import type { RateLimitAccountScopeSource, RateLimitWindowKind } from './rate-limit.policy.js'
 import { resolveRateLimitPolicy } from './rate-limit.policy.js'
 import { RateLimitService } from './rate-limit.service.js'
 import type { RateLimitScopeKey } from './rate-limit.service.js'
+import { extractTwoFactorVerifyAccountScope } from './two-factor-scope-cookie.js'
 
 /**
  * `@Req()`'in beklediği ek alanlar — `HttpRequestLike`'a (paylaşılan dosya,
@@ -114,6 +125,43 @@ const accountScopeBodySchema = z.object({ email: z.string().trim().min(1) }).loo
 function extractAccountScopeValue(body: unknown): string | undefined {
   const parsed = accountScopeBodySchema.safeParse(body)
   return parsed.success ? parsed.data.email : undefined
+}
+
+/**
+ * `sessionUserId` kaynağı (T-016 FIX turu 1, madde 1/F1) — `RequestContext.
+ * auth`'u OKUR (YENİDEN ÇÖZMEZ). `AuthContextMiddleware` HER ZAMAN bu
+ * guard'DAN ÖNCE koşar (middleware zinciri → guard aşaması, `auth.guard.ts`
+ * dosya başı yorumunun AYNI sıra garantisi); dört 2FA-kimlik-gerekli uç
+ * `AUTH_EXEMPT_PATHS`'TE OLMADIĞI için bu alan ZATEN `authenticated`/
+ * `unauthenticated`/`failed`'den birine YAZILMIŞTIR. `authenticated` DIŞI
+ * her durumda `undefined` (hesap kapsamı ATLANIR) — `AuthGuard` BU guard'dan
+ * SONRA koşar ve asıl 401'i ZATEN verecektir, burada TEKRARLANMAZ.
+ */
+function resolveSessionUserIdScopeValue(): string | undefined {
+  const { auth } = getRequestContext()
+  return auth.kind === 'authenticated' ? auth.userId : undefined
+}
+
+/**
+ * `policy.accountScopeSource`'a göre hesap kapsamı değerini çıkarır
+ * (T-016 FIX turu 1, madde 1/F1) — `rate-limit.policy.ts`'in
+ * `RateLimitAccountScopeSource` tip yorumuna bkz.
+ */
+function resolveAccountScopeValue(
+  source: RateLimitAccountScopeSource,
+  req: RateLimitedRequest,
+  env: ApiEnv,
+): string | undefined {
+  switch (source) {
+    case 'emailBody':
+      return extractAccountScopeValue(req.body)
+    case 'sessionUserId':
+      return resolveSessionUserIdScopeValue()
+    case 'twoFactorChallengeOrSession':
+      return extractTwoFactorVerifyAccountScope(req.headers['cookie'], env)
+    default:
+      return assertNever(source, 'rate-limit.guard.ts: RateLimitAccountScopeSource')
+  }
 }
 
 function resolveWindowSeconds(windowKind: RateLimitWindowKind, env: ApiEnv): number {
@@ -177,7 +225,7 @@ export class RateLimitGuard implements CanActivate {
       windowSeconds,
     )
 
-    const accountValue = extractAccountScopeValue(req.body)
+    const accountValue = resolveAccountScopeValue(policy.accountScopeSource, req, this.env)
     const accountScopeKey: RateLimitScopeKey | undefined =
       accountValue === undefined
         ? undefined

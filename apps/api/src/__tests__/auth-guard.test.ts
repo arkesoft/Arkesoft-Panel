@@ -18,6 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 
 import { AuthGuard } from '../auth/auth.guard.js'
+import type { TwoFactorComplianceService } from '../auth/two-factor-compliance.service.js'
 import { isEligibleUser } from '../auth/user-eligibility.js'
 import { apiEnvSchema } from '../config/api-env.js'
 import type { ApiEnv } from '../config/api-env.js'
@@ -92,13 +93,16 @@ function runWithStore<T>(
   return requestContextStorage.run(fullStore, callback)
 }
 
-// `AuthGuard`'ın tek constructor bağımlılığı `PrismaService`'tir, ama bu
-// bloktaki HİÇBİR senaryo (`pending`/`unauthenticated`/`exempt`/
-// `unresolved`/`failed` dalları) bir Prisma çağrısına ULAŞMAZ — framework
-// arayüzünü mock'lamanın standart test deseni (`tenant-guard.test.ts`'in
-// `as unknown as ExecutionContext` deseniyle AYNI, üretim kodunda DEĞİL).
+// `AuthGuard`'ın İKİ constructor bağımlılığı `PrismaService`/
+// `TwoFactorComplianceService`'tir (T-016 FIX turu 1, madde 3/M-1 —
+// ARTIK DI'DAN alınır), ama bu bloktaki HİÇBİR senaryo (`pending`/
+// `unauthenticated`/`exempt`/`unresolved`/`failed` dalları) bir Prisma
+// çağrısına veya 2FA uyumluluk kontrolüne ULAŞMAZ (`owner` rolü/`resolved`
+// kiracı YOK) — framework arayüzünü mock'lamanın standart test deseni
+// (`tenant-guard.test.ts`'in `as unknown as ExecutionContext` deseniyle
+// AYNI, üretim kodunda DEĞİL).
 function buildGuardWithoutDb(): AuthGuard {
-  return new AuthGuard({} as unknown as PrismaService)
+  return new AuthGuard({} as unknown as PrismaService, {} as unknown as TwoFactorComplianceService)
 }
 
 const FAKE_EXECUTION_CONTEXT = {} as unknown as ExecutionContext

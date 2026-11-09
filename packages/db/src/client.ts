@@ -65,7 +65,21 @@ export type TransactionClient = Prisma.TransactionClient
  * üzerinden ve yalnızca `AuthModule` içinde (lint katmanı,
  * `apps/api/eslint.config.mjs` `prismaClientSurfaceRestriction`) mümkündür.
  */
-export const AUTH_SECRET_BEARING_MODELS = ['account', 'session', 'verification'] as const
+// GENİŞLETME (ROADMAP v0.0.15, T-016/S2, architect K-A5 DÜZELTME 2): `twoFactor`
+// EKLENDİ (camelCase, Prisma MODEL adı — DB tablo adı `two_factor`, bkz.
+// `tenancy.ts`'in `AUTH_SECRET_BEARING_TABLES`'ı). ⚠ Task dosyasının ÇÜRÜTÜLEN
+// ilk iddiası: "eklenmezse `two_factor` delegesi kiracı kapsamlı yoldan
+// erişilebilir olur" — ÖLÇÜLEREK YANLIŞLANDI: `AppPrismaDatabase`/
+// `TenantTransactionClient` (aşağıda) zaten `Pick<>` ALLOWLIST'tir, `twoFactor`
+// hiçbir şey eklenmese bile erişilemezdi. Üye yine eklenir — bedeli
+// "daraltma üretmek" değil, BELGELEME + `auth-secret-tables.pin.ts`'in üç
+// yollu kapalı dünya pini ile TUTARLILIK.
+export const AUTH_SECRET_BEARING_MODELS = [
+  'account',
+  'session',
+  'verification',
+  'twoFactor',
+] as const
 
 /** {@link AUTH_SECRET_BEARING_MODELS} elemanlarının birleşim tipi. */
 export type AuthModelName = (typeof AUTH_SECRET_BEARING_MODELS)[number]

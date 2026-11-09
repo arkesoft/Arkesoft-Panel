@@ -1,5 +1,28 @@
 # @arkesoft/api
 
+## 0.6.0
+
+### Minor Changes
+
+- İki faktörlü kimlik doğrulama (TOTP) eklendi: QR kodla kurulum, girişte doğrulama kodu
+  isteme, yedek kodlarla kurtarma ve 2FA'yı kapatma. Mağaza sahipleri (owner) için 2FA'yı
+  zorunlu kılma kuralı sisteme kazandırıldı — bu kuralı açıp kapatan panel ekranı sonraki
+  bir sürümde gelecek. Art arda 10 başarısız doğrulama denemesinde hesap bir süreliğine
+  kilitleniyor. 2FA ile ilgili tüm işlemler (kurulum, doğrulama, kapatma, yedek kod
+  oluşturma) artık otomatik olarak sınırlandırılıyor; 2FA'yı kapatma ve yedek kodları
+  yenileme işlemleri artık güvenlik kayıtlarına doğru şekilde yazılıyor. Panel, 2FA
+  durumunu artık sunucudan güvenilir biçimde okuyor — birden fazla sekme açıkken kurulum
+  sihirbazının kazara tekrar çalışması giderildi. [v0.0.15]
+
+### Patch Changes
+
+- Updated dependencies
+  - @arkesoft/db@0.6.0
+  - @arkesoft/errors@0.6.0
+  - @arkesoft/trpc@0.5.0
+  - @arkesoft/config@0.6.0
+  - @arkesoft/tenancy@0.6.0
+
 ## 0.5.0
 
 ### Minor Changes

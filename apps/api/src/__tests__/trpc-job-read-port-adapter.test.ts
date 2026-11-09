@@ -359,6 +359,11 @@ describe('JobReadPortAdapter (ROADMAP v0.0.11, T-013/S8)', () => {
         tenant: { kind: 'resolved', tenantId: 'probe-tenant', slug: 'probe', status: 'active' },
         ports: {
           tenantRead: { findSummary: () => Promise.reject(new Error('çağrılmamalı')) },
+          // ROADMAP v0.0.15, T-016/S7 — `TrpcPorts`'un ZORUNLU yeni üyesi. Bu
+          // probe `tenant.updateSecurityPolicy`'yi ÇAĞIRMAZ.
+          tenantSecurityWrite: {
+            updateSecurityPolicy: () => Promise.reject(new Error('çağrılmamalı')),
+          },
           storefrontTenantRead: {
             findPublicTenant: () => Promise.reject(new Error('çağrılmamalı')),
           },
@@ -375,6 +380,11 @@ describe('JobReadPortAdapter (ROADMAP v0.0.11, T-013/S8)', () => {
             acceptInvitation: () => Promise.reject(new Error('çağrılmamalı')),
             updateRole: () => Promise.reject(new Error('çağrılmamalı')),
             remove: () => Promise.reject(new Error('çağrılmamalı')),
+          },
+          // ROADMAP v0.0.15, T-016 FIX turu 2/M-4 — `TrpcPorts`'un ZORUNLU
+          // yeni üyesi. Bu probe `session.me`'yi ÇAĞIRMAZ.
+          sessionSecurityRead: {
+            isTwoFactorEnabled: () => Promise.reject(new Error('çağrılmamalı')),
           },
         },
         errors: {

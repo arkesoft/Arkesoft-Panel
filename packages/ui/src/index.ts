@@ -55,3 +55,11 @@ export {
   type DataTableProps,
   type DataTableRow,
 } from './components/DataTable'
+
+// ROADMAP v0.0.15 (T-016/S10, docs/ui/T-016-iki-faktorlu-dogrulama.md "Yeni
+// bileşen önerileri") — üç yeni sunum bileşeni. Radix GİRMİYOR (T-008'in
+// bağlayıcı kararı korunuyor); `ConfirmDialog` (Radix `Dialog` gerektiriyor)
+// bu yüzden `apps/admin`'de kalıyor, buradan export EDİLMİYOR.
+export { Skeleton, type SkeletonProps } from './components/Skeleton'
+export { Checkbox, type CheckboxProps } from './components/Checkbox'
+export { CopyButton, type CopyButtonProps } from './components/CopyButton'

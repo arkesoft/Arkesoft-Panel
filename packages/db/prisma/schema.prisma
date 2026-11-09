@@ -38,6 +38,19 @@
 // v0.0.3'ten beri beş rolü taşıyor, bu sürümde DEĞİŞMEDİ; yeni enum yalnızca
 // `AuditAction`. `TenantInvitation` HAM BELİRTEÇ SAKLAMAZ (yalnızca sha256
 // özeti) → `src/client.ts` → `AUTH_SECRET_BEARING_MODELS` ÜÇ üyede KALIR.
+//
+// GÜNCELLEME (ROADMAP v0.0.15, T-016/S1 — TOTP 2FA + owner zorunluluğu):
+// `TwoFactor` EKLENDİ — PLATFORM SEVİYESİ (`tenant_id` TAŞIMAZ, gerekçe
+// modelin kendi doc yorumunda) → `TENANT_SCOPED_TABLES` DÖRTTE KALIR, yeni
+// izolasyon probu YAZILMAZ. `User.twoFactorEnabled` ve
+// `Tenant.requireTwoFactorForOwner` additive kolonlar olarak EKLENDİ
+// (ikisi de `Boolean @default(false)`, NOT NULL — yıkıcı DEĞİL, yeni satırın
+// varsayılanı). `AuditAction`'a `tenant_security_policy_changed` EKLENDİ
+// (kiracı seviyesi zorunluluk DEĞİŞİKLİĞİ denetlenir; kullanıcı seviyesi 2FA
+// olayı `AuditLog.tenantId` NOT NULL olduğu için YAPISAL olarak alınamaz).
+// `TwoFactor.secret`/`backupCodes` ŞİFRELİ saklanır (Better Auth
+// `symmetricEncrypt`) → `src/tenancy.ts` → `AUTH_SECRET_BEARING_TABLES` üç
+// üyeden DÖRDE çıkar (S2'nin işi, bu dosyada DEĞİL).
 
 // `output = "../generated"` iki farklı "generated" konumunun KAYNAĞIDIR:
 //   1. packages/db/generated/     — `prisma generate`'in ham TS çıktısı (KÖK, .gitignore'da)
@@ -75,17 +88,25 @@ datasource db {
 /// kısıtıyla (veya A-A4 ölçümü drift raporluyorsa tek kod yolunda) sağlanır —
 /// bkz. `prisma/migrations/<ts>_tenant_theme_selection/migration.sql`.
 model Tenant {
-  id            String       @id @default(cuid(2))
-  slug          String       @unique
-  name          String
-  status        TenantStatus @default(pending)
-  planId        String?      @map("plan_id")
-  primaryDomain String?      @unique @map("primary_domain")
-  themeId       String?      @map("theme_id")
-  themeVersion  String?      @map("theme_version")
-  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
-  deletedAt     DateTime?    @map("deleted_at") @db.Timestamptz(3)
+  id                       String       @id @default(cuid(2))
+  slug                     String       @unique
+  name                     String
+  status                   TenantStatus @default(pending)
+  planId                   String?      @map("plan_id")
+  primaryDomain            String?      @unique @map("primary_domain")
+  themeId                  String?      @map("theme_id")
+  themeVersion             String?      @map("theme_version")
+  // ROADMAP v0.0.15 (T-016/S1, architect): owner rolü için TOTP 2FA zorunlu
+  // kılma anahtarı. Yeni TABLO DEĞİL — tek boolean için ayrı bir
+  // `TenantSecurityPolicy` tablosu architect tarafından REDDEDİLDİ
+  // (`TENANT_SCOPED_TABLES` 4→5, RLS+FORCE+UNIQUE indeks+prob+yedi zorunlu
+  // senaryo, orantısız). NOT NULL + DEFAULT false → mevcut satırlar için
+  // YIKICI DEĞİL (CLAUDE.md §10 md 10'un yasakladığı "NOT NULL ekleme" VAR
+  // OLAN nullable kolonu SET NOT NULL yapmaktır — bu YENİ bir kolon).
+  requireTwoFactorForOwner Boolean      @default(false) @map("require_two_factor_for_owner")
+  createdAt                DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt                DateTime?    @map("deleted_at") @db.Timestamptz(3)
 
   memberships TenantMembership[]
   // ROADMAP v0.0.11 (T-013/S2): `Job.tenant` ilişkisinin ZORUNLU karşı tarafı.
@@ -118,19 +139,30 @@ model Tenant {
 /// alanlarıdır — DDL ÜRETMEZLER (Session/Account tarafındaki `@relation` FK
 /// kolonunu zaten taşır).
 model User {
-  id            String     @id @default(cuid(2))
-  email         String     @unique
-  name          String
-  status        UserStatus @default(active)
-  emailVerified Boolean    @default(false) @map("email_verified")
-  image         String?
-  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
-  deletedAt     DateTime?  @map("deleted_at") @db.Timestamptz(3)
+  id               String     @id @default(cuid(2))
+  email            String     @unique
+  name             String
+  status           UserStatus @default(active)
+  emailVerified    Boolean    @default(false) @map("email_verified")
+  image            String?
+  // ROADMAP v0.0.15 (T-016/S1, architect A-PM2/pm): eklentinin `schema.mjs:3-8`
+  // ile BİREBİR (`required:false, defaultValue:false, input:false`). ⭐ BEDAVA
+  // yetki tarafı — `app_user`'ın `arkesoft_auth` beklentisi `columnLevel: false`
+  // (`src/tenancy.ts:169`) → yetki TABLO seviyesinde, yeni kolon OTOMATİK
+  // kapsanır; liste düzenlemesi NE yeniden bootstrap GEREKMEZ (karşılaştır:
+  // aşağıdaki `TwoFactor` — YENİ tablo, o S2'de elle eklenir).
+  twoFactorEnabled Boolean    @default(false) @map("two_factor_enabled")
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt        DateTime?  @map("deleted_at") @db.Timestamptz(3)
 
   memberships TenantMembership[]
   sessions    Session[]
   accounts    Account[]
+  // ROADMAP v0.0.15 (T-016/S1): `TwoFactor.user` ilişkisinin ZORUNLU karşı
+  // tarafı (`sessions`/`accounts` ile AYNI gerekçe — Prisma ilişkileri iki
+  // taraflıdır). DDL ÜRETMEZ (FK kolonu `two_factor` tarafındadır).
+  twoFactor   TwoFactor?
 
   @@map("app_user")
 }
@@ -222,6 +254,77 @@ model Verification {
   @@index([identifier])
   @@index([expiresAt])
   @@map("verification")
+}
+
+/// Kullanıcının TOTP ikinci faktör kaydı (ROADMAP v0.0.15, T-016/S1, architect
+/// A-PM2 — PLATFORM SEVİYESİ, `tenant_id` TAŞIMAZ). Alanlar Better Auth'un
+/// `two-factor` eklentisinin `twoFactor` modeliyle BİREBİR eşleştirildi —
+/// `better-auth/dist/plugins/two-factor/schema.mjs:9-50`, kaynak dosya
+/// AÇILIP DOĞRULANDI. Gerekçe `Session`'ınkiyle (yukarıda) BİREBİR: ikinci
+/// faktör KULLANICIYA aittir, kiracıya değil ("bir hesap → birden fazla
+/// mağaza", v0.0.5 architect kararı). `tenant_id` eklemek aynı kullanıcıya
+/// kiracı başına AYRI bir TOTP sırrı anlamına gelirdi; eklentinin
+/// `findOne({where:[{field:'userId'}]})` erişim deseni (`index.mjs:126-132`)
+/// bunu YAPISAL olarak desteklemiyor.
+///
+/// ⭐ Sonuç: `TENANT_SCOPED_TABLES` DÖRTTE KALIR (bu model BEŞİNCİ üye
+/// DEĞİL) — yeni izolasyon probu YAZILMAZ, prob tamlığı kapısı KIRILMAZ,
+/// RLS politikası YAZILMAZ.
+///
+/// ⚠ `secret`/`backupCodes` ŞİFRELİ saklanır (Better Auth'un
+/// `symmetricEncrypt`'i, anahtar `BETTER_AUTH_SECRET`) — HAM değer DEĞİL.
+/// İkisi de bu yüzden `src/tenancy.ts` → `AUTH_SECRET_BEARING_TABLES`'a
+/// EKLENİR (üç üyeden DÖRDE — `account`/`session`/`verification` + bu tablo;
+/// S2'nin işi, bu şema dosyasında DEĞİL) — eklenmezse `arkesoft_auth` bu
+/// tabloyu okuyamaz (çalışma zamanı arızası).
+///
+/// `verified` varsayılanı `false` (ROADMAP v0.0.15, T-016, FIX turu 1,
+/// `security` [low] F3 bulgusu — bkz. `prisma/migrations/
+/// 20261109054748_two_factor_verified_default_false/migration.sql`).
+/// Better Auth eklentisinin KENDİ şema bildirimi `defaultValue: true`'dur
+/// AMA çalışma zamanında `enable` ucu `verified`i HER ZAMAN AÇIKÇA yazar
+/// (`index.mjs:152`, bizim yapılandırmamızda `false`) — bugün tek yazıcı bu
+/// yüzden DB varsayılanını hiç GÖRMEZ, davranışsal maliyet SIFIR. `false`
+/// seçildi (eklentinin `true`'sundan BİLEREK SAPILDI) ÇÜNKÜ DB varsayılanı
+/// `verified`i AÇIKÇA göndermeyen GELECEKTEKİ bir yazıcı için fail-closed
+/// davranmalı — "ikinci faktör VARLIĞI = doğrulanmış" kabul eden her kod
+/// yolunun varsayılan olarak DOĞRULANMAMIŞ bir kaydı KABUL ETMEMESİ gerekir.
+/// `20261106073351_two_factor_and_security_policy/migration.sql` (DONMUŞ,
+/// checksum `_prisma_migrations` ile elle senkronlanmış) DEĞİŞTİRİLMEDİ —
+/// bu, O migration'ın `DEFAULT true`'sunu SONRADAN `SET DEFAULT false` ile
+/// tersleyen AYRI, tek adımlı, yıkıcı OLMAYAN bir migration'dır (mevcut
+/// satırları ETKİLEMEZ, `NOT NULL` eklemez, `DROP COLUMN` yapmaz).
+///
+/// İNDEKS KARARI — ikisi BİLİNÇLİ OLARAK YOK:
+///   - `userId` `@unique` → ayrı bir `@@index` GEREKMEZ: tekil kısıt zaten
+///     bir B-tree indekstir VE kullanıcı↔TOTP 1:1 ilişkisini veritabanı
+///     seviyesinde ZORLAR (eklentinin `enable` ucunun findOne-sonra-create
+///     YARIŞINI kapatır).
+///   - `secret` üzerinde indeks YOK — eklentinin `schema.mjs:14`'teki
+///     `index: true`'su Better Auth'un KENDİ migration üreticisi İÇİNDİR
+///     (biz Prisma şemasını ELLE yazıyoruz); şifreli bir kolon hiçbir
+///     sorguda yüklem OLMADIĞI için indeks SAF KAYIPTIR (`TenantInvitation`
+///     emsali, yukarıda: "gereksiz indeks yazma yüküne maliyettir").
+///   - `lockedUntil` üzerinde de indeks YOK — hep `id` ile birlikte okunur/
+///     güncellenir, ayrı TARANMAZ.
+///   - `(tenant_id, …)` bileşik indeks GEREKMEZ (platform tablosu).
+///
+/// `onDelete: Cascade` — `Session`/`Account`'un BİREBİR aynı kararı: kullanıcı
+/// silindiğinde ikinci faktör kaydı YETİM KALAMAZ.
+model TwoFactor {
+  id                      String    @id @default(cuid(2))
+  userId                  String    @unique @map("user_id")
+  secret                  String
+  backupCodes             String    @map("backup_codes")
+  verified                Boolean   @default(false)
+  failedVerificationCount Int       @default(0) @map("failed_verification_count")
+  lockedUntil             DateTime? @map("locked_until") @db.Timestamptz(3)
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("two_factor")
 }
 
 /// Tenant'a bağlı tablo — `TENANT_SCOPED_TABLES`'ın BİRİNCİ üyesi. Taksonominin
@@ -502,11 +605,21 @@ enum JobStatus {
 /// Bu enum TELE HİÇ ÇIKMAZ → tele-enum parite pini GEREKMEZ (karşılaştır:
 /// `TenantStatus`/`TenantRole`, ikisi de tel sözleşmesinde kopyası olduğu için
 /// pinli).
+///
+/// GÜNCELLEME (ROADMAP v0.0.15, T-016/S1 — TOTP 2FA + owner zorunluluğu):
+/// `tenant_security_policy_changed` EKLENDİ. ⚠ Yalnızca KİRACI SEVİYESİ
+/// zorunluluk değişikliği (`Tenant.requireTwoFactorForOwner` aç/kapat)
+/// denetlenir — KULLANICI seviyesi 2FA aç/kapat olayı bu enum'a GİRMEZ ve
+/// `audit_log`'a YAZILMAZ: `AuditLog.tenantId` NOT NULL ve tablo kiracı
+/// kapsamlı, kullanıcı başına 2FA olayının atfedilecek bir kiracısı YOK
+/// (2FA platform seviyesi bir kullanıcı özelliğidir) — bu enum değeri
+/// EKLENMEDEN önce bu olgu doğrulanmalıydı, `architect` R-PM5 ile işaretledi.
 enum AuditAction {
   member_invited
   member_invitation_accepted
   member_role_changed
   member_removed
+  tenant_security_policy_changed
 
   @@map("audit_action")
 }

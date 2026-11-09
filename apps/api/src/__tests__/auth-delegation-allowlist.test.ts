@@ -28,21 +28,23 @@ import { createTestApp } from './helpers/create-test-app.js'
 const BASE_ENV: ApiEnv = parseEnv(apiEnvSchema)
 /**
  * ÇÖZÜLMÜŞ bir kiracı host'u (`validation.test.ts`'in deseni) — `/auth/*`'in
- * ÇOĞU `TENANT_EXEMPT_PATHS`'te OLMADIĞI için (yalnızca yedi delege yol + üç
- * kendi oturum ucumuz muaf), çözümsüz bir host'ta `TenantGuard` 404'ü
- * `AuthController`'dan ÖNCE üretir (AYNI status kodu, AMA FARKLI gerekçe/
- * gövde — `errors.tenant.notFound`). Bu dosyanın KENDİ fail-closed
- * mekanizmasını (allowlist dışı yol → `errors.http.generic`) İZOLE
- * göstermek için istekler ÇÖZÜLMÜŞ bir host'a gönderilir.
+ * ÇOĞU `TENANT_EXEMPT_PATHS`'te OLMADIĞI için (yalnızca on üç delege yol + üç
+ * kendi oturum ucumuz muaf, v0.0.15'ten itibaren), çözümsüz bir host'ta
+ * `TenantGuard` 404'ü `AuthController`'dan ÖNCE üretir (AYNI status kodu,
+ * AMA FARKLI gerekçe/gövde — `errors.tenant.notFound`). Bu dosyanın KENDİ
+ * fail-closed mekanizmasını (allowlist dışı yol → `errors.http.generic`)
+ * İZOLE göstermek için istekler ÇÖZÜLMÜŞ bir host'a gönderilir.
  */
 const RESOLVED_TENANT_HOST = `${DEMO_SEED.tenant.slug}.${BASE_ENV.APP_BASE_DOMAIN}`
 
 describe('AUTH_DELEGATED_PATHS — birim', () => {
-  it('TAM OLARAK yedi eleman taşır (architect "yedi TAM yol")', () => {
-    expect(AUTH_DELEGATED_PATHS.size).toBe(7)
+  // GÜNCELLEME (ROADMAP v0.0.15, T-016/S5): yedi → on üç, gerekçe
+  // `auth-delegated-paths.ts` dosya başı GÜNCELLEME paragrafında.
+  it('TAM OLARAK on üç eleman taşır (po ölçümü 7→13, bu alt görevin KENDİ doğrulamasıyla örtüşür)', () => {
+    expect(AUTH_DELEGATED_PATHS.size).toBe(13)
   })
 
-  it('küme TAM OLARAK beklenen yedi (yöntem, yol) çiftidir', () => {
+  it('küme TAM OLARAK beklenen on üç (yöntem, yol) çiftidir', () => {
     expect(new Set(AUTH_DELEGATED_PATHS)).toEqual(
       new Set([
         'POST /auth/sign-up/email',
@@ -52,6 +54,12 @@ describe('AUTH_DELEGATED_PATHS — birim', () => {
         'POST /auth/send-verification-email',
         'POST /auth/request-password-reset',
         'POST /auth/reset-password',
+        'POST /auth/two-factor/enable',
+        'POST /auth/two-factor/disable',
+        'POST /auth/two-factor/get-totp-uri',
+        'POST /auth/two-factor/generate-backup-codes',
+        'POST /auth/two-factor/verify-totp',
+        'POST /auth/two-factor/verify-backup-code',
       ]),
     )
   })
@@ -64,6 +72,12 @@ describe('AUTH_DELEGATED_PATHS — birim', () => {
     ['POST', '/auth/send-verification-email'],
     ['POST', '/auth/request-password-reset'],
     ['POST', '/auth/reset-password'],
+    ['POST', '/auth/two-factor/enable'],
+    ['POST', '/auth/two-factor/disable'],
+    ['POST', '/auth/two-factor/get-totp-uri'],
+    ['POST', '/auth/two-factor/generate-backup-codes'],
+    ['POST', '/auth/two-factor/verify-totp'],
+    ['POST', '/auth/two-factor/verify-backup-code'],
   ])('%s %s → delege edilir (true)', (method, path) => {
     expect(isAuthDelegatedPath(method, path)).toBe(true)
   })
@@ -75,6 +89,12 @@ describe('AUTH_DELEGATED_PATHS — birim', () => {
     ['GET', '/auth/sign-up/email'],
     ['POST', '/auth/verify-email'],
     ['GET', '/auth/rastgele-yol-xyz'],
+    // ROADMAP v0.0.15, T-016/S5 — `otpOptions` yapılandırılmadığı için
+    // bilerek DELEGE EDİLMEYEN iki uç (`auth-delegated-paths.ts` dosya başı
+    // GÜNCELLEME paragrafı); HTTP router'a kayıtlı OLMALARI (ölçüldü,
+    // `otp/index.mjs`) bu kümeye girmelerini GEREKTİRMEZ.
+    ['POST', '/auth/two-factor/send-otp'],
+    ['POST', '/auth/two-factor/verify-otp'],
   ])('%s %s → delege EDİLMEZ (false, fail-closed)', (method, path) => {
     expect(isAuthDelegatedPath(method, path)).toBe(false)
   })

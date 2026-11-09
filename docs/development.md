@@ -347,6 +347,50 @@ değildir.**
 - `db:verify` — doğrulama (`prisma validate`, `format --check`, `migrate diff`)
 - `db:bootstrap` — roller provisioning (`arkesoft_migrator`, `arkesoft_app`, sahiplik, grant)
 
+> **ROADMAP v0.0.15, T-016/S12 (K-A7) — kök `package.json`'da `db:migrate`/`db:deploy`/
+> `db:push`/`db:reset`'in dördü de artık `&& pnpm db:bootstrap` ile ZİNCİRLİ.** Önceki
+> davranışta operatör şema değiştiren bu dört komuttan birini koşturup `db:bootstrap`'ı
+> **atlayabiliyordu** — yeni bir sır taşıyan tablo (ör. `two_factor`) oluştuğunda
+> `arkesoft_auth` o tabloda yetkisiz KALIYORDU ve çalışma zamanı belirtisi yanıltıcı
+> oluyordu ("girdiğim kod kabul edilmiyor" — gerçek sebep: Postgres `permission denied for
+table …`, kodun kendisiyle İLGİSİZ). Artık dördü de **otomatik** olarak `bootstrap`'ı
+> (idempotent) yeniden koşturuyor; operatör bunu ayrıca elle çağırmak ZORUNDA değil
+> (çağırmak hâlâ zararsız — idempotent). `db:rollback-roles`/`db:rollback-auth-role`
+> BİLEREK bu zincire dahil EDİLMEDİ (kasıtlı geri alma, zincirlenirse kendi etkisini anında
+> tersler). `migrate dev`/`migrate reset`'in Prisma'nın kendi otomatik seed kancası (bkz.
+> `packages/db/prisma.config.ts`) bu `&&` zincirinden ÖNCE, tek bir `prisma` çağrısının
+> İÇİNDE koşar — yani sıra bazen `migrate` + `seed` (Prisma'nın kendi içinde) → `bootstrap`
+> (zincirde) olur; bu zararsızdır çünkü seed `two_factor` gibi sır tablolarına veri
+> YAZMAZ, önemli olan zincirin SONUNDA `bootstrap`'ın gerçekten koşmuş olması.
+>
+> **Yerel mekanik "guards" kapısı (K-A14):** `.github/workflows/ci.yml`'deki `guards`
+> job'unun ağ gerektirmeyen mekanik adımları (AC13 yasak jeton taraması, AC4 GUC jeton
+> taraması, AC5/AC8 pozitif/negatif iddialar, sahte-yeşil paket kümesi dedektörleri,
+> `scripts/` tip+lint kontrolü, platform sürüm tutarlılığı, kurulu ise `actionlint`) artık
+> `pnpm guards` (`scripts/guards.sh`) ile **yerelde de** koşuyor — önceden bu adımlar
+> yalnızca CI'da görünüyordu ve T-014/T-015'te AYNI mekanik hata (bir jetonun bir yorumda
+> bitişik yazılması) üç kez CI'ı kırdı. Veri kaynakları (`.github/ci-*.txt`) doğrudan
+> okunur (kopyalanmaz); yalnızca tarama MANTIĞI çoğu adımda İKİ YERDE (CI + bu script)
+> yaşar — `devops` `.github/**`'e yazamadığı için bu adımların GÖVDESİ CI'a taşınamaz,
+> bilinçli bir sapma riski olarak kalır.
+>
+> **Fix turu 1 güncellemesi (T-016 fix turu 1, solid M-2 / security F5(a)(b)(c)):**
+> `scripts/guards.sh`'ın hedef küme türetimi (`find .github/workflows .github/actions
+...`) ÖNCEDEN iki ayrı kontrolde (AC13 ve "run bloğu içi şablon ifadesi yasağı") BAĞIMSIZ
+> koşuyordu — ölçülen bir SAPMA riskiydi (ikisi bugün aynı sonucu üretiyordu ama kod iki
+> kopyaydı). Artık TEK YERDE türetilip paylaşılıyor (`workflow_action_targets`) ve hedef
+> küme boşsa (`.github/workflows`/`.github/actions` ikisi de yok/boş) `fail_if_targets_empty`
+> ile GÜRÜLTÜLÜ hata üretiyor — önceden bu durum `grep -nFf`'i dosya argümanı OLMADAN
+> çağırıp STDIN'i okumaya başlatarak ASKIDA KALIYORDU (ölçüldü, macOS bash 3.2'de farklı
+> bir çöküş biçiminde, Linux/bash 4.4+'ta hang olarak). "run bloğu içi şablon ifadesi
+> yasağı" kontrolünün 34 satırlık awk programı `scripts/check-run-block-template-
+expression.sh`'e taşındı — bu TEK DOSYA artık hem `pnpm guards` HEM `ci.yml`'nin aynı
+> adımı tarafından çağrılıyor (ci.yml'deki değişiklik DAR: yalnızca bu bir adımın awk
+> gövdesi script çağrısına dönüştü, başka hiçbir kontrol değişmedi/zayıflamadı — mutasyon
+> kanıtı devops T-016 fix turu 1 raporunda). Geri kalan kontroller (AC13, AC5, AC8, AC4,
+> sahte-yeşil dedektörleri, scripts/ tip+lint, sürüm tutarlılığı) HÂLÂ bilinçli kopya —
+> bu adımların gövdesini CI'a taşımak/CI'ı buraya yönlendirmek ayrı bir karar/ADR gerektirir.
+
 ### Dört kademeli geri alma (v0.0.13+, kademe 4: v0.0.14.1+)
 
 RLS ve rol ayrımını tam geri almak istiyorsanız, sırayla uygulayın:

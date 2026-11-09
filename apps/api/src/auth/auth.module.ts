@@ -54,6 +54,10 @@ import { ROOT_LOGGER } from '../logging/logging.tokens.js'
 import { createAuthInstance } from './auth-instance.js'
 import { AuthController } from './auth.controller.js'
 import { AuthGuard } from './auth.guard.js'
+// T-016 FIX turu 1, madde 3/M-1 EKLEMESİ (solid) — `AuthGuard`'ın ÜÇÜNCÜ
+// zorlama kapısı artık DI'DAN alınır (`two-factor-compliance.service.ts`
+// dosya başı GÜNCELLEME yorumu).
+import { TwoFactorComplianceService } from './two-factor-compliance.service.js'
 import { AUTH_INSTANCE, AUTH_SESSION_READER } from './auth.tokens.js'
 import type { AuthSessionReader } from './auth.tokens.js'
 import { MAIL_TRANSPORT } from './mail/mail-transport.types.js'
@@ -216,6 +220,9 @@ const rateLimitResetInterceptorProvider: Provider = {
     // T-006/S6 EKLEMESİ:
     authPrismaClientProvider,
     SessionsService,
+    // T-016 FIX turu 1, madde 3/M-1 EKLEMESİ (solid) — `AuthGuard`'ın
+    // `@Inject(TwoFactorComplianceService)` bağımlılığı için.
+    TwoFactorComplianceService,
     authGuardProvider,
     // T-006/S8 EKLEMESİ:
     RateLimitService,

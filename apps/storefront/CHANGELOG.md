@@ -1,5 +1,15 @@
 # @arkesoft/storefront
 
+## 0.6.0
+
+### Patch Changes
+
+- Updated dependencies
+  - @arkesoft/errors@0.6.0
+  - @arkesoft/trpc@0.5.0
+  - @arkesoft/tenancy@0.6.0
+  - @arkesoft/themes-modern@0.1.0
+
 ## 0.5.0
 
 ### Patch Changes

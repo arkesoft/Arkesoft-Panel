@@ -62,7 +62,12 @@ DO $do_rollback_secret_table_privileges$
 DECLARE
   secret_table_name text;
 BEGIN
-  FOREACH secret_table_name IN ARRAY ARRAY['account', 'session', 'verification']
+  -- GENİŞLETME (ROADMAP v0.0.15, T-016/S2, architect K-A5): `two_factor`
+  -- EKLENDİ — `bootstrap-roles.sql:284`'ün (dış döngü sabit literal dizi)
+  -- BİREBİR aynası. Eklenmezse kademe 4 geri alması `two_factor`'ı atlar ve
+  -- rollback sonrası `arkesoft_auth` o tabloda yetkili, `arkesoft_app`
+  -- yetkisiz kalır — tutarsız bir ara durum.
+  FOREACH secret_table_name IN ARRAY ARRAY['account', 'session', 'verification', 'two_factor']
   LOOP
     IF EXISTS (
       SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = secret_table_name

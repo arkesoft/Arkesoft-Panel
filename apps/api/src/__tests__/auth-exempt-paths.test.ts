@@ -5,6 +5,11 @@
 //
 // `tenant-exempt-paths.test.ts`'in (T-002/ST-5) AYNI deseni — kümenin TAM
 // OLARAK on elemandan oluştuğunu assert eder (inceleme görünürlüğü kapısı).
+//
+// GÜNCELLEME (ROADMAP v0.0.15, T-016/S5): on → on iki — `auth-exempt-
+// paths.ts` dosya başı GÜNCELLEME paragrafında gerekçeli iki two-factor
+// yolu (`verify-totp`/`verify-backup-code`, Better Auth'un KENDİ
+// middleware'inden de muaf, yalnızca `two_factor` challenge çerezi taşır).
 
 import { describe, expect, it } from 'vitest'
 
@@ -21,14 +26,16 @@ const EXPECTED_EXEMPT_PATHS = [
   '/auth/request-password-reset',
   '/auth/reset-password',
   '/trpc/storefront.currentTenant',
+  '/auth/two-factor/verify-totp',
+  '/auth/two-factor/verify-backup-code',
 ] as const
 
 describe('AUTH_EXEMPT_PATHS', () => {
-  it('tam olarak on eleman taşır', () => {
-    expect(AUTH_EXEMPT_PATHS.size).toBe(10)
+  it('tam olarak on iki eleman taşır', () => {
+    expect(AUTH_EXEMPT_PATHS.size).toBe(12)
   })
 
-  it('küme TAM OLARAK beklenen on elemandır', () => {
+  it('küme TAM OLARAK beklenen on iki elemandır', () => {
     expect(new Set(AUTH_EXEMPT_PATHS)).toEqual(new Set(EXPECTED_EXEMPT_PATHS))
   })
 
@@ -72,7 +79,7 @@ describe('AUTH_EXEMPT_PATHS', () => {
   // ROADMAP v0.0.6, T-007/S6, architect riski 8 — muafiyet kümesi regresyonu:
   // `/trpc/*`'nin GERİ KALANI (v0.0.8'de yalnızca `/trpc/storefront.
   // currentTenant` HARİÇ) BİLİNÇLİ OLARAK bu kümede DEĞİL; kardinalite
-  // assert'i (10) bu satırlarla DEĞİŞMEDİ.
+  // assert'i (v0.0.15'ten itibaren 12) bu satırlarla DEĞİŞMEDİ.
   it('/trpc/session.me MUAF DEĞİLDİR — kimlik ZORUNLU prosedür, kiracı ekseni değil', () => {
     expect(isAuthExemptPath('/trpc/session.me')).toBe(false)
   })
@@ -80,4 +87,21 @@ describe('AUTH_EXEMPT_PATHS', () => {
   it('/trpc/tenant.current MUAF DEĞİLDİR — kimlik ZORUNLU prosedür (yalnızca TEK yol açıldığının kanıtı)', () => {
     expect(isAuthExemptPath('/trpc/tenant.current')).toBe(false)
   })
+
+  // ROADMAP v0.0.15, T-016/S5 — `AUTH_DELEGATED_IDENTITY_REQUIRED_PATHS`'in
+  // (`auth-delegated-paths.ts`) dört elemanı Better Auth'un KENDİSİNİN
+  // `sessionMiddleware`/`sensitiveSessionMiddleware` BEKLEDİĞİ, bu yüzden
+  // `AuthGuard`'ın `authenticated` dalına ULAŞMASI gereken delege yollardır
+  // — bu dördü MUAF OLURSA Better Auth'un KENDİ gereksinimiyle ÇELİŞİRDİ.
+  it.each([
+    '/auth/two-factor/enable',
+    '/auth/two-factor/disable',
+    '/auth/two-factor/get-totp-uri',
+    '/auth/two-factor/generate-backup-codes',
+  ])(
+    '%s MUAF DEĞİLDİR — delege AMA kimlik GEREKTİRİR (AUTH_DELEGATED_IDENTITY_REQUIRED_PATHS)',
+    (path) => {
+      expect(isAuthExemptPath(path)).toBe(false)
+    },
+  )
 })

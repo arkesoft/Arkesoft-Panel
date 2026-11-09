@@ -43,6 +43,12 @@ import type { PanelError } from '../errors/panel-error.js'
 
 import { assertNever } from '../errors/assert-never.js'
 
+// GÜNCELLEME (ROADMAP v0.0.15, T-016/S10, 2026-11-06): ALTI yeni Better Auth
+// kodu EKLENDİ — `better-auth@1.7.14`'ün `plugins/two-factor` kaynağı
+// DOĞRUDAN OKUNARAK ölçüldü (`node_modules/.pnpm/.../plugins/two-factor/
+// {error-code,totp/index,backup-codes/index}.mjs`, `@better-auth/core`'un
+// `BASE_ERROR_CODES.INVALID_PASSWORD`) — docs/ux/T-016'nın kategori (2)
+// disiplini (HTTP ile canlı DOĞRULANMADI, kaynak kodundan ÖLÇÜLDÜ).
 export const PANEL_ERROR_CODES = [
   // --- apps/api/src/errors/domain/*.error.ts (15) ---
   'AUTH_PROVIDER_FAILED',
@@ -66,6 +72,13 @@ export const PANEL_ERROR_CODES = [
   // --- Better Auth, GERÇEK uca vurularak ölçüldü (3) ---
   'INVALID_EMAIL_OR_PASSWORD',
   'INVALID_ORIGIN',
+  // --- Better Auth `two-factor` eklentisi, KAYNAK KODU okunarak ölçüldü (6) ---
+  'INVALID_CODE',
+  'INVALID_BACKUP_CODE',
+  'TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE',
+  'ACCOUNT_TEMPORARILY_LOCKED',
+  'INVALID_TWO_FACTOR_COOKIE',
+  'INVALID_PASSWORD',
 ] as const
 
 export type PanelErrorCode = (typeof PANEL_ERROR_CODES)[number]
@@ -124,7 +137,35 @@ const ERROR_MESSAGES = {
   // güvenle yapılabilecek tek yön yok. RİSKLER'e taşındı.
   INVALID_EMAIL_OR_PASSWORD: 'E-posta veya parola hatalı.',
   INVALID_ORIGIN: 'Bu istek güvenlik nedeniyle reddedildi. Sayfayı yenileyip tekrar deneyin.',
+  // --- ROADMAP v0.0.15, T-016/S10 EKLEMESİ — metinler docs/ux/T-016'nın
+  // "Hata durumları"/"Microcopy" tablolarından BİREBİR alındı. ---
+  INVALID_CODE: 'Kod doğrulanamadı. Uygulamanızdaki güncel kodu girin.',
+  INVALID_BACKUP_CODE:
+    'Bu yedek kod geçerli değil veya daha önce kullanıldı. Başka bir kod deneyin.',
+  TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE:
+    'Bu doğrulama denemesinin süresi doldu. Güvenlik nedeniyle yeniden giriş yapmanız gerekiyor.',
+  // Dakika sayısı GERÇEK `Retry-After` başlığından geliyorsa
+  // `formatAccountTemporarilyLockedMessage` kullanılır (aşağıda) — bu satır
+  // başlık okunamadığı durumlar için jenerik geri düşüştür (sabit "15"
+  // GÖMÜLMEZ, ux'in şartı).
+  ACCOUNT_TEMPORARILY_LOCKED:
+    'Çok fazla hatalı deneme yapıldı. Hesabınız güvenlik nedeniyle geçici olarak kilitlendi. Lütfen daha sonra tekrar deneyin.',
+  INVALID_TWO_FACTOR_COOKIE:
+    'Doğrulama süreniz doldu. Güvenliğiniz için tekrar giriş yapmanız gerekiyor.',
+  INVALID_PASSWORD: 'Şifreniz doğrulanamadı. Tekrar deneyin.',
 } satisfies Record<PanelErrorCode, string>
+
+/**
+ * `ACCOUNT_TEMPORARILY_LOCKED` için GERÇEK süreyi (`Retry-After` başlığı,
+ * saniye) dakikaya çevirip metne gömer — ux'in şartı: "{dakika} sunucunun
+ * Retry-After başlığından hesaplanır, sabit '15' gömülmez". `retryAfterSeconds`
+ * `null` ise çağıran {@link ERROR_MESSAGES}.ACCOUNT_TEMPORARILY_LOCKED'ın
+ * jenerik (dakikasız) metnini kullanmalı — bu fonksiyon o durumu temsil ETMEZ.
+ */
+export function formatAccountTemporarilyLockedMessage(retryAfterSeconds: number): string {
+  const minutes = Math.max(1, Math.ceil(retryAfterSeconds / 60))
+  return `Çok fazla hatalı deneme yapıldı. Hesabınız güvenlik nedeniyle geçici olarak kilitlendi. ${minutes.toString()} dakika sonra tekrar deneyebilirsiniz.`
+}
 
 /**
  * `ERROR_MESSAGES`'ın anahtar sayısı — testin kapalı dünyayı (her kodun TAM
@@ -198,6 +239,44 @@ export const MESSAGES = {
       // (`resolveErrorMessage`'ın güvenli geri düşüş deseninin aynısı).
       fieldGenericError: 'Bu alanda bir sorun var. Lütfen kontrol edip tekrar deneyin.',
     },
+    // ROADMAP v0.0.15 (T-016/S10) EKLEMESİ — bkz. dosyanın altındaki "S10
+    // EKLEMESİ" bloğu, docs/ux/T-016 "Microcopy"'den BİREBİR alındı.
+    twoFactor: {
+      setupPasswordLabel: 'Şifreniz',
+      setupPasswordHelp: 'Güvenliğiniz için şifrenizi tekrar girmenizi istiyoruz.',
+      setupPasswordRequired: 'Şifrenizi girin.',
+      setupContinue: 'Devam et',
+      setupContinuing: 'Doğrulanıyor…',
+      manualKeyLabel: 'Manuel anahtar',
+      manualKeyInstructions:
+        'Authenticator uygulamanızda hesap ekleyin, "manuel giriş" seçin, bu anahtarı yapıştırın.',
+      showUriToggle: 'Bağlantıyı göster (gelişmiş kullanıcılar için)',
+      copyButton: 'Kopyala',
+      copiedStatus: 'Kopyalandı',
+      copyFailedStatus: 'Kopyalanamadı',
+      codeInputLabel: 'Doğrulama kodu',
+      codeRequired: '6 haneli doğrulama kodunu girin.',
+      verifyButton: 'Doğrula',
+      verifying: 'Doğrulanıyor…',
+      backupCodesTitle: 'Bunlar yedek kodlarınız — bir daha gösterilmeyecek.',
+      backupCodesSavedCheckbox: 'Bu kodları güvenli bir yere kaydettim',
+      backupCodesCopyAll: 'Tümünü kopyala',
+      backupCodesDownload: 'Metin dosyası indir',
+      backupCodesFileName: 'arkesoft-yedek-kodlar.txt',
+      setupDoneButton: 'Bitti',
+      challengeTitle: 'Hesabınızı doğrulayın',
+      backupCodeChallengeTitle: 'Yedek kodunuzu girin',
+      backupCodeInputLabel: 'Yedek kod',
+      backupCodeRequired: 'Yedek kodunuzu girin.',
+      useBackupCodeLink: 'Kodunuz yok mu? Yedek kod kullanın',
+      useAuthenticatorLink: 'Authenticator kodunu kullan',
+      backToSignIn: 'Girişe dön',
+      challengeTimeRemaining: 'Kalan süre: {kalan}',
+      challengeOneMinuteRemaining: 'Doğrulama süreniz 1 dakika içinde dolacak.',
+      challengeExpiredAnnouncement: 'Doğrulama süreniz doldu.',
+      challengeExpiredMessage:
+        'Doğrulama süreniz doldu. Güvenliğiniz için tekrar giriş yapmanız gerekiyor.',
+    },
   },
   meta: {
     signInTitle: 'Giriş yap · Arkesoft Panel',
@@ -221,6 +300,9 @@ export const MESSAGES = {
   sidebar: {
     navLabel: 'Panel navigasyonu',
     panel: 'Panel',
+    // ROADMAP v0.0.15 (T-016/S10) EKLEMESİ — `/hesap/guvenlik` rotasının
+    // erişim noktası (2FA kişisel bir ayar, RBAC'a tabi DEĞİL).
+    accountSecurity: 'Hesap güvenliği',
   },
   topbar: {
     noStoreSelected: 'Mağaza seçilmedi',
@@ -237,6 +319,39 @@ export const MESSAGES = {
     retryButton: 'Tekrar dene',
     genericTitle: 'Bir sorun oluştu',
     network: 'Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.',
+  },
+  // ---------------------------------------------------------------------
+  // ROADMAP v0.0.15 (T-016/S10) EKLEMESİ — docs/ux/T-016-iki-faktorlu-
+  // dogrulama.md "Microcopy" bölümünden BİREBİR alındı (anahtar kökleri
+  // o belgenin önerdiği `account.security.twoFactor.*`/`auth.twoFactor.*`
+  // ile TUTARLI, bu dosyanın düz nesne yapısına uyarlanmış).
+  // ---------------------------------------------------------------------
+  common: {
+    confirm: 'Devam et',
+    cancel: 'Vazgeç',
+  },
+  accountSecurity: {
+    title: 'Hesap güvenliği',
+    twoFactor: {
+      statusOffTitle: 'İki adımlı doğrulama: Kapalı',
+      // VARSAYIM(T-016/S10): ux/ui bu açıklama cümlesinin TAM metnini
+      // vermedi ("+ kısa açıklama" demekle yetindi) — bu cümle BU alt
+      // görevin kendi önerisidir, ux/docs onaylamalı.
+      statusOffDescription: 'Hesabınıza girişte şifrenize ek olarak bir doğrulama kodu istenir.',
+      statusOnTitle: 'İki adımlı doğrulama: Açık',
+      enableButton: 'Etkinleştir',
+      disableButton: 'Devre dışı bırak',
+      disabling: 'Devre dışı bırakılıyor…',
+      regenerateBackupCodesButton: 'Yeni yedek kodlar oluştur',
+      regenerating: 'Oluşturuluyor…',
+      disableConfirmTitle: 'İki adımlı doğrulamayı devre dışı bırak',
+      disableConfirmBody:
+        "2FA'yı devre dışı bırakırsanız hesabınız yalnızca şifreyle korunur. Devam edilsin mi?",
+      regenerateConfirmTitle: 'Yeni yedek kodlar oluştur',
+      regenerateConfirmBody:
+        'Yeni kodlar oluşturursanız eski yedek kodlarınız artık çalışmaz. Devam edilsin mi?',
+      cardLoadError: 'Güvenlik ayarlarınız şu anda yüklenemedi.',
+    },
   },
 } as const
 

@@ -281,7 +281,14 @@ DECLARE
   secret_table_name text;
   column_record RECORD;
 BEGIN
-  FOREACH secret_table_name IN ARRAY ARRAY['account', 'session', 'verification']
+  -- GENİŞLETME (ROADMAP v0.0.15, T-016/S2, architect K-A5 DÜZELTME 1): `two_factor`
+  -- EKLENDİ. ⚠ Bu DIŞ dizi SABİT LİTERALDİR — kolon döngüsü İÇTEDİR (aşağıda);
+  -- mevcut bir tabloya yeni kolon eklendiğinde o kolon OTOMATİK hibelenir, ama
+  -- YENİ bir tablo bu diziye ELLE eklenmedikçe hiç ziyaret edilmez ve
+  -- `arkesoft_app`'in o tablodaki yetkisi `ALTER DEFAULT PRIVILEGES` ile
+  -- OTOMATİK gelip REVOKE EDİLMEZ (task dosyasının "§7 kendiliğinden
+  -- hallediyor" iddiası bu ekleme için YANLIŞTI — ölçüldü, architect düzeltti).
+  FOREACH secret_table_name IN ARRAY ARRAY['account', 'session', 'verification', 'two_factor']
   LOOP
     IF EXISTS (
       SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = secret_table_name

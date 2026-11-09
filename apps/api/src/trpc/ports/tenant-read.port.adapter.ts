@@ -31,7 +31,16 @@ export class TenantReadPortAdapter implements TenantReadPort {
     //     (`tenant.router.ts`) bunu asla prosedür girdisinden ALMAZ.
     const row = await this.prisma.db.tenant.findFirst({
       where: { id: tenantId, deletedAt: null },
-      select: { id: true, slug: true, name: true, status: true, primaryDomain: true },
+      // ⚠ `requireTwoFactorForOwner` (ROADMAP v0.0.15, T-016/S7): BİR kolon
+      // eklendi, EK SORGU yok — `tenantSummarySchema`'nın katkısal alanı.
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        status: true,
+        primaryDomain: true,
+        requireTwoFactorForOwner: true,
+      },
     })
 
     if (row === null) {

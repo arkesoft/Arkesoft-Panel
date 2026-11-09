@@ -546,6 +546,18 @@ jobs:
           # (ci.yml); bitişik yazılırsa kendi kendini eşler. Aynı sebepten,
           # aşağıdaki mesajlarda kalıbın kendisi YAZILMAZ — yalnızca "$needle"
           # değişkeni (çalışma anında birleştirilmiş) basılır.
+          #
+          # AWK PROGRAMININ KENDİSİ artık bu adımın İÇİNDE DEĞİL —
+          # `scripts/check-run-block-template-expression.sh`'e taşındı
+          # (ROADMAP T-016/S12 fix turu 1, solid M-2). Bu adım ile yerel
+          # "guards" kapısı (`scripts/guards.sh`, K-A14) AYNI 34 satırlık awk
+          # programını BİREBİR KOPYA olarak İKİ YERDE taşıyordu — hedef küme
+          # türetimi (`/tmp/ac-workflow-action-targets.txt`, aşağıda
+          # DEĞİŞMEDİ) TEK YERDEN okunurken awk'ın KENDİSİ iki dosyada
+          # SESSİZCE SAPABİLİRDİ (ölçüldü: devops T-016 fix turu 1 raporu).
+          # Davranışta hiçbir değişiklik YOK: mesaj metinleri, hedef kaynağı,
+          # exit kodu semantiği BİREBİR aynı — yalnızca awk'ın YAŞADIĞI dosya
+          # değişti.
           needle_a='$'
           needle_b='{{'
           needle="${needle_a}${needle_b}"
@@ -557,41 +569,7 @@ jobs:
           violation=false
           while IFS= read -r file; do
             [ -z "$file" ] && continue
-            if ! awk -v needle="$needle" '
-              BEGIN { in_run = 0; run_indent = -1; bad = 0 }
-              {
-                line = $0
-                trimmed = line
-                sub(/^[ \t]*/, "", trimmed)
-                indent = length(line) - length(trimmed)
-                if (in_run) {
-                  if (trimmed == "") next
-                  if (indent <= run_indent) {
-                    in_run = 0
-                  } else {
-                    if (index(line, needle) > 0) {
-                      print NR": "line
-                      bad = 1
-                    }
-                    next
-                  }
-                }
-                if (trimmed ~ /^run:[ \t]*\|/ || trimmed ~ /^run:[ \t]*>/) {
-                  in_run = 1
-                  run_indent = indent
-                  next
-                }
-                if (trimmed ~ /^run:/) {
-                  rest = trimmed
-                  sub(/^run:[ \t]*/, "", rest)
-                  if (index(rest, needle) > 0) {
-                    print NR": "line
-                    bad = 1
-                  }
-                }
-              }
-              END { exit (bad ? 1 : 0) }
-            ' "$file"; then
+            if ! bash scripts/check-run-block-template-expression.sh "$needle" "$file"; then
               echo "::error::${file} içinde run: bloğu içinde \"$needle\" ile başlayan bir ifade bulundu (yukarıdaki satıra bakın; env: üzerinden geçirilmeli)."
               violation=true
             fi

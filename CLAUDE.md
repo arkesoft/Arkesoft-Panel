@@ -307,7 +307,15 @@ pnpm changeset               # changeset ekle
 ```
 
 **Bir versiyonu kapatmadan önce zorunlu kapı:**
-`pnpm lint && pnpm typecheck && pnpm test && pnpm test:isolation && pnpm build` — hepsi yeşil olmak zorunda.
+`pnpm lint && pnpm typecheck && pnpm test && pnpm test:isolation && pnpm build && pnpm guards` — hepsi yeşil olmak zorunda.
+
+`pnpm guards`, CI'ın `guards` işindeki **mekanik** adımların (yasak jeton taramaları, sahte
+yeşil dedektörleri, sürüm tutarlılığı, `scripts/` tip+lint, AC4 GUC taraması) yerel
+karşılığıdır — v0.0.15'te eklendi. Sebebi ölçülmüş: AC4'ün jeton taraması bu projede CI'ı
+**üç kez** kırdı (T-014, T-015 ve T-015'te tuzağı **anlatan notu yazarken**), çünkü yerel
+beş kapı o işi **hiç görmüyordu**. Uyarı ve yazılı kural denendi, ikisi de yetmedi; yerine
+mekanik yerel kapı kondu. Ağa bağımlı adımlar (actionlint indirme) ve PR bağlamı gerektiren
+adımlar bilinçli olarak kapsam dışı — ayrıntı `scripts/guards.sh` dosya başı yorumunda.
 
 Flaky test düzeltilir veya kaldırılır; `test.skip` ile kalıcı susturma yasak (ROADMAP'te takip kaydı olmadan).
 

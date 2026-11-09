@@ -1,6 +1,6 @@
 {
   "name": "@arkesoft/admin",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "description": "Tenant yönetim paneli (Vite + React)",
@@ -18,6 +18,7 @@
     "@arkesoft/trpc": "workspace:*",
     "@arkesoft/ui": "workspace:*",
     "@hookform/resolvers": "catalog:",
+    "@radix-ui/react-dialog": "catalog:",
     "@radix-ui/react-dropdown-menu": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",

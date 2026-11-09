@@ -123,7 +123,16 @@ describe('assertEveryDynamicEntryIsAccountedFor (fail-closed B)', () => {
 })
 
 describe('DELIBERATELY_LAZY_ROUTE_SRCS kardinalite (İŞ 5 — `tenant-exempt-paths.ts` emsalinin aynısı)', () => {
-  it('bugün TAM OLARAK 0 eleman — büyürse bu test KIRILIR ve görünür inceleme zorunlu olur', () => {
-    expect(DELIBERATELY_LAZY_ROUTE_SRCS.length).toBe(0)
+  // GÜNCELLEME (ROADMAP v0.0.15, T-016/S10): 0 → 1 — `/hesap/guvenlik`
+  // rotası (`_app.hesap.guvenlik.tsx`, 2FA ekranları) EKLENDİ. Bu test
+  // TAM OLARAK bu dosya başı yorumunun öngördüğü gibi KIRILDI (`expected 1
+  // to be +0`) ve GÖRÜNÜR inceleme (bu satır) zorunlu kıldı — `tenant-
+  // exempt-paths.ts`'in 12→13 emsaliyle AYNI desen. Büyümek GEREKÇELİ:
+  // `/hesap/guvenlik` hiçbir giriş noktasından statik import EDİLMİYOR
+  // (`/` ve `/sign-in` ikisi de bu rotayı hiç referans almıyor), TanStack
+  // Router'ın `autoCodeSplitting`'i bunu KENDİ chunk'ına ayırıyor — bilerek
+  // tembel (kullanıcı bu rotaya gitmeden kodu indirmiyor).
+  it('bugün TAM OLARAK 1 eleman — büyürse bu test KIRILIR ve görünür inceleme zorunlu olur', () => {
+    expect(DELIBERATELY_LAZY_ROUTE_SRCS.length).toBe(1)
   })
 })

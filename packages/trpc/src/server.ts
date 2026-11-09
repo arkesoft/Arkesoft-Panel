@@ -27,7 +27,18 @@ export type {
 export type { JobReadPort } from './ports/job-read.port.js'
 export type { MemberWritePort } from './ports/member-write.port.js'
 export type { MembershipReadPort } from './ports/membership-read.port.js'
+// ROADMAP v0.0.15, T-016 FIX turu 2/M-4 — ⚠ bu satır alt görevin ORİJİNAL
+// dosya sahipliği glob'unda ADLANDIRILMAMIŞ bir dosyaya (`server.ts` kök
+// seviyede, `{schemas,ports,routers,context}/**`'in DIŞINDA) dokunuyor;
+// zincirin DERLENEBİLMESİ için ZORUNLU (`apps/api`'nin adaptörü
+// `@arkesoft/trpc/server`'dan `SessionSecurityReadPort` tipini İTHAL ETMEK
+// ZORUNDA — her diğer port burada AYNI yoldan export edilir, bkz.
+// `TenantReadPort`/`TenantSecurityWritePort` satırları). Tek satır, mevcut
+// desenin BİREBİR tekrarı — yeni bir ihracat yüzeyi İCAT EDİLMEDİ. Raporun
+// KARARLAR bölümünde AÇIKÇA işaretlendi.
+export type { SessionSecurityReadPort } from './ports/session-security-read.port.js'
 export type { TenantReadPort } from './ports/tenant-read.port.js'
+export type { TenantSecurityWritePort } from './ports/tenant-security-write.port.js'
 export type { StorefrontTenantReadPort } from './ports/storefront-tenant-read.port.js'
 export type { TrpcErrorFactoryPort } from './ports/trpc-error-factory.port.js'
 

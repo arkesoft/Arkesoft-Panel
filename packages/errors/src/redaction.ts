@@ -55,6 +55,18 @@ export function maskEmail(value: string): string {
 // `logger.info/warn/error` çağrısına argüman olarak VERİLMİYOR); `'*.value'`
 // eklemek MEŞRU alanları da (herhangi bir nesnenin `value` adlı alanını)
 // silen fazla geniş bir joker olurdu — redaction'a değil YAPIYA güveniyoruz.
+// EKLEME (ROADMAP v0.0.15, T-016/S8, architect K-A3 — "sır/URI/yedek kod
+// hiçbir log satırında yok" kriterinin log yarısı): `totpURI` ve
+// `backupCodes` Better Auth'un `two-factor` eklentisinin `enable`/
+// `get-totp-uri` yanıtlarında KASTEN tele çıkan sırrın KENDİSİNİ taşır
+// (kullanıcı QR'ı/anahtarı görmek zorunda) — tele çıkması bilinçli, LOGLANMASI
+// değil. `*.secret` düz `secret` anahtarının (satır ~73) KAPSAMADIĞI, iç içe
+// nesnede (`{ twoFactor: { secret: ... } }` gibi) taşınan sır için eklendi.
+//
+// ⛔ `'code'` BİLEREK EKLENMEDİ (architect kararı, bağlayıcı): `AppError.code`
+// bu projenin TÜM hata ayıklama zincirinin dayandığı teşhis alanı
+// (`INVALID_CODE`, `ACCOUNT_TEMPORARILY_LOCKED` — bunlar SIR DEĞİL, teşhis).
+// `'code'` eklemek `AppError.code`'u HER YERDE redakte eder ve teşhisi öldürür.
 export const PINO_REDACT_PATHS: readonly string[] = [
   'cookie',
   'authorization',
@@ -79,4 +91,7 @@ export const PINO_REDACT_PATHS: readonly string[] = [
   'passwordHash',
   '*.sessionToken',
   '*.passwordHash',
+  'totpURI',
+  'backupCodes',
+  '*.secret',
 ] as const

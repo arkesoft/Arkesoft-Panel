@@ -29,6 +29,17 @@
 // `tenant_id` kolonu o bilgiyi zaten taşıyor, `diff`e kopyalamak ikinci bir
 // doğruluk kaynağı olurdu. ⚠ E-POSTA hiçbir şemada YOKTUR — beklemedeki adres
 // davet tablosunda yaşar (veri modelinin yazılı kararı).
+//
+// GÜNCELLEME (ROADMAP v0.0.15, T-016/S7, architect md 2 — po R-PO1): `subject`
+// alanı ÜÇÜNCÜ bir anlam KAZANDI. `tenant_security_policy_changed` eylemi bir
+// KULLANICIYI değil KİRACININ KENDİSİNİ öznelendirir (owner 2FA zorunluluğu
+// kiracı seviyesi bir ayardır, davet/rol/çıkarma gibi bir ÜYEYE ait değildir)
+// → bu eylemde `subject` = `tenantId`. Yukarıdaki paragrafın "kiracı kimliği
+// diff'e YAZILMAZ" iddiası HÂLÂ doğrudur ve KAPSAMI DIŞINDA kalır: `tenantId`
+// hâlâ `diff`e KOPYALANMAZ, yalnızca satırın ZATEN VAR OLAN `subject` kolonuna
+// (ayrı bir `diff` alanı değil) yazılır — `AuditLogEntryFor`'un taban tipinde
+// `tenantId` ZATEN ZORUNLU bir alan olduğu için bu eylemde ikinci bir alan
+// İCAT EDİLMEZ, mevcut alan `subject` eşlemesinin de hedefi olur.
 
 import type { Prisma } from '@arkesoft/db'
 import { invitableRoleSchema, tenantRoleSchema } from '@arkesoft/trpc'
@@ -56,8 +67,12 @@ export type AuditAction = Prisma.AuditLogCreateInput['action']
 /**
  * `subject` kolonuna eylem başına HANGİ kimliğin yazıldığı. Sözlük KAPALI:
  * yeni bir anlam eklemek bu birleşime değer eklemeyi gerektirir.
+ *
+ * ⚠ `'tenantId'` (ROADMAP v0.0.15, T-016/S7) ÜÇÜNCÜ üyedir —
+ * `tenant_security_policy_changed` eylemi KİRACININ KENDİSİNİ öznelendirir
+ * (yukarıdaki dosya başı yorumu, po R-PO1).
  */
-type AuditSubjectFieldName = 'invitationId' | 'userId'
+type AuditSubjectFieldName = 'invitationId' | 'userId' | 'tenantId'
 
 /**
  * A-DB1'in zorlayıcısı. ⚠ `satisfies Record<AuditAction, …>` TAM olduğu için
@@ -82,6 +97,7 @@ export const AUDIT_SUBJECT_FIELD_BY_ACTION = {
   member_invitation_accepted: 'userId',
   member_role_changed: 'userId',
   member_removed: 'userId',
+  tenant_security_policy_changed: 'tenantId',
 } as const satisfies Record<AuditAction, AuditSubjectFieldName>
 
 /**
@@ -104,6 +120,14 @@ export const AUDIT_SUBJECT_FIELD_BY_ACTION = {
  *     satırıdır (aktörün `owner`→`admin` satırı + hedefin `…`→`owner` satırı),
  *     ayrı bir eylem değeri YOK.
  *   · `member_removed` → yalnızca `role` (çıkarılan üyenin son rolü).
+ *   · `tenant_security_policy_changed` (ROADMAP v0.0.15, T-016/S7) → `from`/`to`
+ *     — `member_role_changed`'in BİREBİR aynı şekli (`AuditDiffValue`nun düz
+ *     dize→dize sözleşmesi korunur). Değer kümesi `requireTwoFactorForOwner`
+ *     booleanının dize karşılığıdır (`'true'`/`'false'`); alan adı
+ *     `requireTwoFactorForOwner` DEĞİL yalnızca `from`/`to`'dur — eylemin
+ *     KENDİSİ hangi ayarın değiştiğini zaten söylüyor (tıpkı
+ *     `member_role_changed`'in hangi alanın değiştiğini `role` kelimesiyle
+ *     TEKRARLAMAMASI gibi).
  */
 export const AUDIT_DIFF_SCHEMA_BY_ACTION = {
   member_invited: z.object({ role: invitableRoleSchema }),
@@ -113,6 +137,10 @@ export const AUDIT_DIFF_SCHEMA_BY_ACTION = {
   }),
   member_role_changed: z.object({ from: tenantRoleSchema, to: tenantRoleSchema }),
   member_removed: z.object({ role: tenantRoleSchema }),
+  tenant_security_policy_changed: z.object({
+    from: z.enum(['true', 'false']),
+    to: z.enum(['true', 'false']),
+  }),
 } as const satisfies Record<AuditAction, z.ZodType<AuditDiffValue>>
 
 /**
@@ -141,8 +169,9 @@ type AuditLogEntryFor<TAction extends AuditAction> = {
 } & Readonly<Record<(typeof AUDIT_SUBJECT_FIELD_BY_ACTION)[TAction], string>>
 
 /**
- * Yazma kapısının kabul ettiği TEK giriş tipi — dört eylemin ayrımlı
- * birleşimi. Birleşim eylem sözlüğü üzerinde mapped tiple kurulur, yani
+ * Yazma kapısının kabul ettiği TEK giriş tipi — eylem sözlüğünün (bugün beş
+ * üye) ayrımlı birleşimi. Birleşim eylem sözlüğü üzerinde mapped tiple
+ * kurulur, yani
  * sözlüğe değer eklemek birleşime de OTOMATİK yansır (ve o değerin şeması ile
  * `subject` anlamı yazılmadığı sürece derleme kırılır).
  */
@@ -165,6 +194,8 @@ export function resolveAuditSubject(entry: AuditLogEntry): string {
     case 'member_role_changed':
     case 'member_removed':
       return entry.userId
+    case 'tenant_security_policy_changed':
+      return entry.tenantId
     default:
       return assertNever(entry, 'audit-diff.schemas.ts: AuditLogEntry.action')
   }

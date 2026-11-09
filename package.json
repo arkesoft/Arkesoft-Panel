@@ -1,6 +1,6 @@
 {
   "name": "arkesoft",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "description": "Arkesoft — çok kiracılı SaaS e-ticaret ve kurumsal web sitesi platformu",
@@ -31,14 +31,15 @@
     "db:rollback-roles": "pnpm --filter @arkesoft/db run rollback-roles",
     "db:rollback-auth-role": "pnpm --filter @arkesoft/db run rollback-auth-role",
     "db:generate": "pnpm --filter @arkesoft/db run generate",
-    "db:migrate": "pnpm --filter @arkesoft/db run migrate",
-    "db:deploy": "pnpm --filter @arkesoft/db run deploy",
-    "db:push": "pnpm --filter @arkesoft/db run push",
+    "db:migrate": "pnpm --filter @arkesoft/db run migrate && pnpm db:bootstrap",
+    "db:deploy": "pnpm --filter @arkesoft/db run deploy && pnpm db:bootstrap",
+    "db:push": "pnpm --filter @arkesoft/db run push && pnpm db:bootstrap",
     "db:seed": "pnpm --filter @arkesoft/db run seed",
     "db:studio": "pnpm --filter @arkesoft/db run studio",
-    "db:reset": "pnpm --filter @arkesoft/db run reset",
+    "db:reset": "pnpm --filter @arkesoft/db run reset && pnpm db:bootstrap",
     "db:verify": "pnpm --filter @arkesoft/db run verify",
-    "release:version": "node scripts/sync-platform-version.ts --collect && changeset version && node scripts/sync-platform-version.ts --apply"
+    "release:version": "node scripts/sync-platform-version.ts --collect && changeset version && node scripts/sync-platform-version.ts --apply",
+    "guards": "bash scripts/guards.sh"
   },
   "devDependencies": {
     "@arkesoft/config": "workspace:*",

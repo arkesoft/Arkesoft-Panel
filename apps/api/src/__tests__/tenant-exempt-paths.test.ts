@@ -25,6 +25,11 @@
 // FARKLI — v0.0.8 o kümeye bir satır eklemişti). İki eksenin birlikte
 // oynamadığının mekanik kanıtı `auth-path-sets.test.ts` ve
 // `auth-exempt-paths.test.ts`'tedir.
+//
+// GÜNCELLEME (ROADMAP v0.0.15, T-016/S5, po'nun ölçümü + bu alt görevin
+// KENDİ doğrulaması): 14 → 20, ALTINCI grup — `tenant-exempt-paths.ts`
+// dosya başı yorumunda gerekçeli altı two-factor yolu. Kardinalite
+// assertion'ı yine KORUNDU (`.size`/küme eşitliği ELLE güncellendi).
 
 import { describe, expect, it } from 'vitest'
 
@@ -45,14 +50,20 @@ const EXPECTED_EXEMPT_PATHS = [
   '/auth/sessions/revoke-all',
   '/trpc/session.me',
   '/trpc/member.acceptInvitation',
+  '/auth/two-factor/enable',
+  '/auth/two-factor/disable',
+  '/auth/two-factor/get-totp-uri',
+  '/auth/two-factor/generate-backup-codes',
+  '/auth/two-factor/verify-totp',
+  '/auth/two-factor/verify-backup-code',
 ] as const
 
 describe('TENANT_EXEMPT_PATHS', () => {
-  it('tam olarak on dört eleman taşır', () => {
-    expect(TENANT_EXEMPT_PATHS.size).toBe(14)
+  it('tam olarak yirmi eleman taşır', () => {
+    expect(TENANT_EXEMPT_PATHS.size).toBe(20)
   })
 
-  it('küme TAM OLARAK beklenen on dört elemandır', () => {
+  it('küme TAM OLARAK beklenen yirmi elemandır', () => {
     expect(new Set(TENANT_EXEMPT_PATHS)).toEqual(new Set(EXPECTED_EXEMPT_PATHS))
   })
 

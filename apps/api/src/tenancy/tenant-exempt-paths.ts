@@ -15,9 +15,10 @@
 // sonucuna GÜVENİR (bkz. `tenant.guard.ts` dosya başı yorumu — tek kaynaktan
 // okunan tek karar, iki yerde tekrarlanan path-eşleştirme mantığı YOK).
 //
-// Birim testi (`tenant-exempt-paths.test.ts`) kümenin TAM OLARAK bu on dört
-// elemandan oluştuğunu assert eder — listeyi büyütmek bu testi DEĞİŞTİRMEYİ,
-// yani kod inceleme görünürlüğünü ZORUNLU kılar (R4 telafisi #2).
+// Birim testi (`tenant-exempt-paths.test.ts`) kümenin TAM OLARAK bu yirmi
+// elemandan oluştuğunu assert eder (v0.0.15'ten önce on dört — bkz. aşağıdaki
+// GÜNCELLEME paragrafları) — listeyi büyütmek bu testi DEĞİŞTİRMEYİ, yani kod
+// inceleme görünürlüğünü ZORUNLU kılar (R4 telafisi #2).
 // ⚠ O testin kardinalite assertion'ı `toContain`'e DÜŞÜRÜLEMEZ ve `.size`
 // kontrolü KALDIRILAMAZ: inceleme görünürlüğü TAM OLARAK bu iki assert'ten
 // geliyor. Küme eşitliği ELLE güncellenir.
@@ -109,10 +110,28 @@
 // kanıtlamaz; üyelik hangi kullanıcıya yazılacağı oturumdan okunur.
 // ⚠ Kümeye bir sonraki ekleme BU GEREKÇE SEVİYESİNİ karşılamak zorundadır;
 // yolu eklemek bir satır, NEDEN eklendiğini yazmak işin kendisidir.
+//
+// GÜNCELLEME (ROADMAP v0.0.15, T-016/S5, po'nun ölçümü + BU alt görevin
+// KENDİ doğrulaması): 14 → 20, ALTI yeni eleman — `auth-delegated-paths.ts`'in
+// v0.0.15 GÜNCELLEME paragrafında ÖLÇÜLEN altı two-factor yolunun TAMAMI
+// (`enable`/`disable`/`get-totp-uri`/`generate-backup-codes`/`verify-totp`/
+// `verify-backup-code`). Bu altısı, (1) grubundaki yedi delege yolla AYNI
+// gerekçeyle BURADADIR: panel host'u (`panel.arkesoft.{APP_BASE_DOMAIN}`)
+// REZERVE bir alt alan addır, `resolveHost` onu ÇÖZÜMSÜZ bırakır — 2FA
+// kurulum/doğrulama akışının TAMAMI (parola girişi gibi) panel yüzeyinde
+// geçer, tenant kavramı bu altı uç için de HİÇ geçerli değildir. Muafiyet
+// KİMLİK muafiyeti DEĞİLDİR (yukarıdaki ⚠ notuyla AYNI ilke): BU kümenin
+// büyüklüğü BAĞIMSIZ ÖLÇÜLDÜ, `AUTH_EXEMPT_PATHS`'in (12, kanonik kaynağı
+// `auth/auth-exempt-paths.ts`) BÜYÜKLÜĞÜ buraya KOPYALANMADI — iki (sadece)
+// alt kümesi (`verify-totp`/`verify-backup-code`) ayrıca kimlikten de
+// muaftır, diğer dördü (`enable`/`disable`/`get-totp-uri`/`generate-backup-
+// codes`) KİMLİKTEN muaf DEĞİLDİR (`AUTH_DELEGATED_IDENTITY_REQUIRED_
+// PATHS`) ama KİRACIDAN muaftır — "kiracı gerekmez" ile "kimlik gerekmez"
+// İKİ AYRI karar (dosyanın en üstündeki K5/K-A4 ilkesi) burada da geçerli.
 
 import { normalizeRequestPath } from '../http/normalize-request-path.js'
 
-/** Tenant çözümü gerektirmeyen, tam eşleşmeli on dört uç. */
+/** Tenant çözümü gerektirmeyen, tam eşleşmeli yirmi uç. */
 export const TENANT_EXEMPT_PATHS: ReadonlySet<string> = new Set([
   '/health',
   '/health/ready',
@@ -130,6 +149,14 @@ export const TENANT_EXEMPT_PATHS: ReadonlySet<string> = new Set([
   // (5) ROADMAP v0.0.14 — YETENEK tabanlı kiracı bağlamı; dört koşul dosya
   // başı yorumunda SAYILI. Kümenin TEK yazma ucu.
   '/trpc/member.acceptInvitation',
+  // (6) ROADMAP v0.0.15, T-016/S5 — altı two-factor yolu, dosya başı
+  // GÜNCELLEME paragrafında gerekçeli.
+  '/auth/two-factor/enable',
+  '/auth/two-factor/disable',
+  '/auth/two-factor/get-totp-uri',
+  '/auth/two-factor/generate-backup-codes',
+  '/auth/two-factor/verify-totp',
+  '/auth/two-factor/verify-backup-code',
 ])
 
 /**
