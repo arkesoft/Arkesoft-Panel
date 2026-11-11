@@ -175,11 +175,22 @@ model User {
 /// `session`/`account`/`verification` PostgreSQL'de AYRILMIŞ KELİME DEĞİL →
 /// `app_` öneki (R3) GEREKMEZ.
 ///
-/// `ipAddress`/`userAgent` TANIMLANIR ama DOLDURULMAZ
-/// (`advanced.ipAddress.disableIpTracking: true`, backend/S5 kapsamı) — K6
-/// "zenginleştirilmiş meta veri yok" + KVKK (IP kişisel veri, saklama
-/// politikası olmadan tutulmaz). Kolonun BUGÜN şemada olması v0.0.15'in
-/// yıkıcı migration'a ihtiyaç duymamasını sağlayan bilinçli expand adımıdır.
+/// `ipAddress`: ROADMAP v0.0.15.1 (T-017/S6) ÖNCESİ "TANIMLANIR ama
+/// DOLDURULMAZ" idi (`advanced.ipAddress.disableIpTracking: true` →
+/// Better Auth'un KENDİ `internal-adapter.mjs`'i HER satıra `''` yazıyordu,
+/// ÖLÇÜLDÜ: 2026-11-09, 33336/33336 satır). S6'DAN İTİBAREN
+/// `auth-instance.ts`'in `databaseHooks.session.create.before`'u bu alanı
+/// `RequestContext.client.ip` İLE EZER (kullanıcı kararı 2026-11-09: IP TAM
+/// saklanır, SAHİBİNE tam gösterilir, ASLA loglanmaz) — `disableIpTracking:
+/// true` HÂLÂ AYARLI (Better Auth'un KENDİ mekanizmasına GÜVENİLMEMESİ
+/// kararı duruyor, K6/KVKK), ama bizim hook'umuz ONUN ürettiği `''`'yi HER
+/// `session.create` çağrısında EZER; `client.ip === null` İSE `null` yazılır
+/// (`resolveSessionIpAddressForCreateHook`'un gerekçesi — kolon BU YÜZDEN
+/// NULLABLE). `userAgent`: `disableIpTracking`'den HER ZAMAN BAĞIMSIZDI
+/// (ÖLÇÜLDÜ, `packages/db/src/__tests__/session-metadata-columns.test.ts`,
+/// T-017/S3) — header mevcutken GERÇEK değer yazılıyordu/yazılıyor; bu alt
+/// görev (S6) BU ALANA DOKUNMADI. Kolonun BUGÜN şemada olması v0.0.15'in
+/// yıkıcı migration'a ihtiyaç duymamasını sağlayan bilinçli expand adımıydı.
 ///
 /// MADDE 2 — R-1 KARARI (ADR-0008 taslağı): `token` oturumun TAŞIYICI kimlik
 /// bilgisidir — RLS'le korunamaz (asıldan ÖNCE okunur). Koruma derleme

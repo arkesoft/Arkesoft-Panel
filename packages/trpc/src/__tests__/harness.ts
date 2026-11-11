@@ -39,6 +39,7 @@ import type {
 import type { JobReadPort } from '../ports/job-read.port.js'
 import type { MemberWritePort } from '../ports/member-write.port.js'
 import type { MembershipReadPort } from '../ports/membership-read.port.js'
+import type { SessionListReadPort } from '../ports/session-list-read.port.js'
 import type { SessionSecurityReadPort } from '../ports/session-security-read.port.js'
 import type { TenantReadPort } from '../ports/tenant-read.port.js'
 import type { TenantSecurityWritePort } from '../ports/tenant-security-write.port.js'
@@ -49,6 +50,7 @@ import type { TenantSummary } from '../schemas/tenant-summary.schema.js'
 import type { TenantSecurityPolicyUpdateInput } from '../schemas/tenant-security.schema.js'
 import type { StorefrontTenant } from '../schemas/storefront-tenant.schema.js'
 import type { JobListPage, JobSummary } from '../schemas/job-summary.schema.js'
+import type { ActiveSessionWire } from '../schemas/session-summary.schema.js'
 import type {
   MemberAcceptInvitationInput,
   MemberInvitation,
@@ -213,6 +215,22 @@ export function createFakeSessionSecurityReadPort(
   return {
     isTwoFactorEnabled() {
       return Promise.resolve(twoFactorEnabled)
+    },
+  }
+}
+
+/**
+ * `SessionListReadPort`'un sahte uygulaması (ROADMAP v0.0.15.1, T-017/S4).
+ * Port TOTAL'dır ve FIRLATMAZ — bu sahte de aynı: hiçbir girdi için reddetmez,
+ * verilen diziyi (varsayılan BOŞ dizi — "oturum yok" MEŞRU bir sonuçtur,
+ * `createFakeJobReadPort`'un TERSİNE burada hata YOKTUR) sabitçe döner.
+ */
+export function createFakeSessionListReadPort(
+  sessions: readonly ActiveSessionWire[] = [],
+): SessionListReadPort {
+  return {
+    listOwnSessions() {
+      return Promise.resolve(sessions)
     },
   }
 }
@@ -621,6 +639,7 @@ export interface CreateHarnessOptions {
   readonly tenantRead?: TenantReadPort
   readonly tenantSecurityWrite?: TenantSecurityWritePort
   readonly sessionSecurityRead?: SessionSecurityReadPort
+  readonly sessionListRead?: SessionListReadPort
   readonly storefrontTenantRead?: StorefrontTenantReadPort
   // ⚠ İŞ OKUMA PORTU İÇİN PORT-DÜZEYİ OVERRIDE BİLEREK YOK (ROADMAP v0.0.11,
   // T-013/S8): bugün hiçbir test onu geçirmiyor ve KULLANILMAYAN bir override
@@ -730,6 +749,8 @@ export function createHarness(options: CreateHarnessOptions = {}): Harness {
       memberWrite: memberWrite.port,
       // ROADMAP v0.0.15, T-016 FIX turu 2/M-4 — ZORUNLU üye (`tenantSecurityWrite`'ın emsali).
       sessionSecurityRead: options.sessionSecurityRead ?? createFakeSessionSecurityReadPort(),
+      // ROADMAP v0.0.15.1, T-017/S4 — ZORUNLU üye (AYNI kural).
+      sessionListRead: options.sessionListRead ?? createFakeSessionListReadPort(),
     },
     errors: options.errors ?? createFakeErrorFactoryPort(),
   }

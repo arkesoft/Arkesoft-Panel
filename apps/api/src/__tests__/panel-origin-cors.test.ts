@@ -117,12 +117,19 @@ describe('panel orijin/CORS — tek orijin topolojisi, CORS açılmıyor (ROADMA
   })
 
   it('3) POST /auth/sessions/revoke-all + Origin: panel (güvenilir) → 200', async () => {
-    const { cookieHeader } = await createAuthenticatedSession(httpServer())
+    const { cookieHeader, password } = await createAuthenticatedSession(httpServer())
 
+    // ROADMAP v0.0.15.1, T-017/S8a EKLEMESİ — `revoke-all` artık ZORUNLU
+    // step-up taşıyor (ADR-0019 §Karar 4); bu testin ASIL iddiası (CORS
+    // başlığı YOK, güvenilir Origin → guard GEÇER) `password` EKLENMEDEN
+    // doğrulanamaz hâle geldi (parolasız her çağrı 400 `INVALID_PASSWORD`
+    // döner — guard'a ULAŞTIĞININ KANITI, ama 200 bekleyen bu test için
+    // YETERSİZ).
     const response = await request(httpServer())
       .post('/auth/sessions/revoke-all')
       .set('Cookie', cookieHeader)
       .set('Origin', TRUSTED_ORIGIN)
+      .send({ password })
 
     expect(response.status).toBe(200)
 

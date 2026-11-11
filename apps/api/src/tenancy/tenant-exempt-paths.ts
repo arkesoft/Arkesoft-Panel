@@ -15,7 +15,7 @@
 // sonucuna GÜVENİR (bkz. `tenant.guard.ts` dosya başı yorumu — tek kaynaktan
 // okunan tek karar, iki yerde tekrarlanan path-eşleştirme mantığı YOK).
 //
-// Birim testi (`tenant-exempt-paths.test.ts`) kümenin TAM OLARAK bu yirmi
+// Birim testi (`tenant-exempt-paths.test.ts`) kümenin TAM OLARAK bu yirmi bir
 // elemandan oluştuğunu assert eder (v0.0.15'ten önce on dört — bkz. aşağıdaki
 // GÜNCELLEME paragrafları) — listeyi büyütmek bu testi DEĞİŞTİRMEYİ, yani kod
 // inceleme görünürlüğünü ZORUNLU kılar (R4 telafisi #2).
@@ -128,10 +128,23 @@
 // codes`) KİMLİKTEN muaf DEĞİLDİR (`AUTH_DELEGATED_IDENTITY_REQUIRED_
 // PATHS`) ama KİRACIDAN muaftır — "kiracı gerekmez" ile "kimlik gerekmez"
 // İKİ AYRI karar (dosyanın en üstündeki K5/K-A4 ilkesi) burada da geçerli.
+//
+// GÜNCELLEME (ROADMAP v0.0.15.1, T-017/S9, ADR-0019 §9 + `/trpc/session.me`
+// emsali): 20 → 21, YEDİNCİ grup eklendi:
+//   (7) 1 panel yüzeyi ucu (`/trpc/session.list`) — `/trpc/session.me`'nin
+//       (grup 4) BİREBİR GEREKÇESİ: panel host'u
+//       (`panel.arkesoft.{APP_BASE_DOMAIN}`) REZERVE bir alt alan addır,
+//       `resolveHost` onu `reserved_subdomain` ile ÇÖZÜMSÜZ bırakır — tenant
+//       kavramı bu uç için HİÇ geçerli değil (`Session`'da `tenant_id`
+//       kolonu YOK, po doğruladı). Muafiyet KİMLİK muafiyeti DEĞİLDİR
+//       (`AUTH_EXEMPT_PATHS`'e HİÇBİR satır EKLENMEDİ, 12'de kalır) —
+//       `session.list` `protectedProcedure`dür (oturumsuz 401) ve dönüş tipi
+//       (`ActiveSessionWire[]`, yalnızca ÇAĞIRANIN KENDİ oturumları) hiçbir
+//       `tenantId`/`slug`/`status` alanı TAŞIMAZ.
 
 import { normalizeRequestPath } from '../http/normalize-request-path.js'
 
-/** Tenant çözümü gerektirmeyen, tam eşleşmeli yirmi uç. */
+/** Tenant çözümü gerektirmeyen, tam eşleşmeli yirmi bir uç. */
 export const TENANT_EXEMPT_PATHS: ReadonlySet<string> = new Set([
   '/health',
   '/health/ready',
@@ -157,6 +170,9 @@ export const TENANT_EXEMPT_PATHS: ReadonlySet<string> = new Set([
   '/auth/two-factor/generate-backup-codes',
   '/auth/two-factor/verify-totp',
   '/auth/two-factor/verify-backup-code',
+  // (7) ROADMAP v0.0.15.1, T-017/S9 — panel yüzeyi ucu, dosya başı
+  // GÜNCELLEME paragrafında gerekçeli (`/trpc/session.me`'nin emsali).
+  '/trpc/session.list',
 ])
 
 /**

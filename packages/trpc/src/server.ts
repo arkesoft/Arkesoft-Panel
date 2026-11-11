@@ -37,6 +37,10 @@ export type { MembershipReadPort } from './ports/membership-read.port.js'
 // desenin BİREBİR tekrarı — yeni bir ihracat yüzeyi İCAT EDİLMEDİ. Raporun
 // KARARLAR bölümünde AÇIKÇA işaretlendi.
 export type { SessionSecurityReadPort } from './ports/session-security-read.port.js'
+// ROADMAP v0.0.15.1, T-017/S4 — her port AYNI yoldan export edilir (yukarıdaki
+// `SessionSecurityReadPort` satırının BİREBİR tekrarı). `apps/api`'nin
+// adaptörü (S9) bu tipi `@arkesoft/trpc/server`'dan ithal edecek.
+export type { SessionListReadPort } from './ports/session-list-read.port.js'
 export type { TenantReadPort } from './ports/tenant-read.port.js'
 export type { TenantSecurityWritePort } from './ports/tenant-security-write.port.js'
 export type { StorefrontTenantReadPort } from './ports/storefront-tenant-read.port.js'

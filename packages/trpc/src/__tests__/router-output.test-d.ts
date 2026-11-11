@@ -29,6 +29,7 @@ import type { TenantSummary } from '../schemas/tenant-summary.schema.js'
 import type { StorefrontTenant } from '../schemas/storefront-tenant.schema.js'
 import type { JobListPage, JobSummary } from '../schemas/job-summary.schema.js'
 import type { SessionIdentity } from '../schemas/session-identity.schema.js'
+import type { ActiveSessionWire } from '../schemas/session-summary.schema.js'
 import type {
   MemberInvitation,
   MemberInvitationAccepted,
@@ -82,6 +83,40 @@ test('session.me çıktısı literal tel şekliyle TAM eşleşir (totoloji karş
 test('session.me çıktısı export edilen SessionIdentity tipiyle de eşleşir (export belgesi)', () => {
   // Export'un KENDİ belgesi.
   expectTypeOf<RouterOutputs['session']['me']>().toEqualTypeOf<SessionIdentity>()
+})
+
+test('session.list çıktısı literal tel şekliyle TAM eşleşir (totoloji karşıtı — şemadan TÜRETİLMEDİ, ROADMAP v0.0.15.1, T-017/S4)', () => {
+  // POZİTİF/JENERİK PİN — beklenen şekil LİTERAL. Zaman alanları `string`
+  // (ISO-8601), `Date` DEĞİL (`trpc.ts`'in "transformer YOK" değişmezi).
+  expectTypeOf<RouterOutputs['session']['list']>().toEqualTypeOf<
+    {
+      id: string
+      isCurrent: boolean
+      browserFamily:
+        'chrome' | 'firefox' | 'safari' | 'edge' | 'opera' | 'samsung' | 'other' | 'unknown'
+      osFamily: 'windows' | 'macos' | 'linux' | 'ios' | 'android' | 'other' | 'unknown'
+      ipAddress: string | null
+      lastSeenAt: string
+      createdAt: string
+      expiresAt: string
+    }[]
+  >()
+})
+
+test('session.list çıktısı export edilen ActiveSessionWire tipiyle de eşleşir (export belgesi)', () => {
+  expectTypeOf<RouterOutputs['session']['list']>().toEqualTypeOf<ActiveSessionWire[]>()
+})
+
+test('session.list çıktısı token/password/hash/secret TAŞIMAZ (NEGATİF PİN, sızdırmazlık YAPISAL — architect "TASARIM" bölümü)', () => {
+  // ⚠ Bu dosya yasağın DENETLEYİCİSİ, öznesi değil (AGENT_BASELINE.md §5) →
+  // jetonlar burada ZORUNLU. `job.get`'in negatif pininin AYNI mekanizması:
+  // alan BAŞINA bağımsız satır.
+  type SessionListItem = RouterOutputs['session']['list'][number]
+
+  expectTypeOf<SessionListItem>().not.toHaveProperty('token')
+  expectTypeOf<SessionListItem>().not.toHaveProperty('password')
+  expectTypeOf<SessionListItem>().not.toHaveProperty('hash')
+  expectTypeOf<SessionListItem>().not.toHaveProperty('secret')
 })
 
 test('storefront.currentTenant çıktısı literal tel şekliyle TAM eşleşir (totoloji karşıtı — şemadan TÜRETİLMEDİ, ROADMAP v0.0.10, T-012/S4)', () => {

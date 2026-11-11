@@ -31,6 +31,7 @@ import type {
   JobReadPort,
   MemberWritePort,
   MembershipReadPort,
+  SessionListReadPort,
   SessionSecurityReadPort,
   StorefrontTenantReadPort,
   TenantReadPort,
@@ -197,6 +198,76 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
     expect(Object.keys(result).sort()).toEqual(['sessionId', 'twoFactorEnabled', 'userId'])
   })
 
+  // ROADMAP v0.0.15.1, T-017/S9 — `session.list` canlı HTTP turu. `session.me`'nin
+  // (grup 4, `tenant-exempt-paths.ts`) AYNI gerekçesiyle KİRACI MUAFTIR —
+  // bu yüzden `x-arkesoft-tenant` BAŞLIĞI GÖNDERİLMEDEN (panel host'u taklidi,
+  // `session-me-two-factor-enabled.test.ts`'in AYNI deseni) çağrılır.
+  it('/trpc/session.list — panel host (kiracı başlığı YOK) → 200, kendi oturumunu döner', async () => {
+    const client = createTrpcClient({
+      url: `${baseUrl}/trpc`,
+      headers: () => ({ cookie: cookieHeader }),
+    })
+
+    const result = await client.session.list.query()
+
+    expect(Array.isArray(result)).toBe(true)
+    expect(result.length).toBeGreaterThanOrEqual(1)
+    const current = result.find((row) => row.isCurrent)
+    expect(current).toBeDefined()
+  })
+
+  it('/trpc/session.list — oturumsuz çağrı 401 döner (kimlik ZORUNLU)', async () => {
+    const response = await request(httpServer()).get('/trpc/session.list')
+
+    expect(response.status).toBe(401)
+  })
+
+  // Q-2 (qa gate, tur 1; security gate tur1 F4) — ADR-0019 §9 "kullanıcı-çapraz
+  // erişim testi zorunlu" diyor; REST taşımasında VAR (`auth-sessions.test.ts`'in
+  // AC1'i — iki oturum, iki satır, TAM BİR isCurrent), ama tRPC taşımasında
+  // (`/trpc/session.list`) hiçbir testte İKİ KULLANICI birden GEÇMEMİŞTİ
+  // (yukarıdaki "panel host" testi TEK kullanıcılı). Sahiplik mantığı AYNI
+  // fonksiyonda (`SessionsService.listOwnSessions` → `where: { userId }`) —
+  // izolasyon KAPALI, eksik olan TAŞIMA SEVİYESİ pinidir (security F4'ün
+  // gerekçesiyle BİREBİR). Bu test o taşıma seviyesi pinini kapatır: GERÇEK
+  // `createTrpcClient()` + GERÇEK HTTP + İKİ bağımsız kullanıcı.
+  it(
+    "/trpc/session.list — İKİ KULLANICI: A, B'nin oturumunu GÖRMEZ VE B, A'nınkini " +
+      'GÖRMEZ (taşıma seviyesi kullanıcı-çapraz pini, ADR-0019 §9)',
+    async () => {
+      const userA = await createAuthenticatedSession(httpServer())
+      const userB = await createAuthenticatedSession(httpServer())
+
+      const clientA = createTrpcClient({
+        url: `${baseUrl}/trpc`,
+        headers: () => ({ cookie: userA.cookieHeader }),
+      })
+      const clientB = createTrpcClient({
+        url: `${baseUrl}/trpc`,
+        headers: () => ({ cookie: userB.cookieHeader }),
+      })
+
+      const resultA = await clientA.session.list.query()
+      const resultB = await clientB.session.list.query()
+
+      expect(resultA.length).toBeGreaterThanOrEqual(1)
+      expect(resultB.length).toBeGreaterThanOrEqual(1)
+
+      const sessionIdsA = resultA.map((row) => row.id)
+      const sessionIdsB = resultB.map((row) => row.id)
+
+      // ÇAPRAZ SIZINTI YOK — A'nın listesi B'nin HİÇBİR satırını (VE tersi)
+      // İÇERMEZ. Kesişim BOŞ KÜME olmalı.
+      expect(sessionIdsA.some((id) => sessionIdsB.includes(id))).toBe(false)
+      expect(sessionIdsB.some((id) => sessionIdsA.includes(id))).toBe(false)
+
+      // Her kullanıcı KENDİ listesinde TAM BİR isCurrent satır görür — başkasının
+      // oturumu "isCurrent" OLARAK da SIZMAZ (yanlış-pozitif sahiplik yok).
+      expect(resultA.filter((row) => row.isCurrent).length).toBe(1)
+      expect(resultB.filter((row) => row.isCurrent).length).toBe(1)
+    },
+  )
+
   it("AC9(b)+AC10 — yalnızca test dosyasında tanımlı AppError alt sınıfı HTTP probe'undan VE tRPC yolundan AYNI gövdeyi üretir", async () => {
     const requestId = uniqueRequestId('ac9b-ac10')
 
@@ -263,6 +334,12 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
     const probeSessionSecurityRead: SessionSecurityReadPort = {
       isTwoFactorEnabled: () => Promise.reject(new ProbeDetailsError()),
     }
+    // ROADMAP v0.0.15.1, T-017/S9 — `TrpcPorts`'un ZORUNLU yeni üyesi. Bu
+    // probe `session.list`'i ÇAĞIRMAZ (hedef `tenant.current`); stub
+    // yalnızca sözleşmeyi doldurmak için var, hiçbir assert buna dayanmaz.
+    const probeSessionListRead: SessionListReadPort = {
+      listOwnSessions: () => Promise.reject(new ProbeDetailsError()),
+    }
     const context: TrpcContext = {
       requestId,
       logger: { info: () => undefined, warn: () => undefined, error: () => undefined },
@@ -276,6 +353,7 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
         membershipRead: probeMembershipRead,
         memberWrite: probeMemberWrite,
         sessionSecurityRead: probeSessionSecurityRead,
+        sessionListRead: probeSessionListRead,
       },
       errors: {
         unauthenticated: () => new UnauthenticatedError(),

@@ -65,12 +65,21 @@ export type TenantResolution =
  * İsteğin İSTEMCİ kimlikleri (ROADMAP v0.0.14, T-014/S4, architect K-A2 ·
  * po R-PO2).
  *
- * ⚠ VARLIK SEBEBİ TEK: denetim kaydının `ip`/`user_agent` kolonları. Bu iki
- * alan kişisel veri sınıfındadır AMA denetim kaydının VARLIK SEBEBİDİR —
- * CLAUDE.md §4'ün "asla loglanmaz" listesinde YOKTUR: **SAKLANIR, LOGLANMAZ**.
- * Bu tipin hiçbir tüketicisi onları bir log çağrısına geçirmez; tek tüketici
- * denetim kaydı yazma kapısıdır (`audit/audit-log.writer.ts`, logger'ı HİÇ
- * import etmez).
+ * ⚠ VARLIK SEBEBİ: denetim kaydının `ip`/`user_agent` kolonları VE (ROADMAP
+ * v0.0.15.1, T-017/S6 EKLEMESİ) Better Auth'un `session.ipAddress` kolonu
+ * (`auth-instance.ts`'in `databaseHooks.session.create.before`'u —
+ * kullanıcı kararı 2026-11-09: IP TAM saklanır, SAHİBİNE tam gösterilir,
+ * ASLA loglanmaz). Bu iki alan kişisel veri sınıfındadır AMA İKİSİNİN DE
+ * VARLIK SEBEBİ BUDUR — CLAUDE.md §4'ün "asla loglanmaz" listesinde
+ * YOKTUR: **SAKLANIR, LOGLANMAZ**.
+ *
+ * ⚠ BU ALANIN ARTIK İKİ TÜKETİCİSİ VAR — ÖNCEKİ "tek tüketici" iddiası
+ * BAYATLADI (S6'nın EKLEDİĞİ İKİNCİ tüketici): (1) denetim kaydı yazma
+ * kapısı (`audit/audit-log.writer.ts`, logger'ı HİÇ import etmez) ve (2)
+ * `auth-instance.ts`'in `session.create.before` kancası (logger'ı YİNE HİÇ
+ * import etmez — ALS'den okur, Better Auth'un KENDİ veritabanı yazımına
+ * `ipAddress` ALANI olarak geçirir, bir LOG ÇAĞRISINA DEĞİL). İKİSİ de bu
+ * alanı bir log çağrısına GEÇİRMEZ.
  *
  * ⚠ `ip` NEDEN NULLABLE: oran sınırı yolu HER ZAMAN tanımlı bir anahtar
  * ister ve bu yüzden IP çözümü bir sentinel'e düşer

@@ -11,6 +11,17 @@
 // `focus()` ÇAĞIRMAZ, Radix'in varsayılanını EZMEZ (`UserMenu.tsx`'teki
 // AYNI disiplin).
 //
+// wcag FIX turu 1/W-2 (bağlayıcı, high'la AYNI turda ÖLÇÜLDÜ, high DEĞİL —
+// `AGENT_BASELINE.md`'nin "düzeltme turu" kuralı bir `medium`'u da AÇAR):
+// × kapatma ikonu `aria-label={cancelLabel}` TAŞIYORDU — gerçek "Vazgeç"
+// butonuyla AYNI erişilebilir adı paylaşıyordu (WCAG 2.5.3 Label in Name /
+// 4.1.2, axe BUNU YAKALAMADI — elle inceleme buldu). Yeni, ZORUNLU
+// `closeLabel` prop'u EKLENDİ (opsiyonel + sabit metin fallback'i DEĞİL —
+// CLAUDE.md §10.17 kodda sabit kullanıcı metni YASAKLAR); bu bileşenin İKİ
+// JSX tüketicisi de (`ActiveSessionsCard.tsx`/`SessionStepUpDialog`,
+// `TwoFactorStatusCard.tsx`/`TwoFactorManagePasswordDialog`) GÜNCELLENDİ —
+// `MESSAGES.common.close` ("Kapat") geçiyorlar.
+//
 // wcag FIX turu 4/M-W1 (bağlayıcı, 2026-11-09, UI PLANINDAN SAPMA — bkz.
 // handoff): bu bileşen ESKİDEN genel bir `errorMessage` prop'u alıp kendi
 // içinde alandan KOPUK bir `<p role="alert">` render ediyordu (docs/ui/
@@ -20,10 +31,14 @@
 // (çağıranın sorumluluğu, bkz. `TwoFactorStatusCard.tsx`) gider — docs/
 // ui:213'ün genel "Field-level hata = Input'un error prop'u, başka bir şey
 // DEĞİL" kuralıyla TUTARLI ama docs/ui:154'ün BU bileşen için yazdığı
-// metinle ÇELİŞİYOR. `ConfirmDialog`'un TEK tüketicisi
-// `TwoFactorStatusCard.tsx` olduğu için bu bileşenin kamusal sözleşmesini
-// (iki tüketici de aynı dosyada) değiştirmek güvenli — docs/ui:154'ün
-// metninin güncellenmesi `docs`/`release`'in işi.
+// metinle ÇELİŞİYOR. `ConfirmDialog`'un (yukarıdaki W-2 notuyla AYNI,
+// ÖLÇÜLDÜ) İKİ JSX tüketicisi var — `ActiveSessionsCard.tsx`'in
+// `SessionStepUpDialog`'u ve `TwoFactorStatusCard.tsx`'in
+// `TwoFactorManagePasswordDialog`'u; bu bileşenin kamusal sözleşmesini
+// değiştirmek İKİSİNİ DE güncellemeyi gerektirir (ikisi de bu düzeltmede
+// zaten güncel) — docs/ui:154'ün metninin güncellenmesi `docs`/`release`'in
+// işi (`solid` FIX turu 2/low bulgusu: bu yorum ÖNCEDEN "TEK tüketici"
+// diyordu, bu YANLIŞTI ve dosyanın kendi W-2 notuyla ÇELİŞİYORDU).
 import type { JSX, ReactNode } from 'react'
 
 import * as Dialog from '@radix-ui/react-dialog'
@@ -38,6 +53,8 @@ export interface ConfirmDialogProps {
   readonly confirmLabel: string
   readonly confirmingLabel: string
   readonly cancelLabel: string
+  /** × kapatma ikonunun erişilebilir adı — `cancelLabel`'DAN AYRI olmalı (wcag FIX turu 1/W-2, WCAG 2.5.3). */
+  readonly closeLabel: string
   readonly isConfirming: boolean
   readonly confirmVariant?: 'primary' | 'destructive'
   readonly onConfirm: () => void
@@ -53,6 +70,7 @@ export function ConfirmDialog({
   confirmLabel,
   confirmingLabel,
   cancelLabel,
+  closeLabel,
   isConfirming,
   confirmVariant = 'primary',
   onConfirm,
@@ -88,7 +106,7 @@ export function ConfirmDialog({
           <Dialog.Close asChild>
             <button
               type="button"
-              aria-label={cancelLabel}
+              aria-label={closeLabel}
               className={cn(
                 FOCUS_RING_CLASS_NAMES,
                 'absolute right-3 top-3 inline-flex size-8 items-center justify-center rounded-(--radius-control) text-(--color-text-secondary)',

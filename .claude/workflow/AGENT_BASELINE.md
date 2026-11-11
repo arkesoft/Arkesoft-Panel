@@ -158,6 +158,13 @@ yaz (SEV, `dosya:satır`, açıklama, sorumlu ajan, vade önerisi) ki `docs` kop
   Onay gerekiyorsa `DURUM: NEEDS_INPUT` ile Orkestratöre dön.
 - **Literal-jeton kuralı (v0.0.12'den itibaren).** Bir jeton yasağını **denetleyen kontrol** (grep, regex vb.), kendi metninde o jetonu **bitişik yazamaz**. Örneğin, `pull_request` yasağını denetleyen bir job'un iş akışı dosyasında metne gömülü `pull_request` varsa grep bunu kendisi bulur → kalıcı False Positive. Jetonu çalışma anında iki parçadan birleştir (`needle_a + needle_b`) ve gerekçesini yorumla belgele. Aynı kural açıklama yorumlarına da geçerlidir.
   **Özel durum:** `run:` bloğu içindeki `${{ }}` ifadeleri, `#` ile başlayan shell yorumunun **içinde olsa bile** GitHub'ın expression engine'i tarafından değerlendirilir. İfadeleri `env:`/`with:`/`if:`/`outputs:` bloklarına taşı veya shell koşul olarak başka yerde tanımla. (T-003 ST-6, ST-7 kanıtlarından; T-002'de 2 örnek daha — toplam dört çıkış).
+- **`find -newermt` göreli zaman ifadesi kabul etmez (ISO 8601 zorunlu) ve `2>/dev/null`
+  sözdizimi hatasını sessizce yutar.** Bir Orkestratör doğrulaması bu iki tuzağa birden
+  çarptı: `find` komutu sözdizimi hatasıyla başarısız oldu, hata `2>/dev/null` ile yutuldu,
+  boş çıktı "bulgu yok" sanıldı ve bir gate ajanının bıraktığı üretim mutasyonu **üç saat**
+  fark edilmeden kaldı (T-017). Dosya/değişiklik taraması zaman damgasıyla yapılacaksa
+  mutlak ISO 8601 zaman yazılır ve komut önce stderr **görünür** şekilde çalıştırılıp
+  sözdizimi doğrulanır.
 
 ---
 

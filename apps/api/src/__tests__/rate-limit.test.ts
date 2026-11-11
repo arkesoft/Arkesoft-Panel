@@ -1542,3 +1542,158 @@ describe(
     )
   },
 )
+
+// --- (5) Q-1 (qa gate, tur 1) — iki yeni rotanın (`POST /auth/sessions/revoke`, -
+// `/revoke-all`) 429'u UÇTAN UCA hiçbir testte ölçülmüyordu (security gate
+// tur1, F3; ROADMAP v0.0.15.1, T-017). Kablolama ÖNCESİ yalnızca YAPIM GEREĞİ
+// kanıtlıydı (küresel `APP_GUARD` + `sensitive-operations.ts`'in (b) kapısı +
+// `rate-limit-policy.test.ts`'in tablo pini) — GERÇEK bir HTTP 429'un bu iki
+// rotada DOĞDUĞU hiçbir testte GÖZLENMEMİŞTİ. `F1 (high)` bloklarıyla
+// (`/auth/two-factor/disable` vb.) AYNI desen: beş YANLIŞ parola denemesi
+// (hepsi 400 `INVALID_PASSWORD`, `StepUpService`'in tek-biçimli sinyali —
+// ADR-0019 §Karar 5), ALTINCI istek Redis sayacı (`sessionUserId` kapsamı,
+// `rate-limit.policy.ts`'in bu iki rota için kayıtlı girdisi) 5 sınırını
+// AŞTIĞI için 429 verir, `StepUpService`'e hiç ULAŞMAZ.
+//
+// VACUITY KANITI (qa, bu dosyada koşturulup kaldırıldı — raporda): her iki
+// testte de 6. isteğin eşiğini `LOGIN_ACCOUNT_LIMIT`'in GEÇİCİ olarak 999'a
+// çıkarılmasıyla yeniden koşturuldu → 6. istek 400'E DÜŞTÜ (429 DEĞİL),
+// `expect(sixth.status).toBe(429)` KIRMIZI verdi — testin GERÇEKTEN eşiği
+// ölçtüğünün kanıtı (geri alma `shasum -a 256` ile, rapora bkz).
+// --------------------------------------------------------------------------
+
+describe('Q-1 (qa) — /auth/sessions/revoke: 5 YANLIŞ parola denemesi 400, 6.sı 429 (sessionUserId kapsamı)', () => {
+  let app: Awaited<ReturnType<typeof createTestApp>>['app'] | undefined
+
+  beforeAll(async () => {
+    const testApp = await createTestApp()
+    app = testApp.app
+  })
+
+  afterAll(async () => {
+    if (app !== undefined) {
+      await app.close()
+    }
+  })
+
+  function httpServer(): Server {
+    if (app === undefined) {
+      throw new Error('test uygulaması henüz kurulmadı')
+    }
+    return app.getHttpServer()
+  }
+
+  it(
+    'SÖMÜRÜ SENARYOSU: 5 YANLIŞ parola denemesi (hepsi 400 INVALID_PASSWORD, HİÇBİR oturum ' +
+      'sonlanmaz), 6. deneme 429 — düzeltmeden ÖNCE bu uç hiçbir testte UÇTAN UCA ölçülmemişti ' +
+      '(security gate tur1, F3)',
+    async () => {
+      const email = uniqueEmail('q1-revoke-oracle')
+      await signUpAndVerify(httpServer(), email, TEST_PASSWORD)
+
+      const signInResponse = await request(httpServer())
+        .post('/auth/sign-in/email')
+        .send({ email, password: TEST_PASSWORD })
+      const cookiePair = toCookiePair(
+        setCookieHeaderSchema.parse(signInResponse.headers['set-cookie'])[0] ?? '',
+      )
+
+      // `sessionId` SAHİPLİK kontrolünden ÖNCE step-up'a ÇARPAR (ADR-0019
+      // §Karar 4, auth-sessions.test.ts'in "SIRA KANITI"yla AYNI gerekçe) —
+      // var olmayan/rastgele bir kimlik bu testin AMACI için YETERLİ (yanlış
+      // parola her durumda 400'de biter, sahiplik kontrolüne hiç ULAŞMAZ).
+      const attemptStatuses: number[] = []
+      for (let attempt = 1; attempt <= 5; attempt += 1) {
+        const response = await request(httpServer())
+          .post('/auth/sessions/revoke')
+          .set('Cookie', cookiePair)
+          .set('Origin', BASE_ENV.AUTH_BASE_URL)
+          .send({ sessionId: `ses_${randomUUID()}`, password: 'yanlis-parola' })
+        attemptStatuses.push(response.status)
+        expect(response.status).toBe(400)
+        expect(response.status).not.toBe(429)
+      }
+      expect(attemptStatuses).toEqual([400, 400, 400, 400, 400])
+
+      const sixth = await request(httpServer())
+        .post('/auth/sessions/revoke')
+        .set('Cookie', cookiePair)
+        .set('Origin', BASE_ENV.AUTH_BASE_URL)
+        .send({ sessionId: `ses_${randomUUID()}`, password: 'yanlis-parola' })
+
+      expect(sixth.status).toBe(429)
+      expect(sixth.headers['retry-after']).toBeDefined()
+      expect(errorBodySchema.parse(sixth.body).code).toBe('RATE_LIMIT_EXCEEDED')
+    },
+    20_000,
+  )
+})
+
+describe('Q-1 (qa) — /auth/sessions/revoke-all: 5 YANLIŞ parola denemesi 400, 6.sı 429 (sessionUserId kapsamı, AYRI kova)', () => {
+  let app: Awaited<ReturnType<typeof createTestApp>>['app'] | undefined
+
+  beforeAll(async () => {
+    const testApp = await createTestApp()
+    app = testApp.app
+  })
+
+  afterAll(async () => {
+    if (app !== undefined) {
+      await app.close()
+    }
+  })
+
+  function httpServer(): Server {
+    if (app === undefined) {
+      throw new Error('test uygulaması henüz kurulmadı')
+    }
+    return app.getHttpServer()
+  }
+
+  it(
+    'SÖMÜRÜ SENARYOSU: 5 YANLIŞ parola denemesi (hepsi 400 INVALID_PASSWORD, HİÇBİR oturum ' +
+      'sonlanmaz), 6. deneme 429 — iki yeni rotanın İKİNCİSİ, AYRI eşik kovası ' +
+      '(`routeKey` rotaya göre izole, `rate-limit.service.ts`)',
+    async () => {
+      const email = uniqueEmail('q1-revokeall-oracle')
+      await signUpAndVerify(httpServer(), email, TEST_PASSWORD)
+
+      const signInResponse = await request(httpServer())
+        .post('/auth/sign-in/email')
+        .send({ email, password: TEST_PASSWORD })
+      const cookiePair = toCookiePair(
+        setCookieHeaderSchema.parse(signInResponse.headers['set-cookie'])[0] ?? '',
+      )
+
+      const attemptStatuses: number[] = []
+      for (let attempt = 1; attempt <= 5; attempt += 1) {
+        const response = await request(httpServer())
+          .post('/auth/sessions/revoke-all')
+          .set('Cookie', cookiePair)
+          .set('Origin', BASE_ENV.AUTH_BASE_URL)
+          .send({ password: 'yanlis-parola' })
+        attemptStatuses.push(response.status)
+        expect(response.status).toBe(400)
+        expect(response.status).not.toBe(429)
+      }
+      expect(attemptStatuses).toEqual([400, 400, 400, 400, 400])
+
+      // İşlem HİÇBİR denemede TAMAMLANMADI — oturum HÂLÂ geçerli (AC5'in
+      // "işlem tamamlanmaz" ölçütünün BU dosyadaki, oran-sınırı eksenindeki
+      // tekrarı).
+      const stillValid = await request(httpServer()).get('/auth/sessions').set('Cookie', cookiePair)
+      expect(stillValid.status).toBe(200)
+
+      const sixth = await request(httpServer())
+        .post('/auth/sessions/revoke-all')
+        .set('Cookie', cookiePair)
+        .set('Origin', BASE_ENV.AUTH_BASE_URL)
+        .send({ password: 'yanlis-parola' })
+
+      expect(sixth.status).toBe(429)
+      expect(sixth.headers['retry-after']).toBeDefined()
+      expect(errorBodySchema.parse(sixth.body).code).toBe('RATE_LIMIT_EXCEEDED')
+    },
+    20_000,
+  )
+})

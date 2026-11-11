@@ -121,6 +121,7 @@ describe('A-A2 — envanter kaynağının kendisi (ölçüm, varsayım değil)',
       ['member.invite', 'mutation'],
       ['member.remove', 'mutation'],
       ['member.updateRole', 'mutation'],
+      ['session.list', 'query'],
       ['session.me', 'query'],
       ['storefront.currentTenant', 'query'],
       ['tenant.current', 'query'],
@@ -174,10 +175,10 @@ describe('AC3 ayak (c) — KAPALI DÜNYA: beyan edilen yüzey = gerçek yüzey',
     expect([...inventory.keys()].sort()).toEqual(Object.keys(PROCEDURE_SURFACE).sort())
   })
 
-  it('kayıt sayıları eşit ve ON (tablonun boş olmadığının kanıtı; ROADMAP v0.0.15, T-016/S7)', () => {
+  it('kayıt sayıları eşit ve ON BİR (tablonun boş olmadığının kanıtı; ROADMAP v0.0.15.1, T-017/S4)', () => {
     const inventory = readRouterInventory()
 
-    expect(Object.keys(PROCEDURE_SURFACE).length).toBe(10)
+    expect(Object.keys(PROCEDURE_SURFACE).length).toBe(11)
     expect(inventory.size).toBe(Object.keys(PROCEDURE_SURFACE).length)
   })
 
@@ -202,7 +203,7 @@ describe('AC3 ayak (c) — KAPALI DÜNYA: beyan edilen yüzey = gerçek yüzey',
     expect(listRecordedPermissionUsages().length).toBe(6)
   })
 
-  it('izinsiz beyan edilen yollar TAM OLARAK bilinen dört istisnadır (builder beyanı inceleme görünürlüğü)', () => {
+  it('izinsiz beyan edilen yollar TAM OLARAK bilinen BEŞ istisnadır (builder beyanı inceleme görünürlüğü; ROADMAP v0.0.15.1, T-017/S4 — session.list EKLENDİ)', () => {
     // ⚠ TABLONUN KAPATAMADIĞI DELİK BURADA GÖRÜNÜR OLUR: bir prosedürü
     // `builder: 'tenant'` diye BİLEREK beyan etmek mekanik olarak
     // yakalanamaz. Bu assert o beyanı bir KARDİNALİTE + AD listesine bağlar:
@@ -215,6 +216,7 @@ describe('AC3 ayak (c) — KAPALI DÜNYA: beyan edilen yüzey = gerçek yüzey',
 
     expect(ungated.sort()).toEqual([
       ['member.acceptInvitation', 'protected'],
+      ['session.list', 'protected'],
       ['session.me', 'protected'],
       ['storefront.currentTenant', 'publicTenant'],
       ['tenant.current', 'tenant'],

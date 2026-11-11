@@ -63,6 +63,19 @@ export function maskEmail(value: string): string {
 // değil. `*.secret` düz `secret` anahtarının (satır ~73) KAPSAMADIĞI, iç içe
 // nesnede (`{ twoFactor: { secret: ... } }` gibi) taşınan sır için eklendi.
 //
+// EKLEME (ROADMAP v0.0.15.1, T-017/S6, kullanıcı kararı 2026-11-09 — ÜÇ KEZ
+// onaylandı): `ipAddress`/`*.ipAddress`. ⚠ BU İKİNCİL bir savunmadır — BİRİNCİL
+// savunma hiçbir kod yolunun bu değeri bir log çağrısına GEÇİRMEMESİdir
+// (`apps/api`'nin `request-context.middleware.ts`/`auth-instance.ts`'in
+// `session.create.before`'u, "bu alanı HİÇ loglamaz" yazılı disiplini). Bu
+// yol EKLENİR çünkü IP KARARI (CLAUDE.md §4/§10.7'nin "sır" listesinde
+// YOKTUR ama KVKK kapsamında kişisel veridir) ikinci bir güvenlik ağı
+// hak eder — Better Auth'un KENDİ nesneleri (`session`, `user.sessions`)
+// İLERİDE bir hata/uyarı logunun gövdesine YANLIŞLIKLA sızarsa (ör. bir
+// gelecekteki `logger.error({ session }, …)` çağrısı) bu yol onu redakte
+// EDER. ⚠ YOL TABANLI — serbest metin İÇİNDEKİ bir IP'yi YAKALAMAZ
+// (`auth-instance.ts`'in `*.secret` dersiyle AYNI sınır, security bunu
+// AYRICA doğrular).
 // ⛔ `'code'` BİLEREK EKLENMEDİ (architect kararı, bağlayıcı): `AppError.code`
 // bu projenin TÜM hata ayıklama zincirinin dayandığı teşhis alanı
 // (`INVALID_CODE`, `ACCOUNT_TEMPORARILY_LOCKED` — bunlar SIR DEĞİL, teşhis).
@@ -94,4 +107,6 @@ export const PINO_REDACT_PATHS: readonly string[] = [
   'totpURI',
   'backupCodes',
   '*.secret',
+  'ipAddress',
+  '*.ipAddress',
 ] as const

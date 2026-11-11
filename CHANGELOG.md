@@ -25,6 +25,19 @@ pnpm changeset
 
 <!-- Changesets bu çizginin altına yazar. Elle girdi eklemeyin. -->
 
+## 0.7.0 — 2026-11-11
+
+- Hesabım → Güvenlik ekranına aktif oturumlarınızı gösteren yeni bir kart eklendi: hangi
+  tarayıcı ve işletim sisteminden, hangi IP adresinden ve en son ne zaman giriş
+  yaptığınızı görebilir, şu an kullandığınız cihazı ayırt edebilir; istediğiniz oturumu
+  veya diğer tüm oturumlarınızı tek tıkla uzaktan sonlandırabilirsiniz.
+
+  Hesabınızı etkileyen altı hassas işlem (oturum sonlandırma — tek veya tümü, iki
+  faktörlü doğrulamayı kapatma, yedek kodları yenileme, kimlik doğrulayıcı kurulum
+  bilgisini yeniden alma ve doğrulama kodu girme) artık oturumunuz açık olsa bile
+  parolanızı yeniden doğrulamadan tamamlanmıyor; bu, çalınan bir oturum çerezinin
+  hesabınıza kalıcı zarar vermesini önlüyor. [v0.0.15.1]
+
 ## 0.6.0 — 2026-11-09
 
 - İki faktörlü kimlik doğrulama (TOTP) eklendi: QR kodla kurulum, girişte doğrulama kodu

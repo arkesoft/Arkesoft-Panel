@@ -73,6 +73,7 @@ import { toWebHeaders } from '../http/to-web-headers.js'
 import { JobReadPortAdapter } from './ports/job-read.port.adapter.js'
 import { MemberWritePortAdapter } from './ports/member-write.port.adapter.js'
 import { MembershipReadPortAdapter } from './ports/membership-read.port.adapter.js'
+import { SessionListReadPortAdapter } from './ports/session-list-read.port.adapter.js'
 import { SessionSecurityReadPortAdapter } from './ports/session-security-read.port.adapter.js'
 import { StorefrontTenantReadPortAdapter } from './ports/storefront-tenant-read.port.adapter.js'
 import { TenantReadPortAdapter } from './ports/tenant-read.port.adapter.js'
@@ -171,6 +172,8 @@ export class TrpcController {
     @Inject(MemberWritePortAdapter) private readonly memberWrite: MemberWritePortAdapter,
     @Inject(SessionSecurityReadPortAdapter)
     private readonly sessionSecurityRead: SessionSecurityReadPortAdapter,
+    @Inject(SessionListReadPortAdapter)
+    private readonly sessionListRead: SessionListReadPortAdapter,
     @Inject(TrpcErrorsPortAdapter) private readonly errorsPort: TrpcErrorsPortAdapter,
   ) {}
 
@@ -180,9 +183,9 @@ export class TrpcController {
     const request = buildTrpcWebRequest(req, this.env.AUTH_BASE_URL)
     // ⚠ `TrpcPorts` burada ELLE kurulur (üretimdeki TEK yer). `jobRead`
     // v0.0.11'den, `membershipRead`/`memberWrite` v0.0.14'ten, `tenantSecurityWrite`
-    // v0.0.15'ten, `sessionSecurityRead` v0.0.15 FIX turu 2'den itibaren
-    // ZORUNLU üyedir — herhangi biri atlanırsa typecheck kırılır
-    // (`context/trpc-context.types.ts`'in gerekçesi, po R-P2/R-PM5).
+    // v0.0.15'ten, `sessionSecurityRead` v0.0.15 FIX turu 2'den, `sessionListRead`
+    // v0.0.15.1'den itibaren ZORUNLU üyedir — herhangi biri atlanırsa typecheck
+    // kırılır (`context/trpc-context.types.ts`'in gerekçesi, po R-P2/R-PM5).
     // ⚠ Üyeleri OPSİYONEL yaparak typecheck hatasını susturmak o dosyanın
     // YAZILI yasağıdır; doğru çözüm portu DOLDURMAKTIR — bu satırlar o
     // çözümün ta kendisi.
@@ -195,6 +198,7 @@ export class TrpcController {
         membershipRead: this.membershipRead,
         memberWrite: this.memberWrite,
         sessionSecurityRead: this.sessionSecurityRead,
+        sessionListRead: this.sessionListRead,
       },
       this.errorsPort,
     )

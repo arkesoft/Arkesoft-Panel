@@ -1,5 +1,27 @@
 # @arkesoft/admin
 
+## 0.7.0
+
+### Minor Changes
+
+- Hesabım → Güvenlik ekranına aktif oturumlarınızı gösteren yeni bir kart eklendi: hangi
+  tarayıcı ve işletim sisteminden, hangi IP adresinden ve en son ne zaman giriş
+  yaptığınızı görebilir, şu an kullandığınız cihazı ayırt edebilir; istediğiniz oturumu
+  veya diğer tüm oturumlarınızı tek tıkla uzaktan sonlandırabilirsiniz.
+
+  Hesabınızı etkileyen altı hassas işlem (oturum sonlandırma — tek veya tümü, iki
+  faktörlü doğrulamayı kapatma, yedek kodları yenileme, kimlik doğrulayıcı kurulum
+  bilgisini yeniden alma ve doğrulama kodu girme) artık oturumunuz açık olsa bile
+  parolanızı yeniden doğrulamadan tamamlanmıyor; bu, çalınan bir oturum çerezinin
+  hesabınıza kalıcı zarar vermesini önlüyor. [v0.0.15.1]
+
+### Patch Changes
+
+- Updated dependencies
+  - @arkesoft/trpc@0.6.0
+  - @arkesoft/errors@0.7.0
+  - @arkesoft/ui@0.7.0
+
 ## 0.6.0
 
 ### Minor Changes

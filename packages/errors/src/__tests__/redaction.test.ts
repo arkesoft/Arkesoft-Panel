@@ -145,6 +145,13 @@ describe('PINO_REDACT_PATHS', () => {
   it("'code' İÇERMEZ (architect kararı, bağlayıcı — AppError.code teşhis alanı, sır DEĞİL)", () => {
     expect(PINO_REDACT_PATHS).not.toContain('code')
   })
+
+  // ROADMAP v0.0.15.1, T-017/S6, kullanıcı kararı 2026-11-09 — İKİNCİL
+  // savunma (BİRİNCİL: hiçbir kod yolu bu değeri bir log çağrısına geçirmez).
+  it("'ipAddress' ve '*.ipAddress' içerir (T-017/S6 — IKİNCİL savunma)", () => {
+    expect(PINO_REDACT_PATHS).toContain('ipAddress')
+    expect(PINO_REDACT_PATHS).toContain('*.ipAddress')
+  })
 })
 
 describe('PINO_REDACT_PATHS — sentinel probu (gerçek pino örneği, T-016/S8)', () => {
@@ -206,6 +213,52 @@ describe('PINO_REDACT_PATHS — sentinel probu (gerçek pino örneği, T-016/S8)
     // Ham sentinel dizesi, redakte edilmiş satırların HİÇBİRİNDE görünmez —
     // yalnızca zararsız satırda görünür (tam olarak bir kez: `harmlessField`
     // değeri olarak).
+    const occurrences = fullLogText.split(SENTINEL).length - 1
+    expect(occurrences).toBe(1)
+  })
+
+  // ROADMAP v0.0.15.1, T-017/S6 — `ipAddress`/`*.ipAddress` İKİNCİL savunma
+  // kanıtı. AYNI yöntem: kök + iç içe alan, bir pozitif kontrol (zararsız
+  // alan ETKİLENMEZ).
+  it('ipAddress (kök) ve *.ipAddress (iç içe) sentinel değerini redakte eder; zararsız alan ETKİLENMEZ (pozitif kontrol)', async () => {
+    const { stream, getFullText } = createMemoryLogStream()
+    const logger = createProbeLogger(stream)
+
+    logger.info({ ipAddress: SENTINEL }, 'prob')
+    logger.info({ client: { ipAddress: SENTINEL } }, 'prob')
+    logger.info({ harmlessField: SENTINEL }, 'prob')
+
+    await new Promise<void>((resolve) => stream.end(resolve))
+
+    const fullLogText = getFullText()
+
+    expect(fullLogText).toContain(`"harmlessField":"${SENTINEL}"`)
+
+    const lines = fullLogText
+      .trim()
+      .split('\n')
+      .filter((line) => line.length > 0)
+    expect(lines).toHaveLength(3)
+
+    const [rootIpLine, nestedIpLine, harmlessLine] = lines
+    if (rootIpLine === undefined || nestedIpLine === undefined || harmlessLine === undefined) {
+      throw new Error('beklenen üç NDJSON satırı yok — assert vakumla sonuçlanırdı')
+    }
+
+    const probeLineSchema = z.looseObject({
+      ipAddress: z.string().optional(),
+      client: z.looseObject({ ipAddress: z.string() }).optional(),
+      harmlessField: z.string().optional(),
+    })
+
+    expect(probeLineSchema.parse(JSON.parse(rootIpLine) as unknown).ipAddress).toBe('[redacted]')
+    expect(probeLineSchema.parse(JSON.parse(nestedIpLine) as unknown).client?.ipAddress).toBe(
+      '[redacted]',
+    )
+    expect(probeLineSchema.parse(JSON.parse(harmlessLine) as unknown).harmlessField).toBe(SENTINEL)
+
+    // Ham sentinel dizesi redakte edilmiş satırların HİÇBİRİNDE görünmez —
+    // yalnızca zararsız satırda (tam olarak bir kez).
     const occurrences = fullLogText.split(SENTINEL).length - 1
     expect(occurrences).toBe(1)
   })

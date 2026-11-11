@@ -14,6 +14,7 @@ import { TenantStatus } from '@arkesoft/db'
 import { AppError } from '@arkesoft/errors'
 
 import { DependencyUnavailableError } from '../errors/domain/dependency-unavailable.error.js'
+import { InvalidPasswordError } from '../errors/domain/invalid-password.error.js'
 import { RequestContextUnavailableError } from '../errors/domain/request-context-unavailable.error.js'
 import { TenantNotFoundError } from '../errors/domain/tenant-not-found.error.js'
 import { TenantResolutionFailedError } from '../errors/domain/tenant-resolution-failed.error.js'
@@ -69,6 +70,27 @@ describe('mapErrorToResponse — AppError alt sınıfları', () => {
     expect(error.isRetryable).toBe(true)
     expect('context' in mapped.body).toBe(false)
   })
+
+  it(
+    'InvalidPasswordError (ROADMAP v0.0.15.1, T-017/S5, ADR-0019 §Karar 4/5) → ' +
+      '400/INVALID_PASSWORD, details {}, context yok',
+    () => {
+      const error = new InvalidPasswordError()
+      const mapped = mapErrorToResponse(error, REQUEST_ID)
+
+      expect(mapped.httpStatus).toBe(400)
+      expect(Object.keys(mapped.body).sort()).toEqual(EXPECTED_BODY_KEYS)
+      expect(mapped.body.code).toBe('INVALID_PASSWORD')
+      expect(mapped.body.message).toBe('errors.auth.invalidPassword')
+      expect(mapped.body.details).toEqual({})
+      expect('context' in mapped.body).toBe(false)
+      expect(error.isRetryable).toBe(false)
+      // ADR-0019 §Karar 5 — "parola eksik" ile "parola yanlış" DURUMLARININ
+      // AYIRT edilmediğinin tel sözleşmesindeki karşılığı: context BOŞ,
+      // hiçbir parola/kullanıcı bağlamı SIZMAZ.
+      expect(error.context).toEqual({})
+    },
+  )
 
   it('ValidationError → 400, details.fields taşınır, context yok', () => {
     const fields = { slug: 'errors.validation.invalidFormat' }

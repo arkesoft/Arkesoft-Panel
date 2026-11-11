@@ -62,6 +62,20 @@ export type {
 export { sessionIdentitySchema } from './schemas/session-identity.schema.js'
 export type { SessionIdentity } from './schemas/session-identity.schema.js'
 
+// ROADMAP v0.0.15.1, T-017/S4 — `apps/admin`'in (S11) sözlüklerini `satisfies`
+// ile BUNLARDAN türetmesi için enum'lar export edilir (`PERMISSIONS`/
+// `ROLE_PERMISSIONS`'ın AYNI gerekçesi, aşağıda).
+export {
+  activeSessionWireSchema,
+  deviceBrowserSchema,
+  deviceOsSchema,
+} from './schemas/session-summary.schema.js'
+export type {
+  ActiveSessionWire,
+  DeviceBrowserWire,
+  DeviceOsWire,
+} from './schemas/session-summary.schema.js'
+
 export {
   invitableRoleSchema,
   memberAcceptInvitationInputSchema,

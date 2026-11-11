@@ -237,12 +237,18 @@ describe('SameOriginGuard — gerçek HTTP (F5 PoC regresyon kapısı)', () => {
     'Origin YOK ama Referer GÜVENİLİR orijinle EŞLEŞİYOR + Cookie VAR → revoke-all İZİN VERİLİR ' +
       '(Referer fallback — gerçek HTTP)',
     async () => {
-      const { cookieHeader } = await createAuthenticatedSession(httpServer())
+      const { cookieHeader, password } = await createAuthenticatedSession(httpServer())
 
+      // ROADMAP v0.0.15.1, T-017/S8a EKLEMESİ — `revoke-all` artık ZORUNLU
+      // step-up taşıyor (ADR-0019 §Karar 4); bu testin ASIL iddiası (Referer
+      // fallback guard'ı GEÇİRİR) `password` EKLENMEDEN doğrulanamaz hâle
+      // geldi (parolasız her çağrı guard'dan GEÇSE bile 400 `INVALID_PASSWORD`
+      // döner).
       const revokeAllResponse = await request(httpServer())
         .post('/auth/sessions/revoke-all')
         .set('Cookie', cookieHeader)
         .set('Referer', `${TRUSTED_BASE_URL}/sessions`)
+        .send({ password })
 
       expect(revokeAllResponse.status).toBe(200)
     },

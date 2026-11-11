@@ -24,11 +24,28 @@
 // `mail/mail.module.ts`'E TAŞINDI ve bu modül onu `imports` ile tüketir.
 // Sebep: üye davet akışı bu dizinin DIŞINDA yaşıyor ve aynı taşıyıcıya
 // ihtiyaç duyuyor. ⚠ ALTERNATİF — bu modülün `exports` dizisine ikinci bir
-// token eklemek — DEĞERLENDİRİLDİ VE REDDEDİLDİ: aşağıdaki `exports`
-// satırının yazılı iddiası ("dışa açılan yüzey TEK token'a DARALTILDI")
-// bayatlardı. ⚠ Tam kimlik örneği token'ı YENİDEN AÇILMADI; `exports`
-// dizisi bu sürümde DEĞİŞMEDİ. Taşıma BİREBİR — davranış, yaşam döngüsü ve
-// tek örnek garantisi aynen korundu (SMTP soketi hâlâ bir tane).
+// token eklemek — O ZAMAN DEĞERLENDİRİLDİ VE REDDEDİLDİ: aşağıdaki `exports`
+// satırının o zamanki yazılı iddiası ("dışa açılan yüzey TEK token'a
+// DARALTILDI") BAYATLAMIŞTI. Tam kimlik örneği token'ı (`AUTH_INSTANCE`'ın
+// KENDİSİ) HÂLÂ yeniden açılmadı — o red kararı AYAKTA.
+//
+// GÜNCELLEME (ROADMAP v0.0.15.1, T-017/S8a, po ⭐ KISIT (b)) — BU RED KARARI
+// KISMEN GERİ ALINDI: `exports` dizisi şimdi İKİNCİ bir token
+// (`SESSION_LIST_READER`) taşıyor. Yukarıdaki "neden eklenmedi" gerekçesi
+// (mail taşıyıcısı için) HÂLÂ GEÇERLİ — bu üçüncü token FARKLI, YENİ bir
+// ihtiyaçtan doğdu: `packages/trpc`'nin `SessionListReadPort`'unu
+// `apps/api`'de uygulayan adaptör (T-017/S9) `apps/api/eslint.config.mjs:
+// 61-75`'in `AuthPrismaDatabase` ithalini `src/{prisma,auth}/**` DIŞINDA
+// yasaklaması YÜZÜNDEN `SessionsService`'in zaten yaptığı Prisma okumasını
+// TEKRARLAYAMAZ — DELEGE ETMEK ZORUNDADIR (po'nun ölçtüğü yapısal engel).
+// `SessionsService`'in KENDİSİNİ (sınıf olarak) `exports`'a koymak
+// `revokeOwnSession`/`revokeAllOwnSessions`'ı (step-up + sahiplik DAVRANIŞI
+// taşıyan YAZMA metotları) da dışa açardı — bu KABUL EDİLMEDİ. Bunun yerine
+// `AUTH_SESSION_READER` İLE AYNI daraltma disiplinine uyan YENİ bir token
+// (`auth.tokens.ts`'in `SESSION_LIST_READER`'ı) `listOwnSessions`'a
+// DARALTILMIŞ bir yüzey açar — YAZMA yüzeyi AÇILMADI, sayı iki token'a
+// çıktı ama İKİSİ DE okumaya daraltılmış durumda. ⚠ `security`/`solid` bu
+// kararı DENETLEYECEK (po'nun açıkça işaretlediği gözden geçirme noktası).
 //
 // Yaşam döngüsü: ham Prisma istemcisi KENDİ kaynağını açar; `OnModuleDestroy`
 // ile kapanışta serbest bırakılır (`PrismaService`'in AC11 desenine paralel —
@@ -58,8 +75,8 @@ import { AuthGuard } from './auth.guard.js'
 // zorlama kapısı artık DI'DAN alınır (`two-factor-compliance.service.ts`
 // dosya başı GÜNCELLEME yorumu).
 import { TwoFactorComplianceService } from './two-factor-compliance.service.js'
-import { AUTH_INSTANCE, AUTH_SESSION_READER } from './auth.tokens.js'
-import type { AuthSessionReader } from './auth.tokens.js'
+import { AUTH_INSTANCE, AUTH_SESSION_READER, SESSION_LIST_READER } from './auth.tokens.js'
+import type { AuthSessionReader, SessionListReader } from './auth.tokens.js'
 import { MAIL_TRANSPORT } from './mail/mail-transport.types.js'
 import type { MailTransport } from './mail/mail-transport.types.js'
 // T-014/S4 EKLEMESİ (po R-PO3): taşıyıcı sağlayıcısının YENİ evi.
@@ -71,6 +88,11 @@ import { RateLimitAccountResetInterceptor, RateLimitGuard } from './rate-limit/r
 import { RateLimitService } from './rate-limit/rate-limit.service.js'
 import { AUTH_PRISMA_CLIENT, SessionsService } from './sessions.service.js'
 import { SessionsController } from './sessions.controller.js'
+// ROADMAP v0.0.15.1, T-017/S8a: `StepUpService` — `SessionsService`'in
+// `revokeOwnSession`/`revokeAllOwnSessions`'ının BAĞIMLISI. S5 bu sınıfı
+// yazdı ama HİÇBİR modüle provider olarak KAYDETMEDİ (bilerek, devir notu) —
+// kayıt BURADA tamamlanır.
+import { StepUpService } from './step-up/step-up.service.js'
 
 /**
  * `AuthModule`'e ÖZEL, ayrı bir Prisma istemcisi (dosya başı yorumu). Eager
@@ -201,6 +223,20 @@ const rateLimitResetInterceptorProvider: Provider = {
   useClass: RateLimitAccountResetInterceptor,
 }
 
+// ROADMAP v0.0.15.1, T-017/S8a (po ⭐ kısıt (b), `auth.tokens.ts`'in
+// `SESSION_LIST_READER` yorumu) — `SessionsService`'in YALNIZCA okuma
+// metodunu (`listOwnSessions`) dışa açan daraltılmış token. `TrpcModule`'ün
+// `SessionListReadPort` adaptörü (T-017/S9) bunu enjekte eder; YAZMA
+// metotları (`revokeOwnSession`/`revokeAllOwnSessions`) bu yüzeyden
+// ERİŞİLEMEZ.
+const sessionListReaderProvider: Provider = {
+  provide: SESSION_LIST_READER,
+  useFactory: (sessionsService: SessionsService): SessionListReader => ({
+    listOwnSessions: (identity) => sessionsService.listOwnSessions(identity),
+  }),
+  inject: [SessionsService],
+}
+
 @Module({
   // T-014/S4 EKLEMESİ (po R-PO3): `MAIL_TRANSPORT` token'ı artık `MailModule`
   // tarafından sağlanıyor; `authInstanceProvider` onu BU import üzerinden
@@ -228,6 +264,10 @@ const rateLimitResetInterceptorProvider: Provider = {
     RateLimitService,
     rateLimitGuardProvider,
     rateLimitResetInterceptorProvider,
+    // ROADMAP v0.0.15.1, T-017/S8a — `SessionsService`'in step-up bağımlısı
+    // + daraltılmış okuma token'ı (dosya başı yorumu).
+    StepUpService,
+    sessionListReaderProvider,
   ],
   // FIX turu 1, madde 3 (F1(b)) — DEĞİŞTİRİLDİ: `AUTH_INSTANCE` (TAM `Auth`
   // yüzeyi, `auth.api.listSessions`/`revokeSession`/... HEPSİ) ARTIK DIŞA
@@ -237,6 +277,11 @@ const rateLimitResetInterceptorProvider: Provider = {
   // modüllerin EXPORT'larını görür (`tenancy.module.ts` dosya başı
   // yorumunun AYNI mekanizması) — bu yüzden dışa AÇILAN yüzey artık
   // `AUTH_SESSION_READER` (yalnızca `getSession`) ile DARALTILDI.
-  exports: [AUTH_SESSION_READER],
+  //
+  // ROADMAP v0.0.15.1, T-017/S8a — İKİNCİ token EKLENDİ: `SESSION_LIST_READER`
+  // (yalnızca `listOwnSessions`). Dosya başı "GÜNCELLEME" yorumu bu kararın
+  // GEREKÇESİNİ taşır — YAZMA yüzeyi (`revokeOwnSession`/`revokeAllOwnSessions`)
+  // HÂLÂ dışa AÇILMIYOR.
+  exports: [AUTH_SESSION_READER, SESSION_LIST_READER],
 })
 export class AuthModule {}

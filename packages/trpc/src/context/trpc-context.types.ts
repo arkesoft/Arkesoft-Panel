@@ -13,6 +13,7 @@ import type { TenantStatusWire } from '../schemas/tenant-summary.schema.js'
 import type { JobReadPort } from '../ports/job-read.port.js'
 import type { MemberWritePort } from '../ports/member-write.port.js'
 import type { MembershipReadPort } from '../ports/membership-read.port.js'
+import type { SessionListReadPort } from '../ports/session-list-read.port.js'
 import type { SessionSecurityReadPort } from '../ports/session-security-read.port.js'
 import type { TenantReadPort } from '../ports/tenant-read.port.js'
 import type { TenantSecurityWritePort } from '../ports/tenant-security-write.port.js'
@@ -114,6 +115,16 @@ export interface TrpcPorts {
    * değil.
    */
   readonly sessionSecurityRead: SessionSecurityReadPort
+  /**
+   * ROADMAP v0.0.15.1, T-017/S4 — ZORUNLU üye (AYNI kural, `sessionSecurityRead`'in
+   * emsali): `session.list`'in tek veri kaynağı. Opsiyonel (`?`) YAPILMASI
+   * YASAK — bu nesneyi elle kuran her yerin (bugün üretimde bir, testlerde
+   * üç yer — `harness.ts` + `procedures.test.ts` + `member-procedures.test.ts`)
+   * portu DOLDURMASI gerekir, bir typecheck hatasını susturmak için GEVŞETME
+   * değil. `apps/api`'nin karşılık gelen üç literal kurulum yeri (üretim +
+   * iki test dosyası) bu alt görevin KAPSAMI DIŞINDADIR — S9 kapatacak.
+   */
+  readonly sessionListRead: SessionListReadPort
 }
 
 /**

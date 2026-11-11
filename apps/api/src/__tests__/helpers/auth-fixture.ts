@@ -38,6 +38,15 @@ const setCookieHeaderSchema = z.array(z.string()).min(1)
 export type AuthenticatedSession = {
   readonly cookieHeader: string
   readonly userId: string
+  /**
+   * ROADMAP v0.0.15.1, T-017/S8a EKLEMESİ (additive) — bu dosyanın dosya başı
+   * yorumunun KENDİ ilkesi: "yapısal bir değişiklik ÖNCEDEN PİNLENMİŞ testleri
+   * kırıyorsa düzeltme, O DEĞİŞİKLİĞİ yapan alt görevin işidir." `/auth/
+   * sessions/revoke`/`revoke-all` artık ZORUNLU step-up taşıyor
+   * (`StepUpService.assertVerified`, ADR-0019 §Karar 4) — bu alanı KULLANMAYAN
+   * mevcut çağıranlar (`{ cookieHeader, userId }` destructuring) ETKİLENMEZ.
+   */
+  readonly password: string
 }
 
 /**
@@ -67,7 +76,7 @@ export async function createAuthenticatedSession(
   const cookies = setCookieHeaderSchema.parse(signInResponse.headers['set-cookie'])
   const userId = signInBodySchema.parse(signInResponse.body).user.id
 
-  return { cookieHeader: cookies.join('; '), userId }
+  return { cookieHeader: cookies.join('; '), userId, password: FIXTURE_PASSWORD }
 }
 
 /** `deleteAllMailpitMessages`'ı YENİDEN dışa açar — çağıranlar Mailpit'i kendi testinden ÖNCE temizleyebilsin. */

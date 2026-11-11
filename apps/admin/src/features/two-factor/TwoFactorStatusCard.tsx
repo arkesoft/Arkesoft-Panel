@@ -51,6 +51,7 @@ import { sessionMeQueryOptions } from '../../api/session-query.js'
 import { invalidateSessionIdentity } from '../../api/session-refresh.js'
 import { BackupCodesList } from '../../components/BackupCodesList.js'
 import { ConfirmDialog } from '../../components/ConfirmDialog.js'
+import { useDialogTriggerFocus } from '../../hooks/use-dialog-trigger-focus.js'
 import { MESSAGES, resolvePanelErrorMessage } from '../../messages/messages.js'
 import {
   TwoFactorManageController,
@@ -72,6 +73,12 @@ export function TwoFactorStatusCard(): JSX.Element {
   const [wizardOpen, setWizardOpen] = useState(false)
   const [regeneratedCodes, setRegeneratedCodes] = useState<readonly string[] | null>(null)
   const [regeneratedSaved, setRegeneratedSaved] = useState(false)
+
+  // wcag FIX turu 1/W-1 (high bulgusu, WCAG 2.4.3), `solid` FIX turu 2/MED-1
+  // ile paylaşılan hook'a ÇIKARILDI — gerekçe `use-dialog-trigger-focus.ts`
+  // dosya başı yorumunda, burada TEKRARLANMAZ. "Devre dışı bırak"/"Yeniden
+  // kodlar oluştur" TEK seferde biri açık olduğu için TEK hook örneği yeterli.
+  const { captureDialogTrigger, focusDialogTriggerAfterClose } = useDialogTriggerFocus()
 
   const [manageState, setManageState] = useState<TwoFactorManageState>(INITIAL_MANAGE_STATE)
   const [manageController] = useState(
@@ -207,7 +214,8 @@ export function TwoFactorStatusCard(): JSX.Element {
                 <Button
                   type="button"
                   variant="destructive"
-                  onClick={() => {
+                  onClick={(event) => {
+                    captureDialogTrigger(event)
                     manageController.openDialog('disable')
                   }}
                 >
@@ -216,7 +224,8 @@ export function TwoFactorStatusCard(): JSX.Element {
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => {
+                  onClick={(event) => {
+                    captureDialogTrigger(event)
                     manageController.openDialog('regenerate')
                   }}
                 >
@@ -241,6 +250,11 @@ export function TwoFactorStatusCard(): JSX.Element {
         onOpenChange={(open) => {
           if (!open) {
             closeManageDialog()
+            // W-1 — bu dal Radix'in KENDİSİ tetiklediğinde (Escape/overlay/
+            // "Vazgeç"/×) çalışır; başarı dalı (`onDisabled`/`onRegenerated`)
+            // state'i DOĞRUDAN değiştirir, `onOpenChange` Radix TARAFINDAN
+            // ÇAĞRILMAZ (prop-driven `open` kapanışı callback TETİKLEMEZ).
+            focusDialogTriggerAfterClose()
           }
         }}
         onPasswordChange={(value) => {
@@ -263,6 +277,11 @@ export function TwoFactorStatusCard(): JSX.Element {
         onOpenChange={(open) => {
           if (!open) {
             closeManageDialog()
+            // W-1 — bu dal Radix'in KENDİSİ tetiklediğinde (Escape/overlay/
+            // "Vazgeç"/×) çalışır; başarı dalı (`onDisabled`/`onRegenerated`)
+            // state'i DOĞRUDAN değiştirir, `onOpenChange` Radix TARAFINDAN
+            // ÇAĞRILMAZ (prop-driven `open` kapanışı callback TETİKLEMEZ).
+            focusDialogTriggerAfterClose()
           }
         }}
         onPasswordChange={(value) => {
@@ -334,6 +353,7 @@ function TwoFactorManagePasswordDialog({
       confirmLabel={confirmLabel}
       confirmingLabel={confirmingLabel}
       cancelLabel={MESSAGES.common.cancel}
+      closeLabel={MESSAGES.common.close}
       isConfirming={isMutating}
       {...(confirmVariant !== undefined ? { confirmVariant } : {})}
       onConfirm={onConfirm}

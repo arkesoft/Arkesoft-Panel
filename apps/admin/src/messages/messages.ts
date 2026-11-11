@@ -329,6 +329,10 @@ export const MESSAGES = {
   common: {
     confirm: 'Devam et',
     cancel: 'Vazgeç',
+    // wcag FIX turu 1/W-2 (medium bulgusu) — `ConfirmDialog`'un × kapatma
+    // ikonu ESKİDEN `cancelLabel` ("Vazgeç") ile AYNI erişilebilir adı
+    // taşıyordu (WCAG 2.5.3/4.1.2). Ayrı, görseli metinle TUTARLI bir ad.
+    close: 'Kapat',
   },
   accountSecurity: {
     title: 'Hesap güvenliği',
@@ -351,6 +355,76 @@ export const MESSAGES = {
       regenerateConfirmBody:
         'Yeni kodlar oluşturursanız eski yedek kodlarınız artık çalışmaz. Devam edilsin mi?',
       cardLoadError: 'Güvenlik ayarlarınız şu anda yüklenemedi.',
+    },
+    // -------------------------------------------------------------------
+    // ROADMAP v0.0.15.1 (T-017/S11) EKLEMESİ — docs/ux/T-017 "Microcopy"
+    // bölümünden BİREBİR alındı (`accountSecurity.sessions.*` kökü, ux/ui'nin
+    // önerdiği gibi `accountSecurity.twoFactor.*`'ın KARDEŞİ). Üç istisna,
+    // RİSKLER'de gerekçelendirilmiştir: (1) `deviceLabels`/`osLabels` İKİ
+    // KÜÇÜK SÖZLÜK — ux/ui bunları "iki kapalı sözlük" olarak TARİF ETTİ
+    // ama TAM metinlerini vermedi (marka adları) — bu alt görevin KENDİ
+    // önerisidir, `docs` onaylamalı. (2) `lastSeenMinutesAgo`/
+    // `lastSeenHoursAgo`/`lastSeenDaysAgo` — ux'in `{süre}` yer tutucusunun
+    // GERÇEK bağıl zaman metnini üretmek için gereken üç bucket şablonu, ux
+    // yalnızca "Az önce" örneğini verdi — bu alt görevin ÖNERİSİ. (3)
+    // `ipUnknown` — ui planının RİSKLER #5'inin önerisi, ux'te YOK.
+    sessions: {
+      title: 'Aktif oturumlar',
+      currentDeviceBadge: 'Bu cihaz',
+      ipLabel: 'IP adresi: {ip}',
+      ipUnknown: 'Bilinmiyor',
+      lastSeenLabel: 'Son görülme: {süre}',
+      lastSeenJustNow: 'Az önce',
+      // VARSAYIM (bu alt görevin önerisi — ux/ui'nin `{süre}` yer tutucusu
+      // için GEREKTİRDİĞİ ama METNİNİ vermediği üç bucket).
+      lastSeenMinutesAgo: '{dakika} dakika önce',
+      lastSeenHoursAgo: '{saat} saat önce',
+      lastSeenDaysAgo: '{gun} gün önce',
+      deviceUnknown: 'Bilinmeyen cihaz',
+      browserUnknown: 'Bilinmeyen tarayıcı',
+      osUnknown: 'Bilinmeyen işletim sistemi',
+      // VARSAYIM (bu alt görevin önerisi — `device-label.ts`'in kapalı-dünya
+      // tarayıcı/İS ailelerinin GERÇEK marka adları; `docs` onaylamalı).
+      // `other`/`unknown` İÇİN satır YOK — `browserUnknown`/`osUnknown` ile
+      // AYNI metne eşlenir (ui planının KARARI, docs/ui/T-017:97 satırı).
+      deviceLabels: {
+        chrome: 'Chrome',
+        firefox: 'Firefox',
+        safari: 'Safari',
+        edge: 'Edge',
+        opera: 'Opera',
+        samsung: 'Samsung Internet',
+      },
+      osLabels: {
+        windows: 'Windows',
+        macos: 'macOS',
+        linux: 'Linux',
+        ios: 'iOS',
+        android: 'Android',
+      },
+      terminateButton: 'Sonlandır',
+      terminateAccessibleName: '{cihaz} oturumunu sonlandır (IP {ip}, son görülme {süre})',
+      terminateSuccess: '{cihaz} oturumu sonlandırıldı.',
+      onlyThisDeviceNote: 'Şu anda yalnızca bu cihazdan giriş yapmışsınız.',
+      terminateAllButton: 'Tüm oturumları sonlandır',
+      cardLoadError: 'Aktif oturumlarınız şu anda yüklenemedi.',
+      stepUpTitleSingle: 'Oturumu sonlandır',
+      stepUpBodySingle:
+        '{cihaz} · IP {ip} · son görülme {süre} oturumunu sonlandırmak üzeresiniz. Devam etmek için şifrenizi girin.',
+      stepUpConfirmSingle: 'Sonlandır',
+      stepUpTitleAll: 'Tüm oturumları sonlandır',
+      stepUpBodyAll:
+        'Bu işlem, şu anda kullandığınız bu cihaz dahil TÜM oturumları kapatacak. Devam ederseniz hemen çıkış yapılacak ve yeniden giriş yapmanız gerekecek. Onaylamak için şifrenizi girin.',
+      stepUpConfirmAll: 'Tüm oturumları sonlandır ve çıkış yap',
+      stepUpPasswordLabel: 'Şifreniz',
+      stepUpSubmitting: 'Doğrulanıyor…',
+      // KARAR (frontend, S11 — bkz. ActiveSessionsCard.tsx dosya başı yorumu,
+      // RİSKLER ③): 404 `SESSION_NOT_FOUND` durumunda `ConfirmDialog`
+      // DEĞİŞTİRİLMEDEN, diyalog OTOMATİK kapanır — bu metin artık
+      // `ConfirmDialog`'un "Kapat" butonu DEĞİL, kart içi bildirimin kendi
+      // kapatma düğmesi için kullanılır (AYNI anlam, farklı yer).
+      sessionGoneClose: 'Kapat',
+      sessionGoneNotice: 'Bu oturum artık mevcut değil. Liste güncellendi.',
     },
   },
 } as const

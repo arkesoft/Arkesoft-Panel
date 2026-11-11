@@ -98,16 +98,39 @@ describe('resolveRateLimitPolicy — K3 eşikleri (MODÜL SABİTİ, env OKUNMAZ)
     },
   )
 
+  // ROADMAP v0.0.15.1, T-017/S1, K1 — `AUTH_OWN_PATHS`'teki iki rota
+  // (Better Auth'a delege EDİLMEYEN kendi oturum uçlarımız). ESKİDEN bu
+  // satırlardan biri (`POST /auth/sessions/revoke`) aşağıdaki "ON rota
+  // DIŞINDAKİ her şey → undefined" listesinde NEGATİF pinliydi; o pin artık
+  // YANLIŞ bir gerçeği sabitliyordu (rota artık tanımlı) — testi GEVŞETMEK
+  // DEĞİL, eskiyen bir beklentiyi gerçeğe uydurmak için buradaki İKİ pozitif
+  // case'le DEĞİŞTİRİLDİ (CLAUDE.md §10 md 6).
+  it.each(['POST /auth/sessions/revoke', 'POST /auth/sessions/revoke-all'])(
+    '%s → hesap 5 / IP 20, "login" penceresi, `sessionUserId` kapsamı, SIFIRLANMAZ',
+    (routeKey) => {
+      const [method, path] = routeKey.split(' ', 2) as [string, string]
+      const policy = resolveRateLimitPolicy(method, path)
+      expect(policy).toEqual({
+        routeKey,
+        windowKind: 'login',
+        accountLimit: 5,
+        ipLimit: 20,
+        resetAccountOnSuccess: false,
+        accountScopeSource: 'sessionUserId',
+      })
+    },
+  )
+
   it.each([
     ['GET', '/health'],
     ['POST', '/auth/sign-out'],
     ['GET', '/auth/verify-email'],
     ['POST', '/auth/reset-password'],
-    ['POST', '/auth/sessions/revoke'],
+    ['GET', '/auth/sessions/revoke'],
     ['GET', '/auth/sign-in/email'],
     ['POST', '/auth/two-factor/send-otp'],
     ['POST', '/auth/two-factor/verify-otp'],
-  ])('oran sınırlı ON rota DIŞINDAKİ her şey → undefined (%s %s)', (method, path) => {
+  ])('oran sınırlı ON İKİ rota DIŞINDAKİ her şey → undefined (%s %s)', (method, path) => {
     expect(resolveRateLimitPolicy(method, path)).toBeUndefined()
   })
 

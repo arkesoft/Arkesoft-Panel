@@ -30,6 +30,13 @@
 // KENDİ doğrulaması): 14 → 20, ALTINCI grup — `tenant-exempt-paths.ts`
 // dosya başı yorumunda gerekçeli altı two-factor yolu. Kardinalite
 // assertion'ı yine KORUNDU (`.size`/küme eşitliği ELLE güncellendi).
+//
+// GÜNCELLEME (ROADMAP v0.0.15.1, T-017/S9, ADR-0019 §9 + `/trpc/session.me`
+// emsali): 20 → 21, YEDİNCİ grup — `/trpc/session.list` (gerekçe
+// `tenant-exempt-paths.ts` dosya başı yorumunda). ⚠ Kardinalite assertion'ı
+// KORUNDU: `.size` kontrolü ne kaldırıldı ne `toContain`'e düşürüldü — küme
+// eşitliği yine ELLE güncellendi. `AUTH_EXEMPT_PATHS` BU satırla DEĞİŞMEDİ
+// (12'de kalır).
 
 import { describe, expect, it } from 'vitest'
 
@@ -56,14 +63,15 @@ const EXPECTED_EXEMPT_PATHS = [
   '/auth/two-factor/generate-backup-codes',
   '/auth/two-factor/verify-totp',
   '/auth/two-factor/verify-backup-code',
+  '/trpc/session.list',
 ] as const
 
 describe('TENANT_EXEMPT_PATHS', () => {
-  it('tam olarak yirmi eleman taşır', () => {
-    expect(TENANT_EXEMPT_PATHS.size).toBe(20)
+  it('tam olarak yirmi bir eleman taşır', () => {
+    expect(TENANT_EXEMPT_PATHS.size).toBe(21)
   })
 
-  it('küme TAM OLARAK beklenen yirmi elemandır', () => {
+  it('küme TAM OLARAK beklenen yirmi bir elemandır', () => {
     expect(new Set(TENANT_EXEMPT_PATHS)).toEqual(new Set(EXPECTED_EXEMPT_PATHS))
   })
 

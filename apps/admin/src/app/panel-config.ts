@@ -83,3 +83,13 @@ export const AUTH_TWO_FACTOR_GET_TOTP_URI_PATH = '/auth/two-factor/get-totp-uri'
 export const AUTH_TWO_FACTOR_GENERATE_BACKUP_CODES_PATH = '/auth/two-factor/generate-backup-codes'
 export const AUTH_TWO_FACTOR_VERIFY_TOTP_PATH = '/auth/two-factor/verify-totp'
 export const AUTH_TWO_FACTOR_VERIFY_BACKUP_CODE_PATH = '/auth/two-factor/verify-backup-code'
+
+// ROADMAP v0.0.15.1 (T-017/S11) — `apps/api/src/auth/sessions.controller.ts`
+// (S8a'nın dosyası, DOKUNMA) üç SABİT yolu tanımlıyor; ikisi (revoke/
+// revoke-all) step-up (parola) ister, ADR-0019 §Karar 4 — bu iki sabit o
+// uçların panel tarafındaki BİREBİR karşılığı (göreli, K5 — mutlak URL YOK,
+// `VITE_*` YOK). `GET /auth/sessions` BURADA tanımLANMAZ — o, bir REST
+// `fetch` çağrısı DEĞİL, `session.list` tRPC prosedürü üzerinden gider
+// (`api/sessions-query.ts`).
+export const AUTH_SESSIONS_REVOKE_PATH = '/auth/sessions/revoke'
+export const AUTH_SESSIONS_REVOKE_ALL_PATH = '/auth/sessions/revoke-all'

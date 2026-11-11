@@ -386,6 +386,11 @@ describe('JobReadPortAdapter (ROADMAP v0.0.11, T-013/S8)', () => {
           sessionSecurityRead: {
             isTwoFactorEnabled: () => Promise.reject(new Error('çağrılmamalı')),
           },
+          // ROADMAP v0.0.15.1, T-017/S9 — `TrpcPorts`'un ZORUNLU yeni üyesi.
+          // Bu probe `session.list`'i ÇAĞIRMAZ.
+          sessionListRead: {
+            listOwnSessions: () => Promise.reject(new Error('çağrılmamalı')),
+          },
         },
         errors: {
           unauthenticated: () => {

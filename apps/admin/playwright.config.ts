@@ -17,25 +17,40 @@
 // kırılır (sessizce başka porta kaymaz).
 //
 // AC18 (bütçe, bağlayıcı — DÜZELTME TURU 2: `solid` tur 2 M-N1, yorum
-// düzeltildi): `workers: 1` + HER SPEC dosyasının KENDİSİ `test.describe.
-// serial` kullanıyor — `/auth/sign-in/email` IP bazlı `platform:auth:*`
-// sayacını (20/pencere, BAŞARILI istekler DE sayılıyor) paylaşan İKİ spec
-// dosyası var (`panel-flow.spec.ts` + `qa-blind-spot-and-negative-
-// scenarios.qa.spec.ts`), paralel koşum bu sayacı YARIŞTIRMAZ ama İKİSİ
-// AYNI IP'den aynı pencereyi TÜKETİR.
+// düzeltildi; qa tur 2/DAR İŞ ①: ÜÇÜNCÜ spec dosyası eklendi, toplam
+// AŞAĞIDA yeniden hesaplandı): `workers: 1` + HER SPEC dosyasının KENDİSİ
+// `test.describe.serial` kullanıyor — `/auth/sign-in/email` IP bazlı
+// `platform:auth:*` sayacını (gerçek sınır `LOGIN_IP_LIMIT` = 20 deneme /
+// 15 dk, `rate-limit.policy.ts:127` — BAŞARILI istekler DE sayılıyor,
+// SIFIRLANMAZ) paylaşan ÜÇ spec dosyası var (`panel-flow.spec.ts` +
+// `qa-blind-spot-and-negative-scenarios.qa.spec.ts` + `session-security-
+// dialog-focus.qa.spec.ts`), paralel koşum bu sayacı YARIŞTIRMAZ ama
+// ÜÇÜ AYNI IP'den aynı pencereyi TÜKETİR.
 //
 // TEK doğruluk kaynağı (architect Risk 5 — bağlayıcı) BURASI: koşum
-// başına (iki spec dosyasının TOPLAMI, TEK dosya DEĞİL) `sign-in` ≤4,
-// `sign-up` ≤ (sign-up tavanının 10/saat'e göre en az ~2 ardışık koşuma
-// izin verecek düzeyde kalması). Üçüncü bir spec dosyası `/auth/sign-in/
-// email` veya `/auth/sign-up/email`'e GERÇEK bir çağrı eklerse bu toplam
-// BURADA güncellenmek ZORUNDA — her spec dosyası kendi PAYINI kendi
-// başında yorumlar (bkz. `panel-flow.spec.ts` + ilgili `qa` dosyası),
+// başına (TÜM spec dosyalarının TOPLAMI, TEK dosya DEĞİL) gerçek sınıra
+// (20/pencere) GÜVENLİ bir pay bırakılması — bu dosyanın kendi KARARI
+// "güvenli pay" için SABİT bir tavan sayı DEĞİL, ÖLÇÜLEN gerçek toplamın
+// 20'nin ÇOK altında kalması (bugün 7/20, %65 pay) VE hesap bazlı sınırın
+// (`LOGIN_ACCOUNT_LIMIT`, aynı dosya) her testin KENDİ fixture kullanıcısı
+// İÇİN tek haneli denemede kalmasıdır. Yeni bir spec dosyası `/auth/
+// sign-in/email` veya `/auth/sign-up/email`'e GERÇEK bir çağrı eklerse bu
+// toplam BURADA güncellenmek ZORUNDA — her spec dosyası kendi PAYINI kendi
+// başında yorumlar (bkz. `panel-flow.spec.ts` + ilgili `qa` dosyaları),
 // TOPLAMI TEKRAR ETMEZ.
 //
-// Bugünkü ÖLÇÜLMÜŞ toplam (qa tur 2, Redis sayaç delta'sı ile doğrulandı):
-//   sign-in: panel-flow.spec.ts (3) + qa-blind-spot-…qa.spec.ts (1) = 4/4
-//   sign-up: panel-flow.spec.ts (3) + qa-blind-spot-…qa.spec.ts (0) = 3
+// Bugünkü ÖLÇÜLMÜŞ toplam (qa tur 2/DAR, İŞ ① — `session-security-dialog-
+// focus.qa.spec.ts` EKLENDİ; gerçek sınıra göre KARŞILAŞTIRMALI):
+//   sign-in: panel-flow.spec.ts (3) + qa-blind-spot-…qa.spec.ts (1) +
+//            session-security-dialog-focus.qa.spec.ts (3) = 7/20
+//   sign-up: panel-flow.spec.ts (3) + qa-blind-spot-…qa.spec.ts (0) +
+//            session-security-dialog-focus.qa.spec.ts (2) = 5
+// (ÖNCEKİ tur: sign-in 4, sign-up 3 — iki dosyayla; bu turda ÜÇÜNCÜ dosya
+// +3 sign-in + 2 sign-up ekledi, gerçek 20/pencere sınırına göre HÂLÂ
+// büyük pay var; "≤4" biçimindeki ÖNCEKİ ifade iki dosyanın o ANKİ toplamı
+// idi, gerçek sınırın KENDİSİ DEĞİLDİ — qa tur 2/DAR raporunda VARSAYIM
+// olarak işaretlendi, architect/Orkestratör'ün gözden geçirmesi gerekirse
+// diye.)
 //
 // MEKANİK bir çapraz-dosya toplam denetimi (DEĞERLENDİRİLDİ, KURULMADI):
 // statik regex taraması "gerçek ağ çağrısı" ile "page.route() ile taklit
@@ -50,7 +65,7 @@
 // kırılganlık kaynağı (CI'da farklı `REDIS_URL`, paylaşılan ortamda
 // eşzamanlı başka süreçler) eklerdi; bugünkü kazanç (bir yorumun
 // doğruluğu) bu riske değmedi. Toplam bu yüzden BURADA, TEK yerde, elle
-// tutuluyor — ikinci bir spec dosyası ekleyen HER ajan bu bloğu
+// tutuluyor — yeni bir spec dosyası ekleyen HER ajan bu bloğu
 // GÜNCELLEMEK ZORUNDA.
 import { defineConfig, devices } from '@playwright/test'
 
@@ -70,10 +85,10 @@ const BASE_URL = `http://panel.arkesoft.localhost:${String(PORT)}`
 
 export default defineConfig({
   testDir: './e2e',
-  // AC18: oran sınırı bütçesi dar (≤4 `sign-in`/koşum) — testler SIRALI
-  // koşmak ZORUNDA, aksi hâlde aynı IP'den paralel giriş denemeleri sayacı
-  // beklenenden hızlı tüketir (`test.describe.serial` spec İÇİNDE de var,
-  // bu BAĞIMSIZ bir ikinci güvence).
+  // AC18: oran sınırı bütçesi dar (gerçek sınırın 20'nin altında güvenli
+  // pay) — testler SIRALI koşmak ZORUNDA, aksi hâlde aynı IP'den paralel
+  // giriş denemeleri sayacı beklenenden hızlı tüketir (`test.describe.
+  // serial` spec İÇİNDE de var, bu BAĞIMSIZ bir ikinci güvence).
   fullyParallel: false,
   workers: 1,
   // v0.0.19'a kadar TEK proje, TEK viewport (AC17) — masaüstü varsayılanı

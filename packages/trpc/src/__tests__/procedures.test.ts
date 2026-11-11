@@ -26,6 +26,7 @@ import {
   createFakeErrorFactoryPort,
   createFakeJobReadPort,
   createFakeMembershipReadPort,
+  createFakeSessionListReadPort,
   createFakeSessionSecurityReadPort,
   createFakeStorefrontTenantReadPort,
   createFakeTenantReadPort,
@@ -113,6 +114,9 @@ describe('publicProcedure — hermetik semantik (architect K4)', () => {
         // `session.me` ÇAĞIRMAZ (hedef ad-hoc `ping` router'ı), stub
         // yalnızca sözleşmeyi doldurur.
         sessionSecurityRead: createFakeSessionSecurityReadPort(),
+        // ROADMAP v0.0.15.1, T-017/S4 — ZORUNLU üye; bu test `session.list`
+        // ÇAĞIRMAZ, stub yalnızca sözleşmeyi doldurur.
+        sessionListRead: createFakeSessionListReadPort(),
       },
       errors: createFakeErrorFactoryPort(),
     }

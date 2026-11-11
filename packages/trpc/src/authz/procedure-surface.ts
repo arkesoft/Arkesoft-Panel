@@ -75,6 +75,11 @@ export type ProcedureSurfaceEntry = PermissionGatedProcedureEntry | UngatedProce
  */
 export const PROCEDURE_SURFACE = {
   'session.me': { builder: 'protected', operation: 'query' },
+  // ROADMAP v0.0.15.1, T-017/S4 — onbirinci kayıt. `session.me`'nin birebir
+  // EMSALİ: oturum KULLANICIYA ait, kiracı rolüne bağlı bir izin
+  // ANLAMSIZ — `builder: 'protected'`, `tenantProcedure`/`permissionProcedure`
+  // DEĞİL.
+  'session.list': { builder: 'protected', operation: 'query' },
   'tenant.current': { builder: 'tenant', operation: 'query' },
   'storefront.currentTenant': { builder: 'publicTenant', operation: 'query' },
   'job.get': { builder: 'permission', permission: 'job:read', operation: 'query' },

@@ -38,8 +38,29 @@
 // AYNI olduğu için AYNI sabitler YENİDEN KULLANILIR — üçüncü, koordinesiz bir
 // eşik ailesi (ör. yeni bir `AUTH_TWO_FACTOR_RATE_WINDOW_SECONDS` env'i)
 // BİLEREK EKLENMEDİ.
+//
+// GÜNCELLEME (ROADMAP v0.0.15.1, T-017/S1, K1 — ZİNCİRİN BLOKE EDİCİ ilk
+// adımı): İKİ yeni rota (`POST /auth/sessions/revoke`,
+// `POST /auth/sessions/revoke-all`) eklendi (on → on iki). Bu ikisi
+// `AUTH_DELEGATED_PATHS`'TE YOK — Better Auth'a delege EDİLMİYORLAR, kendi
+// `sessions.controller.ts`'imizin uçları (`AUTH_OWN_PATHS`, bkz.
+// `auth-own-paths.ts`). `buildPolicy`'nin yazım-hatası guard'ı BU YÜZDEN
+// genişletildi: `AUTH_DELEGATED_PATHS.has(routeKey) ||
+// AUTH_OWN_PATHS.has(pathOf(routeKey))` — GEVŞETME DEĞİL, guard hâlâ
+// TANIMSIZ her routeKey'de (ikisinin de dışında) FIRLATIR (aşağıdaki
+// `pathOf` yardımcısına bkz).
+//
+// Risk şekli (parola TAHMİNİ — oturum iptali de kimlik doğrulama sonrası bir
+// hassas işlemdir, 2FA'nın dört "kimlik gerekli" ucuyla BİREBİR aynı tehdit
+// modeli) `login` penceresiyle AYNI olduğu için YİNE `LOGIN_ACCOUNT_LIMIT`/
+// `LOGIN_IP_LIMIT` (5/20) YENİDEN KULLANILIR — üçüncü bir eşik ailesi/env
+// YİNE EKLENMEDİ. Hesap kapsamı `sessionUserId` — kaynağı
+// `RequestContext.auth` (`rate-limit.guard.ts`'in ZATEN var olan
+// `resolveSessionUserIdScopeValue`'u, BU dosyada DEĞİŞİKLİK YOK): DOĞRULANMIŞ
+// oturumdan gelir, ham çerezden/gövdeden DEĞİL — saldırgan `userId`'yi SEÇEMEZ.
 
 import { AUTH_DELEGATED_PATHS } from '../auth-delegated-paths.js'
+import { AUTH_OWN_PATHS } from '../auth-own-paths.js'
 // FIX turu 1, madde 11 (solid M-1) — yol normalizasyonu ARTIK ortak
 // `http/normalize-request-path.ts`'ten İTHAL EDİLİR.
 import { normalizeRequestPath } from '../../http/normalize-request-path.js'
@@ -109,6 +130,17 @@ const EMAIL_ACCOUNT_LIMIT = 3
 /** Şifre sıfırlama VE onaylı genişletme: IP başına 10/saat. */
 const EMAIL_IP_LIMIT = 10
 
+/**
+ * `routeKey`'in (`"METHOD /path"`) boşluktan SONRAKİ kısmını (yalnızca yol)
+ * döner — T-017/S1, K1: `AUTH_OWN_PATHS` yöntemsiz, salt yol taşır
+ * (`auth-own-paths.ts:22-26`), bu yüzden `buildPolicy`'nin guard'ının onunla
+ * karşılaştırabilmesi için routeKey'den yöntemi SOYMASI gerekir.
+ */
+function pathOf(routeKey: string): string {
+  const spaceIndex = routeKey.indexOf(' ')
+  return spaceIndex === -1 ? routeKey : routeKey.slice(spaceIndex + 1)
+}
+
 function buildPolicy(
   routeKey: string,
   windowKind: RateLimitWindowKind,
@@ -117,11 +149,14 @@ function buildPolicy(
   resetAccountOnSuccess: boolean,
   accountScopeSource: RateLimitAccountScopeSource,
 ): readonly [string, RateLimitPolicy] {
-  if (!AUTH_DELEGATED_PATHS.has(routeKey)) {
+  if (!AUTH_DELEGATED_PATHS.has(routeKey) && !AUTH_OWN_PATHS.has(pathOf(routeKey))) {
     // Mekanik kanıt: architect'in "forget-password" yazım hatasının bir daha
     // SESSİZCE tekrarlanamayacağının GARANTİSİ — modül bu satırda YÜKLENEMEZ.
+    // T-017/S1, K1 — guard GEVŞETİLMEDİ: `AUTH_DELEGATED_PATHS`'E DE
+    // `AUTH_OWN_PATHS`'E DE AİT OLMAYAN herhangi bir routeKey (yazım hatası
+    // dahil) YİNE bu satırda FIRLATIR.
     throw new Error(
-      `rate-limit.policy.ts: "${routeKey}" AUTH_DELEGATED_PATHS içinde yok (yazım hatası olabilir)`,
+      `rate-limit.policy.ts: "${routeKey}" ne AUTH_DELEGATED_PATHS ne AUTH_OWN_PATHS içinde (yazım hatası olabilir)`,
     )
   }
 
@@ -220,14 +255,34 @@ const RATE_LIMITED_ROUTES: ReadonlyMap<string, RateLimitPolicy> = new Map([
     false,
     'twoFactorChallengeOrSession',
   ),
+  // T-017/S1, K1 (`AUTH_OWN_PATHS`, Better Auth'a DELEGE EDİLMEYEN kendi
+  // oturum uçlarımız) — risk şekli 2FA'nın dört "kimlik gerekli" ucuyla
+  // BİREBİR aynı (parola/oturum tahmini), dosya başı GÜNCELLEME yorumu.
+  buildPolicy(
+    'POST /auth/sessions/revoke',
+    'login',
+    LOGIN_ACCOUNT_LIMIT,
+    LOGIN_IP_LIMIT,
+    false,
+    'sessionUserId',
+  ),
+  buildPolicy(
+    'POST /auth/sessions/revoke-all',
+    'login',
+    LOGIN_ACCOUNT_LIMIT,
+    LOGIN_IP_LIMIT,
+    false,
+    'sessionUserId',
+  ),
 ])
 
 /**
- * İsteğin oran sınırlı ON rotadan birine ait olup olmadığını belirler (T-016
- * FIX turu 1, madde 1/F1 — dört → on, dosya başı GÜNCELLEME yorumu).
- * Normalizasyon `auth-delegated-paths.ts`'in `isAuthDelegatedPath`'iyle
- * BİREBİR aynı (sondaki `/` soyulur, sorgu dizesi/fragman karışmaz,
- * büyük/küçük harf DUYARLI, metot büyük/küçük harf DUYARSIZ).
+ * İsteğin oran sınırlı ON İKİ rotadan birine ait olup olmadığını belirler
+ * (T-016 FIX turu 1, madde 1/F1 — dört → on; T-017/S1, K1 — on → on iki,
+ * dosya başı GÜNCELLEME yorumları). Normalizasyon `auth-delegated-paths.ts`'in
+ * `isAuthDelegatedPath`'iyle BİREBİR aynı (sondaki `/` soyulur, sorgu
+ * dizesi/fragman karışmaz, büyük/küçük harf DUYARLI, metot büyük/küçük harf
+ * DUYARSIZ).
  */
 export function resolveRateLimitPolicy(
   method: string,

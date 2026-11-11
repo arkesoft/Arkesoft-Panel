@@ -25,6 +25,7 @@ import {
   createFakeErrorFactoryPort,
   createFakeJobReadPort,
   createFakeMembershipReadPort,
+  createFakeSessionListReadPort,
   createFakeSessionSecurityReadPort,
   createFakeStorefrontTenantReadPort,
   createFakeTenantReadPort,
@@ -311,6 +312,9 @@ describe('MemberWritePort totalliği — port hatası tele YANSIR (resolver null
         membershipRead: createFakeMembershipReadPort('owner'),
         memberWrite: throwingMemberWrite,
         sessionSecurityRead: createFakeSessionSecurityReadPort(),
+        // ROADMAP v0.0.15.1, T-017/S4 — ZORUNLU üye; bu test `session.list`
+        // ÇAĞIRMAZ, stub yalnızca sözleşmeyi doldurur.
+        sessionListRead: createFakeSessionListReadPort(),
       },
       errors: createFakeErrorFactoryPort(),
     }

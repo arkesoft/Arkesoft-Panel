@@ -38,6 +38,29 @@
 //   tabanlı, PLATFORM kapsamlı (`platform:auth:`) guard'ındadır. İki ayrı,
 //   koordinesiz eşik AYNI anda çalışmasın (architect K3'ün eşikleri BURADA
 //   değil, `rate-limit.policy.ts`'te modül sabiti).
+// - **ROADMAP v0.0.15.1 (T-017/S6) — IP YAZIMI.** `advanced.ipAddress.
+//   disableIpTracking: true` (ALTINDA, DEĞİŞMEDİ — K6/KVKK'nın "Better
+//   Auth'un KENDİ IP mekanizmasına GÜVENME" kararı duruyor) Better Auth'un
+//   KENDİ `internal-adapter.mjs`'inin (ÖLÇÜLDÜ, `getIP(...) || ''`,
+//   `disableIpTracking` → `getIP` HER ZAMAN `null`) HER `session.create`
+//   çağrısına yazdığı `''`'yi BİLEREK üretir — `databaseHooks.session.
+//   create.before` (ALTTA) bu `''`'yi `RequestContext.client.ip` İLE EZER
+//   (`db/with-hooks.mjs:19-22`, ÖLÇÜLDÜ: `actualData = {...actualData,
+//   ...result.data}` → BİZİM değerimiz KAZANIR, kütüphanenin `''`'si
+//   KAYBOLUR). KULLANICI KARARI (2026-11-09, ÜÇ KEZ onaylandı): IP TAM
+//   saklanır, SAHİBİNE tam gösterilir, ASLA loglanmaz — bayrak `true` KALIR,
+//   IP BİZİM kaynağımızdan (`request-context.middleware.ts`'in
+//   `resolveClientIp`/`AUTH_TRUSTED_PROXY_COUNT` çözümü, `AuditLog.ip`'nin
+//   DE tükettiği TEK kaynak) yazılır. Kütüphanenin KENDİ IP'si BEŞ ÖLÇÜMLE
+//   ELENDİ: `DEFAULT_IP_HEADERS = ['x-forwarded-for']` sokete HİÇ düşmüyor;
+//   vekil yapılandırması OLMADAN tek-değerli XFF KOŞULSUZ güvenilir (istemci
+//   kendi IP'sini UYDURABİLİR); `trustedProxies` CIDR ↔ bizim HOP SAYISI
+//   semantiği UYUMSUZ; IPv6 /64'e KIRPILIYOR ↔ "tam saklanır" İHLALİ;
+//   `isTest() || isDevelopment() → '127.0.0.1'` SAHTE YEŞİL verir.
+//   `clientIp === null` (`UNKNOWN_IP` sentinel'inin `RequestContextMiddleware`
+//   TARAFINDAN eşlendiği "tespit edilemedi" durumu) → `null` YAZILIR, `''`
+//   DEĞİL (`resolveSessionIpAddressForCreateHook`'un dosya içi yorumu,
+//   altta — gerekçe: `Session.ipAddress` NULLABLE'dır TAM BUNUN İÇİN).
 // - **Better Auth'un KENDİ logger'ı pino'ya bağlanır** (CLAUDE.md §4
 //   `console.*` yasağı — kütüphane kendi başına konsola yazmaz).
 //   FIX turu 1, madde 2 (F2, high) — `error` seviyesinde pozisyonel
@@ -226,6 +249,57 @@ async function sendAuthMail(
   // FIX turu 2, madde 4 — `resolveEventLogger()` (`requestId` bağlamalı).
   resolveEventLogger(logger).info({ emailMasked: maskEmail(to), messageKey }, 'e-posta gönderildi')
 }
+
+/**
+ * `databaseHooks.session.create.before`'ın (altta) yazacağı IP değerini
+ * hesaplar — BUGÜN BİREBİR KOPYA (`clientIp`). Fonksiyonun VARLIK SEBEBİ
+ * KARARIN KENDİSİNİ adlandırmak ve TEST EDİLEBİLİR kılmak:
+ *
+ * ⚠ `clientIp === null` (`RequestContextMiddleware`'in `UNKNOWN_IP`
+ * sentinel'ini eşlediği "tespit edilemedi" durumu,
+ * `request-context.middleware.ts:104-106`) → `null` YAZILIR, `''` DEĞİL.
+ * GEREKÇE (karar, ROADMAP v0.0.15.1/T-017/S6): `Session.ipAddress` kolonu
+ * NULLABLE'dır (`String?`) TAM BU YÜZDEN; `''` yazmak "IP ÇÖZÜLDÜ VE
+ * BOŞTU" gibi YANLIŞ bir iddia taşırdı. `RequestClientContext`'in audit
+ * kaydı İÇİN ZATEN kurduğu "sentinel bir DEĞER DEĞİLDİR, `null`'a
+ * eşlenir" ilkesiyle (`request-context.types.ts`'in `ip` alanı yorumu)
+ * AYNI semantik — İKİNCİ bir "bilinmeyen IP" TEMSİLİ İCAT EDİLMEZ; tek
+ * doğruluk kaynağı (`RequestContext.client.ip`) burada da KORUNUR.
+ *
+ * `export` — birim testi için (`session-ip-and-last-seen.test.ts`).
+ */
+export function resolveSessionIpAddressForCreateHook(clientIp: string | null): string | null {
+  return clientIp
+}
+
+/**
+ * "Son görülme" (`lastSeenAt`) ÇÖZÜNÜRLÜĞÜ — ROADMAP v0.0.15.1, T-017/S6,
+ * architect'in ÖLÇÜLMÜŞ GEREKÇESİ (`pm`'in R2'sini bu ölçümle REVİZE etti).
+ * `session: { … }` İÇİNDEKİ `expiresIn`'in (altta) YANINA, Better Auth'un
+ * KENDİ `session.updateAge`'ine VERİLİR — `lastSeenAt = Session.updatedAt`,
+ * AYRI bir mekanizma KURULMAZ (Better Auth'un KENDİ yenileme yazımı,
+ * `better-auth@1.7.14` `api/routes/session.mjs:199-201`, ÖLÇÜLDÜ, bu
+ * kolonu ZATEN günceller).
+ *
+ * YENİLEME KOŞULU (ÖLÇÜLDÜ, AYNI dosya, satır 180):
+ * `expiresAt − expiresIn·1000 + updateAge·1000 ≤ now`. `expiresAt =
+ * lastUpdate + expiresIn·1000` olduğundan bu ifade CEBİRSEL olarak
+ * `lastUpdate + updateAge·1000 ≤ now`'a SADELEŞİR — yani bir satır, SON
+ * yazımından bu yana geçen süre `updateAge` saniyeyi AŞMADAN bir KEZ DAHA
+ * yazılamaz (satır başına pencere başına EN FAZLA BİR `UPDATE` — yazma
+ * amplifikasyonunun YAPISAL üst sınırı, `perf`'in P1'i BUNU ölçecek).
+ *
+ * `expiresAt` BUGÜN DE (bu değişiklikten ÖNCE DE) KAYAN bir penceredir —
+ * her yenileme `expiresAt`'i `now + AUTH_SESSION_TTL_SECONDS` olarak
+ * SIFIRLAR (`session.mjs:200`). Değişen TEK şey ÇÖZÜNÜRLÜKTÜR (Better
+ * Auth'un TANIMLANMAMIŞ varsayılanı 86400 → 300) — oturum ÖMRÜ en kötü
+ * durumda varsayılanla ≤24 saat UZAYABİLİRDİ, bu sabitle ≤5 dakikaya
+ * DÜŞER; 7 günlük `AUTH_SESSION_TTL_SECONDS` TTL'i için KABUL EDİLEBİLİR.
+ *
+ * `export` — birim/entegrasyon testi için (`session-ip-and-last-seen.test.ts`,
+ * AC8'in eşik mutasyonu `describeBetterAuthLogCause`'un AYNI "export for test" deseni).
+ */
+export const SESSION_LAST_SEEN_RESOLUTION_SECONDS = 300
 
 type BetterAuthLogLevel = 'debug' | 'info' | 'success' | 'warn' | 'error'
 
@@ -621,8 +695,13 @@ export function createAuthInstance(options: CreateAuthInstanceOptions): Auth {
       // EKRANI eklenmiyor, bu sunucu tarafı bir KURALDIR. Gerekçe: hedef
       // kullanıcı (teknik bilgisi olmayan KOBİ) şüpheli hareket görünce
       // bildiği TEK şeyi yapar — parolasını sıfırlar; bu olmadan saldırganın
-      // çalıntı oturumu `AUTH_SESSION_TTL_SECONDS` (varsayılan 7 gün, HER
-      // istekte YENİLENEN) boyunca ayakta kalır.
+      // çalıntı oturumu `AUTH_SESSION_TTL_SECONDS` (varsayılan 7 gün,
+      // `SESSION_LAST_SEEN_RESOLUTION_SECONDS`'TA — 300s/5 dakikada EN FAZLA
+      // BİR KEZ YENİLENEN; YORUM DÜZELTMESİ, ROADMAP v0.0.15.1/T-017/S6:
+      // ÖNCEKİ hâl "HER istekte YENİLENEN" diyordu — YANLIŞTI, Better
+      // Auth'un `updateAge` varsayılanı 86400'dür ve BU satırdan ÖNCE
+      // TANIMLANMAMIŞTI, yani zaten "24 saatte EN FAZLA BİR KEZ" idi; bu
+      // alt görev çözünürlüğü AÇIKÇA 300'E indirir) boyunca ayakta kalır.
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: async ({ user, token }): Promise<void> => {
         const url = buildAuthLinkUrl(env.AUTH_BASE_URL, '/reset-password', token)
@@ -639,6 +718,11 @@ export function createAuthInstance(options: CreateAuthInstanceOptions): Auth {
     },
     session: {
       expiresIn: env.AUTH_SESSION_TTL_SECONDS,
+      // ROADMAP v0.0.15.1 (T-017/S6) — `SESSION_LAST_SEEN_RESOLUTION_SECONDS`'ın
+      // (yukarıda) dosya içi yorumuna bkz. Better Auth'un TANIMLANMAMIŞ
+      // varsayılanı (86400) BİLEREK aşılır — "son görülme" 5 dakika
+      // çözünürlükte, AYRI bir mekanizma YOK (`lastSeenAt = Session.updatedAt`).
+      updateAge: SESSION_LAST_SEEN_RESOLUTION_SECONDS,
       // ZORUNLU (A-G8) — bkz. dosya başı yorumu.
       cookieCache: { enabled: false },
     },
@@ -713,6 +797,19 @@ export function createAuthInstance(options: CreateAuthInstanceOptions): Auth {
       },
       session: {
         create: {
+          // ROADMAP v0.0.15.1 (T-017/S6) — dosya başı yorumunun IP YAZIMI
+          // maddesine bkz. `tryGetCurrentAuthEndpointContext()` ALS İÇİNDE
+          // çalışır (ÖLÇÜLDÜ, `db/with-hooks.mjs:8`) — `session.create.
+          // after` (altta) ZATEN `tryGetRequestContext()` okuyor, AYNI
+          // istek bağlamı buradan da erişilebilir; İKİNCİ bir context
+          // kaynağı İCAT EDİLMEZ. `async` YOK — gövde hiçbir şeyi `await`
+          // ETMİYOR (`user.create.after`'ın AYNI deseni, yukarıda).
+          before: (): Promise<{ data: { ipAddress: string | null } }> => {
+            const clientIp = tryGetRequestContext()?.client.ip ?? null
+            return Promise.resolve({
+              data: { ipAddress: resolveSessionIpAddressForCreateHook(clientIp) },
+            })
+          },
           // FIX turu 1, madde 2/F2 (`medium`) — İKİNCİ parametre (`context`)
           // EKLENDİ. ÖNCEKİ hâl `ctx.path`'i HİÇ OKUMADIĞI için `disable`'ın
           // (ve ileride, bugün erişilemeyen `enable`/`otp`'nin) ÜRETTİĞİ

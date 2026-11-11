@@ -1,13 +1,17 @@
 // @arkesoft/admin — `/hesap/guvenlik` rotası (ROADMAP v0.0.15, T-016/S10,
-// docs/ux/T-016-iki-faktorlu-dogrulama.md Ekran 1, docs/ui/T-016 P1)
+// docs/ux/T-016-iki-faktorlu-dogrulama.md Ekran 1, docs/ui/T-016 P1;
+// ROADMAP v0.0.15.1, T-017/S11 — "Aktif oturumlar" kartı EKLENDİ)
 //
 // Herhangi bir üye kendi hesap ayarlarına girdiğinde (2FA kişisel bir ayar,
-// owner'a özel DEĞİL). Tek `h1` — `TwoFactorStatusCard` KENDİ başlığını
-// `CardTitle` (bir `<p>`, T-008'in kararı) ile taşır, ikinci bir `h1`
-// ÜRETMEZ. Veri ÇEKMEZ — `TwoFactorStatusCard` (konteyner) çeker.
+// owner'a özel DEĞİL). Tek `h1` — `TwoFactorStatusCard`/`ActiveSessionsCard`
+// KENDİ başlıklarını `CardTitle` (bir `<p>`, T-008'in kararı) ile taşır,
+// ikinci bir `h1` ÜRETMEZ. Veri ÇEKMEZ — iki kart (konteyner) BAĞIMSIZ
+// çeker (docs/ux/T-017 "izolasyon" şartı — biri diğerini etkilemez).
+// Ayrı bir rota AÇILMAZ (docs/ui/T-017: "hesap güvenliği tek yüzey").
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef, type JSX } from 'react'
 
+import { ActiveSessionsCard } from '../features/sessions/ActiveSessionsCard.js'
 import { TwoFactorStatusCard } from '../features/two-factor/TwoFactorStatusCard.js'
 import { MESSAGES } from '../messages/messages.js'
 
@@ -33,6 +37,7 @@ function AccountSecurityPage(): JSX.Element {
         {MESSAGES.accountSecurity.title}
       </h1>
       <TwoFactorStatusCard />
+      <ActiveSessionsCard />
     </div>
   )
 }

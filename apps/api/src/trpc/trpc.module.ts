@@ -35,13 +35,24 @@
 // ayrı bir servis katmanı İCAT ETMEK gereksiz dolaylama olurdu), bu yüzden
 // `imports`'a YENİ bir modül EKLENMEDİ (`PrismaModule` ZATEN `@Global()`).
 
+// GÜNCELLEME (ROADMAP v0.0.15.1, T-017/S9, po ⭐ KISIT (b)): `SessionListReadPortAdapter`
+// EKLENDİ — `session.list`'in iş mantığı adaptörü. ⚠ `SessionSecurityReadPortAdapter`'ın
+// AYRI deseni BURADA GEÇERSİZ: `session` sır taşıyan modellerden biri,
+// `apps/api/eslint.config.mjs:61-75` `AuthPrismaDatabase` ithalini
+// `src/{prisma,auth}/**` DIŞINDA yasaklar — adaptör `AuthModule`'ün dışa
+// açtığı `SESSION_LIST_READER` token'ına (`SessionsService.listOwnSessions`'a
+// daraltılmış) DELEGE EDER. Bu yüzden `imports`'a `AuthModule` EKLENDİ —
+// token ORADAN gelir.
+
 import { Module } from '@nestjs/common'
 
+import { AuthModule } from '../auth/auth.module.js'
 import { MemberModule } from '../member/member.module.js'
 import { TenantSecurityModule } from '../tenant/tenant-security.module.js'
 import { JobReadPortAdapter } from './ports/job-read.port.adapter.js'
 import { MemberWritePortAdapter } from './ports/member-write.port.adapter.js'
 import { MembershipReadPortAdapter } from './ports/membership-read.port.adapter.js'
+import { SessionListReadPortAdapter } from './ports/session-list-read.port.adapter.js'
 import { SessionSecurityReadPortAdapter } from './ports/session-security-read.port.adapter.js'
 import { StorefrontTenantReadPortAdapter } from './ports/storefront-tenant-read.port.adapter.js'
 import { TenantReadPortAdapter } from './ports/tenant-read.port.adapter.js'
@@ -50,7 +61,7 @@ import { TrpcController } from './trpc.controller.js'
 import { TrpcErrorsPortAdapter } from './trpc-errors.port.adapter.js'
 
 @Module({
-  imports: [MemberModule, TenantSecurityModule],
+  imports: [MemberModule, TenantSecurityModule, AuthModule],
   controllers: [TrpcController],
   providers: [
     TenantReadPortAdapter,
@@ -60,6 +71,7 @@ import { TrpcErrorsPortAdapter } from './trpc-errors.port.adapter.js'
     MembershipReadPortAdapter,
     MemberWritePortAdapter,
     SessionSecurityReadPortAdapter,
+    SessionListReadPortAdapter,
     TrpcErrorsPortAdapter,
   ],
 })
