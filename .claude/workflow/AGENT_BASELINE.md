@@ -165,6 +165,12 @@ yaz (SEV, `dosya:satır`, açıklama, sorumlu ajan, vade önerisi) ki `docs` kop
   fark edilmeden kaldı (T-017). Dosya/değişiklik taraması zaman damgasıyla yapılacaksa
   mutlak ISO 8601 zaman yazılır ve komut önce stderr **görünür** şekilde çalıştırılıp
   sözdizimi doğrulanır.
+- **Komut çıktısızlığı ≠ bulgu yokluğu.** Bir dizin üzerinde çalışan saflık/yasak-jeton
+  taraması (`grep`, `find` vb.) **varsayılan olarak dizine inmez**; `-r`/`--recursive`
+  (veya eşdeğeri) bayrağı eksikse komut sessizce tek seviye tarar ve boş çıktı "temiz"
+  sanılır. `guards.sh`/CI'a kodlanacak her dizin taraması **açıkça** `-r` taşımalı; aksi
+  halde CI'da yanlış kırmızı veya sessizce atlanan bir tarama oluşur (T-018, `docs`
+  turunda üçüncü kez ölçüldü — önceki ikisi `grep -c` ve `find -newermt` sınıfıydı).
 
 ---
 

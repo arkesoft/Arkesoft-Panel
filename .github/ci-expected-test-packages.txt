@@ -87,6 +87,30 @@
 # CI'ya yeni job eklemek bu Task'ın kapsamı dışında). Sessiz boşluk
 # doğmuyor; 9 → 10 satır.
 #
+# GÜNCELLEME (ROADMAP v0.0.21, T-018/S6 — devops): yeni paket
+# `@arkesoft/versioning` (semver karşılaştırma/uyumluluk/N-2 penceresi, SAF —
+# I/O yok) bir "test" script'i kazandı ("vitest run", 76 test). Hangi CI
+# hattının kapanışında:
+#
+#   - `theme-sdk` job'u (`filter: '@arkesoft/theme-sdk...'`, ci.yml:1190) —
+#     S3 (ADR-0020 Karar 2/B) `theme-sdk`'yı `@arkesoft/versioning`'e
+#     `workspace:*` ile bağımlı yaptı (semver deseni oraya taşındı). Soneki
+#     `...` BU hattın bağımlılık KAPANIŞINI (pakedin kendi ihtiyaç ettiği
+#     paketler) ifade eder — "dependents" değil. Ölçüldü
+#     (`pnpm exec turbo run test --filter='@arkesoft/theme-sdk...' --dry=json`):
+#     paket kümesi `@arkesoft/config` (`<NONEXISTENT>`), `@arkesoft/theme-sdk`
+#     (`vitest run`), `@arkesoft/versioning` (`vitest run`) — `<NONEXISTENT>`
+#     DEĞİL, test adımı GERÇEKTEN koşuyor. Yeni bir CI job'u GEREKMİYOR.
+#   - `plan` job'unun değişiklik tespiti (`turbo run build --affected
+#     --dry=json`, ci.yml:136) için de aynı kapanış tersten geçerli:
+#     `pnpm exec turbo run build --filter='...@arkesoft/versioning' --dry=json`
+#     ÇIKTISI `@arkesoft/theme-sdk`'yı (ve `@arkesoft/api`, `@arkesoft/db`,
+#     `@arkesoft/storefront`, `@arkesoft/themes-modern`'i) `@arkesoft/versioning`'in
+#     DEPENDENTS kapanışında gösteriyor — yani `packages/versioning` TEK BAŞINA
+#     değişse `turbo --affected` `theme-sdk`'yı da etkilenmiş sayar ve
+#     `themeSdk=true` üretir (ci.yml:291). Sessiz boşluk doğmuyor; 10 → 11
+#     satır.
+#
 # Satır başında # olan satırlar ve boş satırlar yorum sayılır, taranmaz.
 
 @arkesoft/admin
@@ -99,3 +123,4 @@
 @arkesoft/themes-modern
 @arkesoft/trpc
 @arkesoft/ui
+@arkesoft/versioning

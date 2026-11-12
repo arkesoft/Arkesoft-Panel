@@ -1,6 +1,6 @@
 {
   "name": "@arkesoft/db",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
   "description": "Prisma şeması, migration’lar, seed ve RLS politikaları",
@@ -43,9 +43,11 @@
   "dependencies": {
     "@arkesoft/config": "workspace:*",
     "@arkesoft/errors": "workspace:*",
+    "@arkesoft/themes-modern": "workspace:*",
     "@prisma/adapter-pg": "catalog:",
     "@prisma/client": "catalog:",
-    "pg": "catalog:"
+    "pg": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

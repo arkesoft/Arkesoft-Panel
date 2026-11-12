@@ -45,14 +45,45 @@ export { DEMO_SEED } from './seed-data.js'
 
 // Model satır tipleri — yalnızca tip, çalışma zamanı karşılığı yok.
 // `Job` (ROADMAP v0.0.11, T-013/S2) ADDITIVE eklendi.
-export type { Tenant, User, TenantMembership, Job } from '#prisma'
+// `PlatformRelease`/`Theme`/`ThemeRelease`/`TenantVersionState`/
+// `TenantUpdateHistory` (ROADMAP v0.0.21, T-018/S2) ADDITIVE eklendi —
+// `Job`/`AuditLog` emsali: problar (S4) ve seed (S5) barrel'dan ithal eder
+// (`job.probe.ts:20` deseni), export'lar şemayla AYNI oturumda yazılmak
+// ZORUNDA (po, bağlayıcı — aksi hâlde S4 kurulu desenle çalışamaz).
+export type {
+  Tenant,
+  User,
+  TenantMembership,
+  Job,
+  PlatformRelease,
+  Theme,
+  ThemeRelease,
+  TenantVersionState,
+  TenantUpdateHistory,
+} from '#prisma'
 
 // Çalışma zamanı karşılaştırması + exhaustive switch için değer + tip.
 // `JobStatus` (ROADMAP v0.0.11, T-013/S2): `apps/api` kuyruk kodu durum
 // geçişlerini bu enum DEĞERİ üzerinden yazar (literal dize YAZMAZ) ve
 // `packages/trpc` tel sözleşmesi kendi yerel birleşimini bu dörtlüye karşı
 // pinler — bkz. ADR-0009 md 5 (`@arkesoft/db`'den import ETMEME emsali).
-export { TenantStatus, UserStatus, TenantRole, JobStatus } from '#prisma'
+//
+// `ReleaseChannel`/`ThemeStatus`/`ThemeReleaseStatus`/`UpdateTrigger`/
+// `UpdateStatus` (ROADMAP v0.0.21, T-018/S2) ADDITIVE eklendi — `JobStatus`
+// emsali. Bu beş enum'un HİÇBİRİ bu sürümde tele ÇIKMAZ (po'nun dosya
+// listesinde `apps/*`/`packages/trpc` YOK) — tele-enum parite pini BU
+// sürümde GEREKMEZ (A-T18-6).
+export {
+  TenantStatus,
+  UserStatus,
+  TenantRole,
+  JobStatus,
+  ReleaseChannel,
+  ThemeStatus,
+  ThemeReleaseStatus,
+  UpdateTrigger,
+  UpdateStatus,
+} from '#prisma'
 
 // `Prisma.TenantCreateInput` vb. yardımcı tipler için — yalnızca TİP
 // namespace'i dışa açılır, namespace'in çalışma zamanı değeri sızmaz.

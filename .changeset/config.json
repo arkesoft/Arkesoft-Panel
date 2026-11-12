@@ -13,7 +13,8 @@
       "@arkesoft/storefront",
       "@arkesoft/superadmin",
       "@arkesoft/tenancy",
-      "@arkesoft/ui"
+      "@arkesoft/ui",
+      "@arkesoft/versioning"
     ]
   ],
   "linked": [],

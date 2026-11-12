@@ -623,6 +623,9 @@ importers:
       '@arkesoft/errors':
         specifier: workspace:*
         version: link:../errors
+      '@arkesoft/themes-modern':
+        specifier: workspace:*
+        version: link:../themes/modern
       '@prisma/adapter-pg':
         specifier: 'catalog:'
         version: 7.10.1
@@ -632,6 +635,9 @@ importers:
       pg:
         specifier: 'catalog:'
         version: 8.23.1
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -712,6 +718,9 @@ importers:
 
   packages/theme-sdk:
     dependencies:
+      '@arkesoft/versioning':
+        specifier: workspace:*
+        version: link:../versioning
       zod:
         specifier: 'catalog:'
         version: 4.6.7
@@ -812,6 +821,28 @@ importers:
       react:
         specifier: 'catalog:'
         version: 19.3.1
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.5(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1))
+
+  packages/versioning:
+    dependencies:
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
+    devDependencies:
+      '@arkesoft/config':
+        specifier: workspace:*
+        version: link:../config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+      eslint:
+        specifier: 'catalog:'
+        version: 10.13.0(jiti@2.7.0)
       typescript:
         specifier: 'catalog:'
         version: 6.0.3

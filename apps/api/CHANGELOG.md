@@ -1,5 +1,16 @@
 # @arkesoft/api
 
+## 0.8.0
+
+### Patch Changes
+
+- Updated dependencies
+  - @arkesoft/db@0.8.0
+  - @arkesoft/config@0.8.0
+  - @arkesoft/errors@0.8.0
+  - @arkesoft/tenancy@0.8.0
+  - @arkesoft/trpc@0.6.1
+
 ## 0.7.0
 
 ### Minor Changes

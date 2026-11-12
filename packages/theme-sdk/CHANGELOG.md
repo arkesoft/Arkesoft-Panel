@@ -1,5 +1,18 @@
 # @arkesoft/theme-sdk
 
+## 0.1.2
+
+### Patch Changes
+
+- Platform, tema ve API sürümleri artık veritabanında izlenebilir [v0.0.21]. Her
+  müşterinin (kiracının) o anda hangi platform + tema + API sürümü bileşiminde
+  olduğu tek bir kayıtta tutulur; bu kayıt, bir önceki sürüm bileşimini de
+  geri dönülebilir şekilde saklar. Sürüm güncelleme ve geri alma işlemlerinin
+  geçmişi de ayrıca kayda geçer. Bu sürümde panelde gösterilen bir ekran yoktur
+  — bu değişiklik, ileride gelecek sürüm görünürlüğü ve geri alma özelliklerinin
+  veri temelini kurar.
+- @arkesoft/versioning@0.8.0
+
 ## 0.1.1
 
 ### Patch Changes

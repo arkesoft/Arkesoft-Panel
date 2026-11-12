@@ -4,9 +4,12 @@
 // SEVİYESİ tablolardır — `tenant_id` kolonu taşımazlar, bu tablolar kiracı
 // kimliğinin kaynağıdır. Tenant'a bağlı tabloların KANONİK LİSTESİ aşağıdaki
 // `TENANT_SCOPED_TABLES` dizisidir (v0.0.3'te tek üyeliydi: `TenantMembership`;
-// v0.0.11'de `Job`, v0.0.14'te `AuditLog` ve `TenantInvitation` eklendi →
-// BUGÜN DÖRT ÜYE) — her üyenin `tenant_id` kolonu `text`, NOT NULL ve
-// `tenant_id` öncü bir bileşik benzersizlik kısıtının ilk kolonudur.
+// v0.0.11'de `Job`, v0.0.14'te `AuditLog` ve `TenantInvitation`, v0.0.21'de
+// `TenantVersionState` ve `TenantUpdateHistory` eklendi — dizinin BUGÜNKÜ
+// uzunluğu aşağıdaki dizinin KENDİSİNDEN okunur, burada bir SAYI
+// SABİTLENMEZ, R-PM7'nin kapattığı bayatlama sınıfı) — her üyenin
+// `tenant_id` kolonu `text`, NOT NULL ve `tenant_id` öncü bir bileşik
+// benzersizlik kısıtının ilk kolonudur.
 //
 // GÜNCELLEME (ROADMAP v0.0.13, T-005/S3): `tenant_membership` için RLS
 // politikası artık VAR — bkz. `prisma/migrations/<ts>_rls_tenant_isolation/
@@ -86,6 +89,20 @@
 // kiracıya değil — `session`/`account`/`verification`'ın gerekçesiyle
 // BİREBİR aynı ("bir hesap → birden fazla mağaza"). `TwoFactor.userId`
 // `@unique` (bkz. `prisma/schema.prisma`), `tenant_id` kolonu TAŞIMAZ.
+//
+// GENİŞLETME (ROADMAP v0.0.21, T-018/S2, architect VERİ MODELİ + ADR-0020
+// Karar): `platform_release` (YEDİNCİ üye), `theme` (SEKİZİNCİ üye) ve
+// `theme_release` (DOKUZUNCU üye) EKLENDİ → dizi ALTIDAN DOKUZA çıktı.
+// Sınıflandırma ekseni ADR-0020'de yazılı: "olgu KİME aittir" — bir platform
+// sürümü, bir tema veya bir tema sürümü PLATFORMUN KENDİSİNE aittir, kiracıya
+// değil. §4'ün kademeli dağıtımı bile KİRACIYI sürüme atar, sürümü kiracıya
+// değil; `platform_release`'e `tenant_id` eklemek "aynı platform sürümü
+// kiracı başına ayrı yayınlanmış" demek olurdu. `theme.id` DOĞAL ANAHTARDIR
+// (`cuid(2)` DEĞİL, bkz. `prisma/schema.prisma` → `Theme` model doc'u,
+// ADR-0020 Karar 3) — bu TAKSONOMİ KARARINI ETKİLEMEZ, üçü de BU dizide
+// kalır. ⚠ `arkesoft_app`'in bu üç tabloya `ALTER DEFAULT PRIVILEGES` ile
+// kazandığı blanket DML yetkisi BU sürümde DARALTILMADI (ADR-0020 Sonuçlar,
+// `security` gate'ine bırakıldı).
 export const PLATFORM_LEVEL_TABLES = [
   'tenant',
   'app_user',
@@ -93,6 +110,9 @@ export const PLATFORM_LEVEL_TABLES = [
   'account',
   'verification',
   'two_factor',
+  'platform_release',
+  'theme',
+  'theme_release',
 ] as const
 
 // GENİŞLETME (ROADMAP v0.0.14, T-014/S1, architect K-A0/K-A1): `audit_log`
@@ -117,11 +137,29 @@ export const PLATFORM_LEVEL_TABLES = [
  * `TENANT_CONTEXT_SETTING` sabitinde tanımlı GUC'u okuyan bir `USING`/
  * `WITH CHECK` politikası taşır (bkz. ilgili migration dosyası).
  */
+// GENİŞLETME (ROADMAP v0.0.21, T-018/S2, architect VERİ MODELİ + ADR-0020
+// Karar 1): `tenant_version_state` (BEŞİNCİ üye) ve `tenant_update_history`
+// (ALTINCI üye) EKLENDİ → dizi DÖRTTEN ALTIYA çıktı. `tenant_version_state`
+// kiracının BUGÜNKÜ sürüm bileşiminin TEK yazılabilir doğruluk kaynağıdır
+// (ADR-0020 Karar 1 — `Tenant.themeId`/`themeVersion` bu sürümden itibaren
+// DEPRECATED ayna kolondur, DDL değişmedi). İki tablo da `tenant_membership`/
+// `job`/`audit_log`/`tenant_invitation`'ın taşıdığı tüm değişmezleri
+// (CLAUDE.md §7 md 1-3) taşır. ⚠⚠ Bu iki satırlık değişiklik K7/K8 AYRI alt
+// görevlerde kapatıldı (po, bağlayıcı): bu alt görev (S2) yalnızca TAKSONOMİ
+// kaydını ve migration SQL'ini yazar; `TenantScopedProbe` kaydı AYRI bir alt
+// görevin (S4) işidir ve BİLEREK bu oturumda YAZILMADI — kabul kriteri prob
+// tamlığı kapısının (`tenant-isolation-suite.ts`) bu ikisi için GERÇEK bir
+// `expect` başarısızlığı üretmesini (T-014/S1 emsali, `skip` DEĞİL) GÖZLEMEK
+// istiyor. ⚠ Prob KAYDI HÂLÂ TEK YERDEDİR
+// (`__tests__/tenant-membership.isolation.test.ts`) — İKİNCİ bir çağrı
+// noktası AÇILMAZ.
 export const TENANT_SCOPED_TABLES = [
   'tenant_membership',
   'job',
   'audit_log',
   'tenant_invitation',
+  'tenant_version_state',
+  'tenant_update_history',
 ] as const
 
 // GENİŞLETME (ROADMAP v0.0.14.1, T-015/ST-C, architect "Bağlayıcı yetki

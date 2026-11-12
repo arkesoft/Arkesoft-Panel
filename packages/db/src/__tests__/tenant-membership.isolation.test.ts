@@ -1,11 +1,13 @@
 // @arkesoft/db — `createTenantIsolationSuite()`'in TEK çağrı/kayıt noktası
-// (ROADMAP v0.0.13, T-005/S4, architect K-E10; v0.0.11/T-013/S2 ve
-// v0.0.14/T-014/S3 ile prob sayısı 1 → 2 → 4 oldu)
+// (ROADMAP v0.0.13, T-005/S4, architect K-E10; v0.0.11/T-013/S2,
+// v0.0.14/T-014/S3 ve v0.0.21/T-018/S4 ile prob sayısı 1 → 2 → 4 → 6 oldu)
 //
 // ⚠ DOSYA ADI TARİHSELDİR (`tenant-membership.…`): v0.0.3'te taksonomide tek
 // tablo vardı. Bugün bu dosya `TENANT_SCOPED_TABLES`'ın TAMAMINI kaydeder —
-// taksonominin GÜNCEL uzunluğu DÖRTTÜR ve kanonik listesi `src/tenancy.ts`'te
-// yaşar; aşağıdaki `probes` dizisi o listenin her üyesi için bir giriş taşır.
+// taksonominin GÜNCEL uzunluğu `src/tenancy.ts`'teki dizinin KENDİSİNDEN
+// okunur, burada bir SAYI SABİTLENMEZ (R-PM7'nin kapattığı bayatlama sınıfı,
+// aşağıdaki not); aşağıdaki `probes` dizisi o listenin her üyesi için bir
+// giriş taşır.
 // ⚠ Bu yorum TABLO ADI SAYMAZ ve bir SAYIYI TEKRARLAMAZ niyetiyle yazıldı:
 // R-PO9 (`po`'nun ölçümü) taksonomi 2 → 4 büyürken "iki üye" diye BAYAT KALMIŞ
 // DÖRT beyan yeri buldu ve bunlardan biri tam olarak bu dosyanın başıydı.
@@ -45,6 +47,8 @@ import { TENANT_SCOPED_TABLES } from '../tenancy.js'
 import { auditLogProbe } from './helpers/audit-log.probe.js'
 import { jobProbe } from './helpers/job.probe.js'
 import { tenantInvitationProbe } from './helpers/tenant-invitation.probe.js'
+import { tenantUpdateHistoryProbe } from './helpers/tenant-update-history.probe.js'
+import { tenantVersionStateProbe } from './helpers/tenant-version-state.probe.js'
 import { testAppPrisma } from './helpers/test-client.js'
 import {
   createTenantIsolationSuite,
@@ -119,5 +123,12 @@ const tenantMembershipProbe: TenantScopedProbe = {
 createTenantIsolationSuite({
   client: testAppPrisma,
   taxonomy: { tenantScopedTables: TENANT_SCOPED_TABLES },
-  probes: [tenantMembershipProbe, jobProbe, auditLogProbe, tenantInvitationProbe],
+  probes: [
+    tenantMembershipProbe,
+    jobProbe,
+    auditLogProbe,
+    tenantInvitationProbe,
+    tenantVersionStateProbe,
+    tenantUpdateHistoryProbe,
+  ],
 })

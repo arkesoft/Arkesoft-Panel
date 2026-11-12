@@ -4,8 +4,12 @@
 // ⚠ SEMVER KARŞILAŞTIRMASI YAPILMADI — bağlayıcı kısıt (po handoff, V-PO
 // notu). Bu dosya `from`/`to` arasında "1.2.0 < 1.5.0" türünden bir ARALIK/
 // ÖNCELİK (precedence) hesabı YAPMAZ — o `packages/versioning`'in işi
-// (ROADMAP:1301) ve bu pakete o pakete bağımlılık DOĞMADI (CLAUDE.md §3,
-// architect "Modül yerleşimi" kararı). Burada yapılan üç şey:
+// (ROADMAP:1301). ADR-0020 Karar 2/B bu paketin `@arkesoft/versioning`'den
+// BİÇİM ilkesini (`extractMajor`) ithal etmesine izin verdi, ama
+// `compareSemver`/`parseSemver`/`satisfies` İTHAL EDİLMEZ — karşılaştırma
+// mantığı bu pakete SIZMAZ (CLAUDE.md §3, architect "Modül yerleşimi"
+// kararı hâlâ geçerli, yalnızca biçim ilkesinin sahibi değişti). Burada
+// yapılan üç şey:
 //   (1) `from`/`to`'nun semver BİÇİMİ (yalnızca biçim, karşılaştırma değil)
 //   (2) zincirin TOPOLOJİSİ — saf graf işi (boşluk/tekrar/döngü), düğümler
 //       OPAK dize kimlikleridir, büyüklük sırası hiç kullanılmaz
@@ -42,18 +46,20 @@
 // kontrol, "çözüldü" OLARAK İŞARETLENMEDİ — v0.0.10+ işi.
 //
 // ⚠ B4 DÜZELTMESİ (T-010 düzeltme turu 1/3 · parti B) — semver BİÇİM deseni
-// VE `extractMajor()` artık BU DOSYADA TANIMLANMIYOR, `../semver-format.js`'
-// TEN import edilir (tek kaynak — `manifest/manifest.ts` AYNI kaynağı
-// kullanır, `rg` ile tanım sayısı 1). Gerekçe `../semver-format.ts`'in
-// dosya başı yorumunda: bu dosyanın ESKİ yerel deseni (resmi semver.org
-// kopyası) ile `manifest.ts`'in ESKİ yerel deseni (daha gevşek) SAPMIŞTI
-// (`"1.0.0-01"` biri kabul biri red ediyordu) — artık TEK, DAHA KATI bir
-// kaynak var.
+// VE `extractMajor()` artık BU DOSYADA TANIMLANMIYOR, `@arkesoft/versioning`'
+// DEN import edilir (tek kaynak — `manifest/manifest.ts` AYNI kaynağı
+// kullanır, `rg` ile tanım sayısı 1; ADR-0020 Karar 2/B ile taşındı). Gerekçe
+// `@arkesoft/versioning`'in `semver.ts` dosya başı yorumunda BİREBİR
+// aktarılmış hâliyle duruyor: bu dosyanın ESKİ yerel deseni (resmi
+// semver.org kopyası) ile `manifest.ts`'in ESKİ yerel deseni (daha gevşek)
+// SAPMIŞTI (`"1.0.0-01"` biri kabul biri red ediyordu) — artık TEK, DAHA
+// KATI bir kaynak var.
+
+import { extractMajor } from '@arkesoft/versioning'
 
 import type { ThemeContractIssue, ThemeContractResult } from '../errors.js'
 import { THEME_CONTRACT_MESSAGES } from '../messages.js'
 import { formatThemeContractPath } from '../paths.js'
-import { extractMajor } from '../semver-format.js'
 
 /**
  * Bir ayar migration tanımı — İLERİ yönlü (V4, ters migration yazılmaz).
