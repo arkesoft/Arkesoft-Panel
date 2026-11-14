@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@arkesoft/errors": "workspace:*",
+    "@arkesoft/tenancy": "workspace:*",
     "@arkesoft/trpc": "workspace:*",
     "@arkesoft/ui": "workspace:*",
     "@hookform/resolvers": "catalog:",

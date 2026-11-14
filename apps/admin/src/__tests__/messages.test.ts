@@ -6,8 +6,10 @@ import {
   formatSupportCodeLine,
   MESSAGES,
   PANEL_ERROR_CODES,
+  REGISTRATION_FIELD_ERROR_KEYS,
   resolveErrorMessage,
   resolvePanelErrorMessage,
+  resolveRegistrationFieldErrorMessage,
 } from '../messages/messages.js'
 
 describe('resolveErrorMessage', () => {
@@ -66,6 +68,7 @@ describe('resolvePanelErrorMessage', () => {
       kind: 'known',
       code: 'UNAUTHENTICATED',
       requestId: null,
+      fields: null,
     })
 
     expect(message).toBe(resolveErrorMessage('UNAUTHENTICATED'))
@@ -76,6 +79,7 @@ describe('resolvePanelErrorMessage', () => {
       kind: 'known',
       code: 'TOTALLY_UNKNOWN_CODE_XYZ',
       requestId: null,
+      fields: null,
     })
 
     expect(message).toBe(resolveErrorMessage('TOTALLY_UNKNOWN_CODE_XYZ'))
@@ -86,6 +90,52 @@ describe('resolvePanelErrorMessage', () => {
     const message = resolvePanelErrorMessage({ kind: 'unknown', requestId: null })
 
     expect(message).toBe(MESSAGES.errors.network)
+  })
+})
+
+// T-019/S8 (F13, AC-5) — `fields` kanalının mesaj çözücüsü. `resolveErrorMessage`
+// ile AYNI desen: KAPALI dünya + AÇIK (`string`) imza + güvenli jenerik geri düşüş.
+describe('resolveRegistrationFieldErrorMessage', () => {
+  it('kümedeki her alan hatası anahtarı için kataloğun kendi metnini döner', () => {
+    for (const key of REGISTRATION_FIELD_ERROR_KEYS) {
+      const message = resolveRegistrationFieldErrorMessage(key)
+      expect(message.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('bilinmeyen/uydurma anahtar için jenerik Türkçe mesaja düşer, anahtarı basmaz', () => {
+    const message = resolveRegistrationFieldErrorMessage('errors.uydurma.kod')
+
+    expect(message).toBe('Beklenmeyen bir hata oluştu. Lütfen daha sonra tekrar deneyin.')
+    expect(message).not.toContain('errors.uydurma.kod')
+  })
+
+  // ⚠⚠ NEGATİF TEST 1 (en önemlisi, brief) — SAVUNMA DERİNLİĞİ: bu fonksiyon
+  // `normalizePanelError`'ın allowlist filtresinden BAĞIMSIZ olarak, kendisine
+  // DOĞRUDAN ham bir sunucu metni verilse DAHİ o metni ASLA döndürmez —
+  // jenerik mesaja düşer. Ham metin çıktıda 0 eşleşme.
+  it('NEGATİF TEST 1 — ham Türkçe metin doğrudan verilse DAHİ ASLA ekrana basılmaz', () => {
+    const rawServerText = 'Bu alan adı sistem yöneticisi tarafından elle reddedildi.'
+
+    const message = resolveRegistrationFieldErrorMessage(rawServerText)
+
+    expect(message).toBe('Beklenmeyen bir hata oluştu. Lütfen daha sonra tekrar deneyin.')
+    expect(message.includes(rawServerText)).toBe(false)
+  })
+
+  it('hiçbir mesaj i18n anahtarı biçiminde (errors.xxx) DEĞİL', () => {
+    for (const key of REGISTRATION_FIELD_ERROR_KEYS) {
+      expect(resolveRegistrationFieldErrorMessage(key)).not.toMatch(/\berrors\.[a-z]/)
+    }
+  })
+
+  it('kapalı dünya: REGISTRATION_FIELD_ERROR_KEYS @arkesoft/trpc şemasından türetilmiş, elle çoğaltılmamış (4 üye)', () => {
+    expect(REGISTRATION_FIELD_ERROR_KEYS).toEqual([
+      'errors.slug.taken',
+      'errors.slug.reserved',
+      'errors.slug.invalidFormat',
+      'errors.slug.unreachable',
+    ])
   })
 })
 

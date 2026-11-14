@@ -91,6 +91,43 @@ describe('mapApiError', () => {
     })
   })
 
+  // ⚠⚠ A-A2 PİN (ROADMAP v0.1.0, T-019/S10) — üretim kodu BU TURDA
+  // DEĞİŞMEDİ, sadece bu test EKLENDİ. Dosya başı yorumu zarf (b)'yi
+  // "BUGÜN ÜRETİMDE TETİKLENMİYOR" diye işaretlemişti (`TenantGuard` HTTP
+  // seviyesinde host çözümlemesini ÖNCE reddediyor) — AMA bu, kiracının
+  // VAR OLUP OLMADIĞI içindi, kiracının DURUMU (status) için DEĞİL.
+  // `storefront-tenant-read.port.adapter.ts`'in `where: {status:
+  // TenantStatus.active}` filtresi `pending`/`provisioning`/`suspended`
+  // kiracıları host ÇÖZÜLDÜKTEN SONRA, tRPC PROSEDÜRÜNÜN İÇİNDE eler — bu
+  // ret `TenantGuard`'ın HTTP-seviyesi reddinden FARKLI bir katmanda olur
+  // ve TRPCClientError'ın `data` alanı (zarf b) üzerinden DÖNER. v0.1.0'dan
+  // ÖNCE hiçbir GERÇEK kiracı `pending` durumunda VE canlı trafiğe açık
+  // DEĞİLDİ (seed/demo kiracı HER ZAMAN `active`) — `registration.
+  // createTenant` artık GERÇEK `pending` kiracılar üretiyor (AC-1) ve bu
+  // kiracının `{slug}.{alan-adı}` adresini "Siteyi Kur" (v0.2.0) ÖNCESİ
+  // ziyaret eden biri TAM OLARAK bu zarf (b) dalını CANLI olarak tetikler.
+  // Bu test o ÖNCEDEN ÖLÇÜLMÜŞ ama şimdi CANLI olan dalın davranışını pinler
+  // — `httpStatus: 404` HÂLÂ `{kind: 'not-found'}`'a eşleniyor (kod rejimi
+  // asla kırmak İSTEMİYORUZ, bu yüzden pin burada).
+  describe('A-A2 — zarf (b), v0.1.0 ile CANLI hâle gelen dal (pending kiracı → 404)', () => {
+    it('pending kiracı için TENANT_NOT_FOUND + httpStatus 404 (zarf b) → not-found', () => {
+      const error = {
+        data: {
+          code: 'NOT_FOUND',
+          httpStatus: 404,
+          appError: {
+            code: 'TENANT_NOT_FOUND',
+            message: 'errors.tenant.notFound',
+            details: {},
+            requestId: 'req_pending_tenant',
+          },
+        },
+      }
+
+      expect(mapApiError(error)).toEqual({ kind: 'not-found' })
+    })
+  })
+
   describe('fail-closed — hiçbir probe eşleşmez, FIRLATMAZ', () => {
     it.each<[label: string, value: unknown]>([
       ['undefined', undefined],

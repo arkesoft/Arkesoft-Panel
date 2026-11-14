@@ -38,11 +38,15 @@
 // okumasının önüne geçildi.
 
 import { RESERVED_SUBDOMAINS } from './reserved-subdomains.js'
+import { TENANT_SLUG_PATTERN } from './slug.js'
 
 const MAX_HOST_HEADER_LENGTH = 255
 
-/** Slug biçimi — RFC 1123 alt alan adı etiketiyle UYUMLU, bağlayıcı regex (K-A4). */
-const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
+// TAŞIMA NOTU (ROADMAP v0.1.0, T-019/S2, architect KARAR 1): slug biçimi
+// deseni (eski adıyla `SLUG_PATTERN`, K-A4) `./slug.ts`'e TAŞINDI (kopya
+// DEĞİL) — `TENANT_SLUG_PATTERN` olarak oradan import edilir. İki regex
+// literali VAR OLAMAZ (R-A3); desen bu paketin `src`'inde tam BİR kez yaşar,
+// `pnpm guards`'ın tek-kaynak taraması (S12) bunu mekanik olarak zorlar.
 
 /**
  * `resolve-host.ts`'in SAF olarak üretebileceği 8 çözümsüz sebep. Değerler
@@ -221,7 +225,7 @@ export function resolveHost(
     return { kind: 'unresolved', reason: 'reserved_subdomain' }
   }
 
-  if (!SLUG_PATTERN.test(label)) {
+  if (!TENANT_SLUG_PATTERN.test(label)) {
     return { kind: 'unresolved', reason: 'invalid_slug_format' }
   }
 

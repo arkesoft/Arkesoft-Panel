@@ -103,6 +103,14 @@
 // kalır. ⚠ `arkesoft_app`'in bu üç tabloya `ALTER DEFAULT PRIVILEGES` ile
 // kazandığı blanket DML yetkisi BU sürümde DARALTILMADI (ADR-0020 Sonuçlar,
 // `security` gate'ine bırakıldı).
+// GENİŞLETME (ROADMAP v0.1.0, T-019/S1, architect VERİ MODELİ): `plan`
+// (ONUNCU üye) EKLENDİ → dizi DOKUZDAN ONA çıktı. Bir plan ŞABLONU
+// platformun kendisine aittir, kiracıya değil — `theme`/`theme_release`'in
+// BİREBİR aynı sınıflandırma ekseni ("olgu KİME aittir", ADR-0020). `id`
+// DOĞAL ANAHTARDIR (`theme.id` emsali) — bu TAKSONOMİ KARARINI ETKİLEMEZ.
+// ⚠ `arkesoft_app`'in `plan`'da taşıdığı blanket DML yetkisi bu sürümde
+// DARALTILMADI (`theme`/`theme_release`/`platform_release`'in BİREBİR aynı
+// ertelemesi, ADR-0021 Sonuçlar) — `security` gate'ine bırakıldı.
 export const PLATFORM_LEVEL_TABLES = [
   'tenant',
   'app_user',
@@ -113,6 +121,7 @@ export const PLATFORM_LEVEL_TABLES = [
   'platform_release',
   'theme',
   'theme_release',
+  'plan',
 ] as const
 
 // GENİŞLETME (ROADMAP v0.0.14, T-014/S1, architect K-A0/K-A1): `audit_log`
@@ -153,6 +162,18 @@ export const PLATFORM_LEVEL_TABLES = [
 // istiyor. ⚠ Prob KAYDI HÂLÂ TEK YERDEDİR
 // (`__tests__/tenant-membership.isolation.test.ts`) — İKİNCİ bir çağrı
 // noktası AÇILMAZ.
+// GENİŞLETME (ROADMAP v0.1.0, T-019/S1, architect VERİ MODELİ — ADR-0021):
+// `subscription` (YEDİNCİ üye) EKLENDİ → dizi ALTIDAN YEDİYE çıktı. En yakın
+// emsal `tenant_version_state`: `tenant_id` `text` NOT NULL, RLS
+// `ENABLE`+`FORCE`, kanonik `USING`/`WITH CHECK` politikası ve `tenant_id`
+// öncü bileşik indeksler — tam detay `prisma/schema.prisma` → `Subscription`
+// model doc'u. ⚠⚠ Bu satır TEK BAŞINA prob tamlığı kapısını (K-E10,
+// `tenant-isolation-suite.ts`) KIRMIZIYA döndürür — BİLEREK, `job`/
+// `audit_log`+`tenant_invitation` emsali (yukarıdaki v0.0.11/v0.0.14
+// notları): kabul kriteri o başarısızlığın GÖZLENMESİNİ istiyor, prob kaydı
+// AYRI bir alt görevin (S5) işi ve BİLEREK bu oturumda YAZILMADI. ⚠ Prob
+// KAYDI HÂLÂ TEK YERDEDİR (`__tests__/tenant-membership.isolation.test.ts`)
+// — İKİNCİ bir çağrı noktası AÇILMAZ.
 export const TENANT_SCOPED_TABLES = [
   'tenant_membership',
   'job',
@@ -160,6 +181,7 @@ export const TENANT_SCOPED_TABLES = [
   'tenant_invitation',
   'tenant_version_state',
   'tenant_update_history',
+  'subscription',
 ] as const
 
 // GENİŞLETME (ROADMAP v0.0.14.1, T-015/ST-C, architect "Bağlayıcı yetki

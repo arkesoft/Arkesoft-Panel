@@ -5,6 +5,14 @@
 // DÖRDÜNCÜ bir kopyası DOĞMAZ (borç 1450 kısıtı): (a) için `@arkesoft/errors`,
 // (b) için `@arkesoft/trpc` şeması DOĞRUDAN tüketilir.
 //
+// GÜNCELLEME (ROADMAP v0.1.0, T-019/S8, `panel-error.ts`'in madde 2'si):
+// `AppErrorBody.details` tel tarafında SERBESTTİR (`error-body.ts:45` →
+// `z.record(z.string(), z.unknown())`) — bu yüzden `details.fields` burada
+// `@arkesoft/trpc`'nin `registrationFieldErrorKeySchema` KAPALI kümesiyle
+// Zod ile parse edilir ve küme dışındaki HER değer (ham metin dahil) elenir.
+// `extractAllowlistedFields` bu dosyanın TEK filtreleme noktasıdır — allowlist
+// burada elle kopyalanmaz, doğrudan şemadan tüketilir.
+//
 // SIRALI (BAĞLAYICI, architect K3):
 //   1. `{ body: appErrorBodySchema }` — `input` VEYA `input.cause` (AZAMİ 2
 //      derinlik) → (a)
@@ -26,7 +34,8 @@ import { z } from 'zod'
 
 import { appErrorBodySchema } from '@arkesoft/errors'
 import type { AppErrorBody } from '@arkesoft/errors'
-import { trpcErrorDataSchema } from '@arkesoft/trpc'
+import { registrationFieldErrorKeySchema, trpcErrorDataSchema } from '@arkesoft/trpc'
+import type { RegistrationFieldErrorKey } from '@arkesoft/trpc'
 
 import type { PanelError } from './panel-error.js'
 
@@ -42,9 +51,48 @@ const trpcEnvelopeSchema = z.object({ data: trpcErrorDataSchema })
 /** Zarf (c) — Better Auth'un KENDİ gövdesi: üst düzey `code` + ham İngilizce `message`. */
 const betterAuthBodySchema = z.object({ code: z.string() })
 
+/** `details.fields`'ın YAPISAL (ama henüz içerik-doğrulanmamış) şekli — ad → bilinmeyen değer. */
+const detailsFieldsEnvelopeSchema = z.object({ fields: z.record(z.string(), z.unknown()) })
+
+/**
+ * `AppErrorBody.details.fields`'ı (CLAUDE.md §4 `{ fields: { slug:
+ * 'errors.slug.taken' } }` deseni) `registrationFieldErrorKeySchema`'nın
+ * KAPALI kümesinden GEÇİREREK süzer (T-019/S8). Allowlist'in TEK kaynağı o
+ * şema — ikinci bir elle-kopyalanmış liste burada YOK.
+ *
+ * Fail-closed: `details.fields` yoksa, yapısal değilse, ya da alanların
+ * HİÇBİRİ kümeye uymuyorsa `null` döner — `details.fields` hiç gönderilmemiş
+ * olsaydı ne olurdu ise AYNI sonuç (regresyon yok, NEGATİF TEST 2). Kümeye
+ * UYMAYAN her tekil alan (ör. ham sunucu metni, uydurma anahtar) TEK TEK
+ * elenir — bir alanın reddi diğer, geçerli bir alanı etkilemez.
+ */
+function extractAllowlistedFields(
+  details: Record<string, unknown>,
+): Readonly<Record<string, RegistrationFieldErrorKey>> | null {
+  const envelope = detailsFieldsEnvelopeSchema.safeParse(details)
+  if (!envelope.success) {
+    return null
+  }
+
+  const allowlisted: Record<string, RegistrationFieldErrorKey> = {}
+  for (const [fieldName, fieldValue] of Object.entries(envelope.data.fields)) {
+    const parsedKey = registrationFieldErrorKeySchema.safeParse(fieldValue)
+    if (parsedKey.success) {
+      allowlisted[fieldName] = parsedKey.data
+    }
+  }
+
+  return Object.keys(allowlisted).length > 0 ? allowlisted : null
+}
+
 /** {@link AppErrorBody}'den `PanelError`'ın `known` dalını üretir — mesaj alanı ASLA taşınmaz. */
 function toKnownFromAppErrorBody(body: AppErrorBody): PanelError {
-  return { kind: 'known', code: body.code, requestId: body.requestId }
+  return {
+    kind: 'known',
+    code: body.code,
+    requestId: body.requestId,
+    fields: extractAllowlistedFields(body.details),
+  }
 }
 
 export function normalizePanelError(input: unknown): PanelError {
@@ -80,7 +128,9 @@ export function normalizePanelError(input: unknown): PanelError {
   const betterAuthBody = betterAuthBodySchema.safeParse(input)
   if (betterAuthBody.success) {
     const parsedBetterAuthBody = betterAuthBody.data
-    return { kind: 'known', code: parsedBetterAuthBody.code, requestId: null }
+    // Better Auth'un gövdesi `details` TAŞIMAZ → `fields` HER ZAMAN `null`
+    // (uydurulmaz — borç 1445 kısıtının `fields` karşılığı).
+    return { kind: 'known', code: parsedBetterAuthBody.code, requestId: null, fields: null }
   }
 
   // 5. Fail-closed — hiçbir probe eşleşmedi, FIRLATMAZ.

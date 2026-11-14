@@ -473,3 +473,32 @@ export function pinSessionSecurityReadPortAdapterSatisfiesPort(
 ): SessionSecurityReadPortAdapter {
   return adapter satisfies SessionSecurityReadPort
 }
+
+// ---------------------------------------------------------------------------
+// PİN 14 — 'deleted' ∉ TenantStatusWire (ROADMAP v0.1.0, T-019/S9a, architect
+// KARAR 2, kullanıcı kararı #2 — AC-14, mekanizma-nötr)
+// ---------------------------------------------------------------------------
+
+/**
+ * `TenantLifecycleState` (`tenancy/tenant-lifecycle-state.ts`) BEŞ değer
+ * taşır (`TenantStatus`'un dördü + `'deleted'`) ama bu BEŞİNCİ değer tel
+ * sözleşmesine (`TenantStatusWire`) HİÇ ÇIKMAZ — PİN 1 (DB enum ≡ tel
+ * sözlüğü, DÖRT değer) ile BİRLİKTE çalışır: DB enum'una `deleted` eklemek
+ * PİN 1'i kırar, tele eklemek BU pini (ve PİN 1'i, tel sözlüğü DB enum'undan
+ * sapar) kırar — ikisi de `pnpm typecheck` kapısında, ikisi birlikte "beş
+ * durum VERİ katmanında gözlemlenebilir ama TELDE ölü sözlük değeri
+ * doğurmaz" garantisini iki yönden kapatır.
+ */
+type AssertDeletedExcludedFromTenantStatusWire = 'deleted' extends TenantStatusWire
+  ? ["KULLANICI KARARI İHLALİ — 'deleted' TenantStatusWire'da OLMAMALI"]
+  : true
+
+/**
+ * ⚠ TİP PİNİ 14 — `TenantStatusWire`'a (tel sözleşmesi) `'deleted'` değeri
+ * EKLENEMEZ. Hiçbir yerden çağrılmaz; varlığının derlenmesi yeterlidir.
+ */
+export function pinDeletedExcludedFromTenantStatusWire(): {
+  excluded: AssertDeletedExcludedFromTenantStatusWire
+} {
+  return { excluded: true }
+}

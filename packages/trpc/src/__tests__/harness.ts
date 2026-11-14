@@ -39,6 +39,8 @@ import type {
 import type { JobReadPort } from '../ports/job-read.port.js'
 import type { MemberWritePort } from '../ports/member-write.port.js'
 import type { MembershipReadPort } from '../ports/membership-read.port.js'
+import type { RegistrationReadPort } from '../ports/registration-read.port.js'
+import type { RegistrationWritePort } from '../ports/registration-write.port.js'
 import type { SessionListReadPort } from '../ports/session-list-read.port.js'
 import type { SessionSecurityReadPort } from '../ports/session-security-read.port.js'
 import type { TenantReadPort } from '../ports/tenant-read.port.js'
@@ -51,6 +53,12 @@ import type { TenantSecurityPolicyUpdateInput } from '../schemas/tenant-security
 import type { StorefrontTenant } from '../schemas/storefront-tenant.schema.js'
 import type { JobListPage, JobSummary } from '../schemas/job-summary.schema.js'
 import type { ActiveSessionWire } from '../schemas/session-summary.schema.js'
+import type {
+  CreateTenantInput,
+  CreateTenantResult,
+  OnboardingChecklist,
+  SlugAvailability,
+} from '../schemas/registration.schema.js'
 import type {
   MemberAcceptInvitationInput,
   MemberInvitation,
@@ -264,6 +272,44 @@ export function createFakeStorefrontTenantReadPort(
         name: summary.name,
         themeId: themeSelection?.themeId ?? null,
         themeVersion: themeSelection?.themeVersion ?? null,
+      })
+    },
+  }
+}
+
+/**
+ * `RegistrationReadPort`'un sahte uygulaması (ROADMAP v0.1.0, T-019/S3).
+ * Port TOTAL'dır ve FIRLATMAZ — bugün hiçbir hermetik test
+ * `registration.checkSlugAvailability`/`registration.onboardingChecklist`'i
+ * ÇAĞIRMIYOR (iş mantığı `apps/api`'nin S9 alt görevidir); stub yalnızca
+ * `TrpcPorts`'un ZORUNLU alanını doldurmak için var
+ * (`createFakeTenantSecurityWritePort`'un AYNI gerekçesi).
+ */
+export function createFakeRegistrationReadPort(): RegistrationReadPort {
+  return {
+    checkSlugAvailability(): Promise<SlugAvailability> {
+      return Promise.resolve({ outcome: 'available' })
+    },
+    onboardingChecklist(): Promise<OnboardingChecklist> {
+      return Promise.resolve({ steps: [] })
+    },
+  }
+}
+
+/**
+ * `RegistrationWritePort`'un sahte uygulaması (ROADMAP v0.1.0, T-019/S3).
+ * Port TOTAL'dır ve FIRLATMAZ — girdiyi yankılayan sabit bir `'pending'`
+ * durum döner; bugün hiçbir hermetik test bu portu ÇAĞIRMIYOR, stub yalnızca
+ * `TrpcPorts`'un ZORUNLU alanını doldurmak için var. ⚠ `tenantId` dönüşte YOK
+ * (ADR-0021 §3.1 DÜZELTMESİ, T-019/S3 düzeltme turu) — çağıran kiracısını
+ * `slug` İLE tanır.
+ */
+export function createFakeRegistrationWritePort(): RegistrationWritePort {
+  return {
+    createTenant(_actorUserId: string, input: CreateTenantInput): Promise<CreateTenantResult> {
+      return Promise.resolve({
+        slug: input.slug,
+        status: 'pending',
       })
     },
   }
@@ -641,6 +687,10 @@ export interface CreateHarnessOptions {
   readonly sessionSecurityRead?: SessionSecurityReadPort
   readonly sessionListRead?: SessionListReadPort
   readonly storefrontTenantRead?: StorefrontTenantReadPort
+  /** ROADMAP v0.1.0, T-019/S3 — ZORUNLU üyenin override'ı (`tenantRead`'in emsali). */
+  readonly registrationRead?: RegistrationReadPort
+  /** ROADMAP v0.1.0, T-019/S3 — ZORUNLU üyenin override'ı (AYNI emsal). */
+  readonly registrationWrite?: RegistrationWritePort
   // ⚠ İŞ OKUMA PORTU İÇİN PORT-DÜZEYİ OVERRIDE BİLEREK YOK (ROADMAP v0.0.11,
   // T-013/S8): bugün hiçbir test onu geçirmiyor ve KULLANILMAYAN bir override
   // alanı tutmak, o alanın adının `TrpcPorts`'un ZORUNLU üyesinin adıyla
@@ -751,6 +801,9 @@ export function createHarness(options: CreateHarnessOptions = {}): Harness {
       sessionSecurityRead: options.sessionSecurityRead ?? createFakeSessionSecurityReadPort(),
       // ROADMAP v0.0.15.1, T-017/S4 — ZORUNLU üye (AYNI kural).
       sessionListRead: options.sessionListRead ?? createFakeSessionListReadPort(),
+      // ROADMAP v0.1.0, T-019/S3 — İKİSİ DE ZORUNLU üye (AYNI kural).
+      registrationRead: options.registrationRead ?? createFakeRegistrationReadPort(),
+      registrationWrite: options.registrationWrite ?? createFakeRegistrationWritePort(),
     },
     errors: options.errors ?? createFakeErrorFactoryPort(),
   }

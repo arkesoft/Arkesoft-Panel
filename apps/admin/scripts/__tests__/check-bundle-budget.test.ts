@@ -132,7 +132,15 @@ describe('DELIBERATELY_LAZY_ROUTE_SRCS kardinalite (İŞ 5 — `tenant-exempt-pa
   // (`/` ve `/sign-in` ikisi de bu rotayı hiç referans almıyor), TanStack
   // Router'ın `autoCodeSplitting`'i bunu KENDİ chunk'ına ayırıyor — bilerek
   // tembel (kullanıcı bu rotaya gitmeden kodu indirmiyor).
-  it('bugün TAM OLARAK 1 eleman — büyürse bu test KIRILIR ve görünür inceleme zorunlu olur', () => {
-    expect(DELIBERATELY_LAZY_ROUTE_SRCS.length).toBe(1)
+  //
+  // GÜNCELLEME (ROADMAP v0.1.0, T-019/S10): 1 → 3 — `/magaza-olustur` ve
+  // `/kurulum/{slug}` EKLENDİ (docs/ui/T-019 KARAR 1). Bu test YİNE AYNI
+  // disiplinle KIRILDI (`expected 3 to be 1`) ve bu GÖRÜNÜR inceleme
+  // satırını zorunlu kıldı. Büyümek GEREKÇELİ: ikisi de bookmarklanabilir/
+  // paylaşılabilir olmaları onları OTOMATİK ilk-boya YAPMIYOR — `/hesap/
+  // guvenlik` emsali (üstteki not) AYNI ayrımı ZATEN kanıtlıyor; `/` ve
+  // `/sign-in` ikisi de bu iki yeni rotayı hiç statik REFERANS almıyor.
+  it('bugün TAM OLARAK 3 eleman — büyürse bu test KIRILIR ve görünür inceleme zorunlu olur', () => {
+    expect(DELIBERATELY_LAZY_ROUTE_SRCS.length).toBe(3)
   })
 })

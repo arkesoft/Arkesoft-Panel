@@ -26,7 +26,8 @@ export type {
   AuthPrismaDatabase,
 } from './client.js'
 
-export { TENANT_CONTEXT_SETTING, withTenant } from './tenant-context.js'
+export { TENANT_CONTEXT_SETTING, withTenant, withNewTenant } from './tenant-context.js'
+export type { PlatformTenantWriter } from './tenant-context.js'
 
 export { checkDatabaseConnection } from './health.js'
 
@@ -50,6 +51,8 @@ export { DEMO_SEED } from './seed-data.js'
 // `Job`/`AuditLog` emsali: problar (S4) ve seed (S5) barrel'dan ithal eder
 // (`job.probe.ts:20` deseni), export'lar şemayla AYNI oturumda yazılmak
 // ZORUNDA (po, bağlayıcı — aksi hâlde S4 kurulu desenle çalışamaz).
+// `Plan`/`Subscription` (ROADMAP v0.1.0, T-019/S1) ADDITIVE eklendi — AYNI
+// desen: export'lar şemayla AYNI oturumda yazılmak ZORUNDA (po, bağlayıcı).
 export type {
   Tenant,
   User,
@@ -60,6 +63,8 @@ export type {
   ThemeRelease,
   TenantVersionState,
   TenantUpdateHistory,
+  Plan,
+  Subscription,
 } from '#prisma'
 
 // Çalışma zamanı karşılaştırması + exhaustive switch için değer + tip.
@@ -73,6 +78,11 @@ export type {
 // emsali. Bu beş enum'un HİÇBİRİ bu sürümde tele ÇIKMAZ (po'nun dosya
 // listesinde `apps/*`/`packages/trpc` YOK) — tele-enum parite pini BU
 // sürümde GEREKMEZ (A-T18-6).
+//
+// `SiteType`/`SubscriptionStatus` (ROADMAP v0.1.0, T-019/S1) ADDITIVE
+// eklendi. `SiteType` v0.1.0'da tele ÇIKAR (kayıt sihirbazı girdisi, S3/S9'un
+// işi) — bu, yukarıdaki beş enum'un "bu sürümde tele hiç çıkmaz" muafiyetinin
+// TERSİDİR. `SubscriptionStatus` BU sürümde tele ÇIKMAZ (tek değer, `active`).
 export {
   TenantStatus,
   UserStatus,
@@ -83,6 +93,8 @@ export {
   ThemeReleaseStatus,
   UpdateTrigger,
   UpdateStatus,
+  SiteType,
+  SubscriptionStatus,
 } from '#prisma'
 
 // `Prisma.TenantCreateInput` vb. yardımcı tipler için — yalnızca TİP

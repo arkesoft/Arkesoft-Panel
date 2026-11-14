@@ -99,6 +99,71 @@ describe('StorefrontTenantReadPortAdapter.findPublicTenant() (ROADMAP v0.0.8, T-
     },
   )
 
+  it(
+    "'pending' durumundaki kiracı için TenantNotFoundError FIRLATIR — TAM 404, 503 DEĞİL " +
+      '(ROADMAP v0.1.0, T-019/S9a, architect KARAR 4, AC-15)',
+    async () => {
+      const slug = uniqueSlug('storefront-pending')
+      // `status` AÇIKÇA VERİLMEDEN varsayılan (`pending`) bırakılır — AC-1'in
+      // "yeni kiracı HER ZAMAN pending doğar" değişmezinin vitrin tarafı.
+      const tenant = await prismaService.db.tenant.create({
+        data: { slug, name: 'Vitrin Pending Kiracısı' },
+      })
+
+      try {
+        let caught: unknown
+        try {
+          await adapter.findPublicTenant(tenant.id)
+          throw new Error('beklenen TenantNotFoundError fırlatılmadı')
+        } catch (error) {
+          caught = error
+        }
+
+        if (!isAppError(caught)) {
+          throw new Error(`beklenen AppError değil: ${String(caught)}`)
+        }
+
+        expect(caught.code).toBe('TENANT_NOT_FOUND')
+        // ⚠⚠ TAM 404 — 503 DEĞİL (503 "kesinti" demek; burada kesinti YOK,
+        // ticari bir karar var).
+        expect(caught.httpStatus).toBe(404)
+        expect(caught.publicDetails).toEqual({})
+      } finally {
+        await prismaService.db.tenant.delete({ where: { id: tenant.id } })
+      }
+    },
+  )
+
+  it(
+    "'suspended' durumundaki kiracı için AYNI TenantNotFoundError FIRLATIR " +
+      '(ROADMAP v0.1.0, T-019/S9a, architect KARAR 4)',
+    async () => {
+      const slug = uniqueSlug('storefront-suspended')
+      const tenant = await prismaService.db.tenant.create({
+        data: { slug, name: 'Vitrin Askıya Alınmış Kiracı', status: TenantStatus.suspended },
+      })
+
+      try {
+        let caught: unknown
+        try {
+          await adapter.findPublicTenant(tenant.id)
+          throw new Error('beklenen TenantNotFoundError fırlatılmadı')
+        } catch (error) {
+          caught = error
+        }
+
+        if (!isAppError(caught)) {
+          throw new Error(`beklenen AppError değil: ${String(caught)}`)
+        }
+
+        expect(caught.code).toBe('TENANT_NOT_FOUND')
+        expect(caught.httpStatus).toBe(404)
+      } finally {
+        await prismaService.db.tenant.delete({ where: { id: tenant.id } })
+      }
+    },
+  )
+
   it('var olmayan tenantId için de AYNI TenantNotFoundError FIRLATIR (varlık sızdırmama)', async () => {
     let caught: unknown
     try {

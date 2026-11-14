@@ -13,6 +13,8 @@ import type { TenantStatusWire } from '../schemas/tenant-summary.schema.js'
 import type { JobReadPort } from '../ports/job-read.port.js'
 import type { MemberWritePort } from '../ports/member-write.port.js'
 import type { MembershipReadPort } from '../ports/membership-read.port.js'
+import type { RegistrationReadPort } from '../ports/registration-read.port.js'
+import type { RegistrationWritePort } from '../ports/registration-write.port.js'
 import type { SessionListReadPort } from '../ports/session-list-read.port.js'
 import type { SessionSecurityReadPort } from '../ports/session-security-read.port.js'
 import type { TenantReadPort } from '../ports/tenant-read.port.js'
@@ -125,6 +127,19 @@ export interface TrpcPorts {
    * iki test dosyası) bu alt görevin KAPSAMI DIŞINDADIR — S9 kapatacak.
    */
   readonly sessionListRead: SessionListReadPort
+  /**
+   * ROADMAP v0.1.0, T-019/S3 — ZORUNLU üye (AYNI kural, `sessionListRead`'in
+   * emsali): `registration.checkSlugAvailability`/`registration.
+   * onboardingChecklist`'in TEK veri kaynağı. Opsiyonel (`?`) YAPILMASI
+   * YASAK — bu nesneyi elle kuran her yerin portu DOLDURMASI gerekir.
+   */
+  readonly registrationRead: RegistrationReadPort
+  /**
+   * ROADMAP v0.1.0, T-019/S3 — ZORUNLU üye. `registration.createTenant`
+   * mutation'ının iş mantığı (ADR-0021 §4, `withNewTenant()` tek transaction).
+   * Opsiyonel (`?`) YAPILMASI YASAK.
+   */
+  readonly registrationWrite: RegistrationWritePort
 }
 
 /**

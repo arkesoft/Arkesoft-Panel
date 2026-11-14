@@ -11,8 +11,11 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
+import { Route as AppMagazaOlusturRouteImport } from './routes/_app.magaza-olustur'
+import { Route as AuthKayitRouteImport } from './routes/_auth.kayit'
 import { Route as AuthSignInRouteImport } from './routes/_auth.sign-in'
 import { Route as AppHesapGuvenlikRouteImport } from './routes/_app.hesap.guvenlik'
+import { Route as AppKurulumSlugRouteImport } from './routes/_app.kurulum.$slug'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -22,6 +25,16 @@ const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppRoute,
+} as any)
+const AppMagazaOlusturRoute = AppMagazaOlusturRouteImport.update({
+  id: '/magaza-olustur',
+  path: '/magaza-olustur',
+  getParentRoute: () => AppRoute,
+} as any)
+const AuthKayitRoute = AuthKayitRouteImport.update({
+  id: '/_auth/kayit',
+  path: '/kayit',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthSignInRoute = AuthSignInRouteImport.update({
   id: '/_auth/sign-in',
@@ -33,35 +46,69 @@ const AppHesapGuvenlikRoute = AppHesapGuvenlikRouteImport.update({
   path: '/hesap/guvenlik',
   getParentRoute: () => AppRoute,
 } as any)
+const AppKurulumSlugRoute = AppKurulumSlugRouteImport.update({
+  id: '/kurulum/$slug',
+  path: '/kurulum/$slug',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/magaza-olustur': typeof AppMagazaOlusturRoute
+  '/kayit': typeof AuthKayitRoute
   '/sign-in': typeof AuthSignInRoute
   '/hesap/guvenlik': typeof AppHesapGuvenlikRoute
+  '/kurulum/$slug': typeof AppKurulumSlugRoute
 }
 export interface FileRoutesByTo {
+  '/magaza-olustur': typeof AppMagazaOlusturRoute
+  '/kayit': typeof AuthKayitRoute
   '/sign-in': typeof AuthSignInRoute
   '/': typeof AppIndexRoute
   '/hesap/guvenlik': typeof AppHesapGuvenlikRoute
+  '/kurulum/$slug': typeof AppKurulumSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/_app/magaza-olustur': typeof AppMagazaOlusturRoute
+  '/_auth/kayit': typeof AuthKayitRoute
   '/_auth/sign-in': typeof AuthSignInRoute
   '/_app/': typeof AppIndexRoute
   '/_app/hesap/guvenlik': typeof AppHesapGuvenlikRoute
+  '/_app/kurulum/$slug': typeof AppKurulumSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/sign-in' | '/hesap/guvenlik'
+  fullPaths:
+    | '/'
+    | '/magaza-olustur'
+    | '/kayit'
+    | '/sign-in'
+    | '/hesap/guvenlik'
+    | '/kurulum/$slug'
   fileRoutesByTo: FileRoutesByTo
-  to: '/sign-in' | '/' | '/hesap/guvenlik'
+  to:
+    | '/magaza-olustur'
+    | '/kayit'
+    | '/sign-in'
+    | '/'
+    | '/hesap/guvenlik'
+    | '/kurulum/$slug'
   id:
-    '__root__' | '/_app' | '/_auth/sign-in' | '/_app/' | '/_app/hesap/guvenlik'
+    | '__root__'
+    | '/_app'
+    | '/_app/magaza-olustur'
+    | '/_auth/kayit'
+    | '/_auth/sign-in'
+    | '/_app/'
+    | '/_app/hesap/guvenlik'
+    | '/_app/kurulum/$slug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  AuthKayitRoute: typeof AuthKayitRoute
   AuthSignInRoute: typeof AuthSignInRoute
 }
 
@@ -81,6 +128,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/magaza-olustur': {
+      id: '/_app/magaza-olustur'
+      path: '/magaza-olustur'
+      fullPath: '/magaza-olustur'
+      preLoaderRoute: typeof AppMagazaOlusturRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_auth/kayit': {
+      id: '/_auth/kayit'
+      path: '/kayit'
+      fullPath: '/kayit'
+      preLoaderRoute: typeof AuthKayitRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_auth/sign-in': {
       id: '/_auth/sign-in'
       path: '/sign-in'
@@ -95,23 +156,35 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppHesapGuvenlikRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/kurulum/$slug': {
+      id: '/_app/kurulum/$slug'
+      path: '/kurulum/$slug'
+      fullPath: '/kurulum/$slug'
+      preLoaderRoute: typeof AppKurulumSlugRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppMagazaOlusturRoute: typeof AppMagazaOlusturRoute
   AppIndexRoute: typeof AppIndexRoute
   AppHesapGuvenlikRoute: typeof AppHesapGuvenlikRoute
+  AppKurulumSlugRoute: typeof AppKurulumSlugRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppMagazaOlusturRoute: AppMagazaOlusturRoute,
   AppIndexRoute: AppIndexRoute,
   AppHesapGuvenlikRoute: AppHesapGuvenlikRoute,
+  AppKurulumSlugRoute: AppKurulumSlugRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  AuthKayitRoute: AuthKayitRoute,
   AuthSignInRoute: AuthSignInRoute,
 }
 export const routeTree = rootRouteImport

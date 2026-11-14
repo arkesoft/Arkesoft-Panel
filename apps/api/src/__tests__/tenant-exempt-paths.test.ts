@@ -37,6 +37,14 @@
 // KORUNDU: `.size` kontrolü ne kaldırıldı ne `toContain`'e düşürüldü — küme
 // eşitliği yine ELLE güncellendi. `AUTH_EXEMPT_PATHS` BU satırla DEĞİŞMEDİ
 // (12'de kalır).
+//
+// GÜNCELLEME (ROADMAP v0.1.0, T-019/S9a, ADR-0021 §2/§3): 21 → 24, SEKİZİNCİ
+// grup — üç `/trpc/registration.*` ucu (gerekçe `tenant-exempt-paths.ts`
+// dosya başı yorumunda, o dosyanın `:111-112` gerekçe şartını karşılar).
+// ⚠ Kardinalite assertion'ı KORUNDU: `.size` kontrolü ne kaldırıldı ne
+// `toContain`'e düşürüldü — küme eşitliği yine ELLE güncellendi.
+// `AUTH_EXEMPT_PATHS` BU satırla DEĞİŞMEDİ (12'de kalır, `git diff --exit-code
+// auth/auth-exempt-paths.ts` ile doğrulanır).
 
 import { describe, expect, it } from 'vitest'
 
@@ -64,14 +72,17 @@ const EXPECTED_EXEMPT_PATHS = [
   '/auth/two-factor/verify-totp',
   '/auth/two-factor/verify-backup-code',
   '/trpc/session.list',
+  '/trpc/registration.checkSlugAvailability',
+  '/trpc/registration.createTenant',
+  '/trpc/registration.onboardingChecklist',
 ] as const
 
 describe('TENANT_EXEMPT_PATHS', () => {
-  it('tam olarak yirmi bir eleman taşır', () => {
-    expect(TENANT_EXEMPT_PATHS.size).toBe(21)
+  it('tam olarak yirmi dört eleman taşır', () => {
+    expect(TENANT_EXEMPT_PATHS.size).toBe(24)
   })
 
-  it('küme TAM OLARAK beklenen yirmi bir elemandır', () => {
+  it('küme TAM OLARAK beklenen yirmi dört elemandır', () => {
     expect(new Set(TENANT_EXEMPT_PATHS)).toEqual(new Set(EXPECTED_EXEMPT_PATHS))
   })
 

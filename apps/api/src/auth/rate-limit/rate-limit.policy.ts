@@ -64,6 +64,9 @@ import { AUTH_OWN_PATHS } from '../auth-own-paths.js'
 // FIX turu 1, madde 11 (solid M-1) — yol normalizasyonu ARTIK ortak
 // `http/normalize-request-path.ts`'ten İTHAL EDİLİR.
 import { normalizeRequestPath } from '../../http/normalize-request-path.js'
+// ROADMAP v0.1.0, T-019/S9a (architect F15, ADR-0021 §2 koşul E) — ÜÇÜNCÜ
+// yol kümesi, dosya başı GÜNCELLEME yorumuna bkz.
+import { TRPC_RATE_LIMITED_PATHS } from './trpc-rate-limited-paths.js'
 
 /**
  * Hangi env penceresinin (`rate-limit.guard.ts` → `AUTH_LOGIN_RATE_WINDOW_SECONDS`
@@ -149,14 +152,19 @@ function buildPolicy(
   resetAccountOnSuccess: boolean,
   accountScopeSource: RateLimitAccountScopeSource,
 ): readonly [string, RateLimitPolicy] {
-  if (!AUTH_DELEGATED_PATHS.has(routeKey) && !AUTH_OWN_PATHS.has(pathOf(routeKey))) {
+  if (
+    !AUTH_DELEGATED_PATHS.has(routeKey) &&
+    !AUTH_OWN_PATHS.has(pathOf(routeKey)) &&
+    !TRPC_RATE_LIMITED_PATHS.has(pathOf(routeKey))
+  ) {
     // Mekanik kanıt: architect'in "forget-password" yazım hatasının bir daha
     // SESSİZCE tekrarlanamayacağının GARANTİSİ — modül bu satırda YÜKLENEMEZ.
     // T-017/S1, K1 — guard GEVŞETİLMEDİ: `AUTH_DELEGATED_PATHS`'E DE
-    // `AUTH_OWN_PATHS`'E DE AİT OLMAYAN herhangi bir routeKey (yazım hatası
-    // dahil) YİNE bu satırda FIRLATIR.
+    // `AUTH_OWN_PATHS`'E DE `TRPC_RATE_LIMITED_PATHS`'E DE (T-019/S9a) AİT
+    // OLMAYAN herhangi bir routeKey (yazım hatası dahil) YİNE bu satırda
+    // FIRLATIR.
     throw new Error(
-      `rate-limit.policy.ts: "${routeKey}" ne AUTH_DELEGATED_PATHS ne AUTH_OWN_PATHS içinde (yazım hatası olabilir)`,
+      `rate-limit.policy.ts: "${routeKey}" ne AUTH_DELEGATED_PATHS ne AUTH_OWN_PATHS ne TRPC_RATE_LIMITED_PATHS içinde (yazım hatası olabilir)`,
     )
   }
 
@@ -274,12 +282,38 @@ const RATE_LIMITED_ROUTES: ReadonlyMap<string, RateLimitPolicy> = new Map([
     false,
     'sessionUserId',
   ),
+  // ROADMAP v0.1.0, T-019/S9a (architect F15, ADR-0021 §2 koşul E) — İKİ yeni
+  // rota, `trpc-rate-limited-paths.ts`'in dosya başı yorumuna bkz. Risk şekli
+  // (doğrulanmış bir hesabın slug ad uzayını TARAMASI/numaralandırması —
+  // `checkSlugAvailability`'nin `taken` çıktısı bir kiracının VARLIĞINI
+  // bildirir, ADR-0021 §3) `login` ailesiyle AYNI sınıf olduğu için ÜÇÜNCÜ,
+  // koordinesiz bir eşik/env ailesi İCAT EDİLMEDİ — `LOGIN_ACCOUNT_LIMIT`/
+  // `LOGIN_IP_LIMIT` YENİDEN KULLANILIR (dosyanın `:34-40`'ındaki BAĞLAYICI
+  // kural). Hesap kapsamı `sessionUserId` — ikisi de `protectedProcedure`
+  // (ADR-0021 §1), yani `AuthContextMiddleware` bu rotalarda `context.auth`'u
+  // ZATEN doldurmuştur (2FA-kimlik-gerekli dört ucun BİREBİR emsali).
+  buildPolicy(
+    'GET /trpc/registration.checkSlugAvailability',
+    'login',
+    LOGIN_ACCOUNT_LIMIT,
+    LOGIN_IP_LIMIT,
+    false,
+    'sessionUserId',
+  ),
+  buildPolicy(
+    'POST /trpc/registration.createTenant',
+    'login',
+    LOGIN_ACCOUNT_LIMIT,
+    LOGIN_IP_LIMIT,
+    false,
+    'sessionUserId',
+  ),
 ])
 
 /**
- * İsteğin oran sınırlı ON İKİ rotadan birine ait olup olmadığını belirler
- * (T-016 FIX turu 1, madde 1/F1 — dört → on; T-017/S1, K1 — on → on iki,
- * dosya başı GÜNCELLEME yorumları). Normalizasyon `auth-delegated-paths.ts`'in
+ * İsteğin oran sınırlı ON DÖRT rotadan birine ait olup olmadığını belirler
+ * (T-016 FIX turu 1, madde 1/F1 — dört → on; T-017/S1, K1 — on → on iki;
+ * T-019/S9a — on iki → on dört, dosya başı GÜNCELLEME yorumları). Normalizasyon `auth-delegated-paths.ts`'in
  * `isAuthDelegatedPath`'iyle BİREBİR aynı (sondaki `/` soyulur, sorgu
  * dizesi/fragman karışmaz, büyük/küçük harf DUYARLI, metot büyük/küçük harf
  * DUYARSIZ).

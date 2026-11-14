@@ -72,12 +72,13 @@ import { maskEmail } from '@arkesoft/errors'
 import { createPrismaClient } from './client.js'
 import { readDatabaseEnv } from './env.js'
 import { evaluateTargetDatabase } from './guard-policy.js'
-import { DEMO_SEED } from './seed-data.js'
+import { DEMO_SEED, TRIAL_PLAN } from './seed-data.js'
 import { TENANT_CONTEXT_SETTING, withTenant } from './tenant-context.js'
 import { resolveVersionRegistrySeedValues } from './version-registry-seed.js'
 import {
   Prisma,
   ReleaseChannel,
+  SubscriptionStatus,
   TenantRole,
   TenantStatus,
   ThemeReleaseStatus,
@@ -179,6 +180,24 @@ async function main(): Promise<void> {
         },
       })
 
+      // ROADMAP v0.1.0 (T-019/S1, architect VERİ MODELİ — ADR-0021 §4):
+      // `trial` planı — doğal anahtar (`Plan.id`, `Theme.id` emsali),
+      // PLATFORM seviyesi (RLS yok) → bu TEK `$transaction` içinde upsert
+      // edilebilir (`theme`/`platformRelease` emsali). `limits` ŞABLONDUR;
+      // aşağıdaki `subscription` yazımı bunun bir ANLIK GÖRÜNTÜSÜNÜ alır.
+      await tx.plan.upsert({
+        where: { id: TRIAL_PLAN.id },
+        create: {
+          id: TRIAL_PLAN.id,
+          name: TRIAL_PLAN.name,
+          limits: TRIAL_PLAN.limits,
+        },
+        update: {
+          name: TRIAL_PLAN.name,
+          limits: TRIAL_PLAN.limits,
+        },
+      })
+
       const createdTenant = await tx.tenant.upsert({
         where: { slug: DEMO_SEED.tenant.slug },
         create: {
@@ -192,6 +211,10 @@ async function main(): Promise<void> {
           // karşılaştır, AC-11 sapma testi).
           themeId: versionValues.themeId,
           themeVersion: versionValues.themeVersion,
+          // ROADMAP v0.1.0 (T-019/S1): kayıt akışının yazdığı alanın demo
+          // karşılığı — NULLABLE, DB `DEFAULT` YOK (bkz. `Tenant.siteType`
+          // model doc'u); seed burada açıkça yazar.
+          siteType: DEMO_SEED.tenant.siteType,
         },
         update: {
           name: DEMO_SEED.tenant.name,
@@ -199,6 +222,7 @@ async function main(): Promise<void> {
           primaryDomain: null,
           themeId: versionValues.themeId,
           themeVersion: versionValues.themeVersion,
+          siteType: DEMO_SEED.tenant.siteType,
         },
       })
 
@@ -265,6 +289,30 @@ async function main(): Promise<void> {
           themeVersion: versionValues.themeVersion,
           apiVersion: versionValues.apiVersion,
           lastUpdatedAt: new Date(),
+        },
+      })
+
+      // ROADMAP v0.1.0 (T-019/S1, architect VERİ MODELİ — ADR-0021 §4):
+      // `trial` aboneliği — KİRACIYA BAĞLI, RLS + FORCE altında → bu
+      // `withTenant` bloğunun İÇİNDE (context kurulduktan SONRA) yazılmak
+      // ZORUNDA (dosya başı yorumu, `tenant_version_state`'in BİREBİR aynı
+      // gerekçesi). `limits` yalnızca `create`'te `TRIAL_PLAN.limits`'ten
+      // ANLIK GÖRÜNTÜ olarak yazılır — bir sonraki seed koşumunda plan
+      // şablonu değişse bile bu satırın `limits`'i GEÇMİŞE DÖNÜK
+      // değiştirilmez (`Subscription.limits` model doc'u); `update` bu
+      // yüzden yalnızca `status`'u yeniden onaylar (tek değer, `active`),
+      // `limits`/`planId`/`startedAt`'e DOKUNMAZ.
+      await tx.subscription.upsert({
+        where: { tenantId: tenant.id },
+        create: {
+          tenantId: tenant.id,
+          planId: TRIAL_PLAN.id,
+          status: SubscriptionStatus.active,
+          limits: TRIAL_PLAN.limits,
+          startedAt: new Date(),
+        },
+        update: {
+          status: SubscriptionStatus.active,
         },
       })
     })

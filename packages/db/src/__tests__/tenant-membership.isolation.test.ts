@@ -1,6 +1,7 @@
 // @arkesoft/db — `createTenantIsolationSuite()`'in TEK çağrı/kayıt noktası
 // (ROADMAP v0.0.13, T-005/S4, architect K-E10; v0.0.11/T-013/S2,
-// v0.0.14/T-014/S3 ve v0.0.21/T-018/S4 ile prob sayısı 1 → 2 → 4 → 6 oldu)
+// v0.0.14/T-014/S3, v0.0.21/T-018/S4 ve v0.1.0/T-019/S5 ile prob sayısı
+// 1 → 2 → 4 → 6 → 7 oldu)
 //
 // ⚠ DOSYA ADI TARİHSELDİR (`tenant-membership.…`): v0.0.3'te taksonomide tek
 // tablo vardı. Bugün bu dosya `TENANT_SCOPED_TABLES`'ın TAMAMINI kaydeder —
@@ -46,6 +47,7 @@ import type { PrismaDatabase, TransactionClient } from '../index.js'
 import { TENANT_SCOPED_TABLES } from '../tenancy.js'
 import { auditLogProbe } from './helpers/audit-log.probe.js'
 import { jobProbe } from './helpers/job.probe.js'
+import { subscriptionProbe } from './helpers/subscription.probe.js'
 import { tenantInvitationProbe } from './helpers/tenant-invitation.probe.js'
 import { tenantUpdateHistoryProbe } from './helpers/tenant-update-history.probe.js'
 import { tenantVersionStateProbe } from './helpers/tenant-version-state.probe.js'
@@ -130,5 +132,6 @@ createTenantIsolationSuite({
     tenantInvitationProbe,
     tenantVersionStateProbe,
     tenantUpdateHistoryProbe,
+    subscriptionProbe,
   ],
 })

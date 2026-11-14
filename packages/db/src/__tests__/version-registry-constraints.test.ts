@@ -32,7 +32,7 @@
 
 import { randomUUID } from 'node:crypto'
 
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import {
   isUniqueConstraintError,
@@ -135,8 +135,27 @@ describe('platform_release — @@unique([version, channel]) + ENUM (qa gate T-01
   })
 })
 
+// ⚠⚠ ÖLÇÜLMÜŞ KUSUR (T-019/S14, Orkestratör'ün ölçtüğü 248/249 kırmızısı):
+// bu önekle üretilen tema fixture'ları çöken/kesilen bir ÖNCEKİ koşumda
+// `afterAll`'a hiç varmadan artık (orphan) kalabiliyordu — canlı ölçüldü:
+// `qa-constraint-theme-a-3233db49` / `qa-constraint-theme-b-28cf1320` bu
+// koşumdan ÖNCEKİ bir çöküşün artığıydı. `afterAll` zaten var (aşağıda);
+// kusur "temizlik yok" değil, "çöken koşuma karşı dayanıksızlık" — bir
+// önceki koşum `afterAll`'a varamazsa sonraki koşumu zehirliyordu.
+const PROBE_THEME_ID_PREFIX = 'qa-constraint-theme-'
+
 describe('theme_release — @@unique([themeId, version]) + CHECK #1 pairing (qa gate T-018 tur 1, kendi testi)', () => {
   const themeIds: string[] = []
+
+  // Çöken bir önceki koşumun artıklarını BU koşum başlamadan temizle —
+  // `afterAll`'ın tersi yönde aynı güvence (bkz. dosya başı not). Önek
+  // bazlı silme güvenli ve hedefli: bu describe'ın ürettiği HER tema id'si
+  // `PROBE_THEME_ID_PREFIX` ile başlar, demo seed verisine dokunmaz.
+  beforeAll(async () => {
+    await testAppPrisma.theme.deleteMany({
+      where: { id: { startsWith: PROBE_THEME_ID_PREFIX } },
+    })
+  })
 
   afterAll(async () => {
     if (themeIds.length > 0) {
@@ -147,7 +166,7 @@ describe('theme_release — @@unique([themeId, version]) + CHECK #1 pairing (qa 
   })
 
   async function createProbeTheme(label: string): Promise<string> {
-    const id = `qa-constraint-theme-${label}-${randomUUID().slice(0, 8)}`
+    const id = `${PROBE_THEME_ID_PREFIX}${label}-${randomUUID().slice(0, 8)}`
     themeIds.push(id)
     await testAppPrisma.theme.create({
       data: { id, name: 'QA Constraint Probu', status: ThemeStatus.active },
@@ -177,7 +196,19 @@ describe('theme_release — @@unique([themeId, version]) + CHECK #1 pairing (qa 
       },
     })
 
-    const rows = await testAppPrisma.themeRelease.findMany({ where: { version } })
+    // ⚠⚠ ÖLÇÜLMÜŞ DÜZELTME (T-019/S14): `version` burada BİLEREK SABİT bir
+    // literaldir (testin iddiası "aynı sürüm string'i farklı temalarda
+    // çakışmaz" olduğu için randomize edilmez) — ama sorgu SADECE `version`
+    // ile kapsanırsa, çöken bir önceki koşumun (farklı, random `themeId`
+    // taşıyan ama AYNI sabit `version`'a sahip) artık satırları bu
+    // `findMany`'ye sızar ve sonuç 2 yerine 4+ döner (canlı ölçüldü, S14
+    // handoff). Sorguyu BU koşumda üretilen iki `themeId`'ye kapsamak
+    // (dosyanın geri kalanının zaten kullandığı "random id ile kapsama"
+    // deseninin aynısı) testin ASIL iddiasını DEĞİŞTİRMEZ, yalnızca harici
+    // veriye karşı bağışık hâle getirir.
+    const rows = await testAppPrisma.themeRelease.findMany({
+      where: { version, themeId: { in: [themeA, themeB] } },
+    })
     expect(rows.map((row) => row.themeId).toSorted()).toEqual([themeA, themeB].toSorted())
   })
 

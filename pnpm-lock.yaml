@@ -358,6 +358,9 @@ importers:
       '@arkesoft/errors':
         specifier: workspace:*
         version: link:../../packages/errors
+      '@arkesoft/tenancy':
+        specifier: workspace:*
+        version: link:../../packages/tenancy
       '@arkesoft/trpc':
         specifier: workspace:*
         version: link:../../packages/trpc

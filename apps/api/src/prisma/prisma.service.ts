@@ -79,8 +79,16 @@
 
 import { Inject, Injectable } from '@nestjs/common'
 import type { OnModuleDestroy } from '@nestjs/common'
-import type { AppPrismaDatabase, PrismaDatabase, TenantTransactionClient } from '@arkesoft/db'
-import { withTenant as withTenantInPackageDb } from '@arkesoft/db'
+import type {
+  AppPrismaDatabase,
+  PlatformTenantWriter,
+  PrismaDatabase,
+  TenantTransactionClient,
+} from '@arkesoft/db'
+import {
+  withNewTenant as withNewTenantInPackageDb,
+  withTenant as withTenantInPackageDb,
+} from '@arkesoft/db'
 import type { Logger } from 'pino'
 
 import { ROOT_LOGGER } from '../logging/logging.tokens.js'
@@ -136,6 +144,32 @@ export class PrismaService implements OnModuleDestroy {
     callback: (tx: TenantTransactionClient) => Promise<T>,
   ): Promise<T> {
     return withTenantInPackageDb(this.#client, tenantId, callback)
+  }
+
+  /**
+   * GÜNCELLEME (ROADMAP v0.1.0, T-019/S9a, architect VERİ MODELİ — ADR-0021
+   * §4): `withNewTenant()` ADDITIVE metot — `withTenant()`'ın BİREBİR aynı
+   * deseni, `@arkesoft/db`'nin `withNewTenant()`'ına bir DI/yaşam döngüsü
+   * sarmalayıcısıdır; mantığın TAMAMI orada (kayıt akışının TEK
+   * transaction'ı: platform `tenant` satırını yaz → GUC'u bağlı parametreyle
+   * ayarla → kiracı kapsamlı satırları yaz). `insertTenant` geri çağrımı
+   * `PlatformTenantWriter` (`tenant`+`plan`, RLS'siz platform tabloları)
+   * alır; `callback` `TenantTransactionClient` alır — `AppPrismaDatabase`'in
+   * DARALTMASI burada da GEÇERLİDİR (bu dosyanın yukarıdaki "DARALTMA"
+   * yorumu).
+   *
+   * ⚠⚠ BU METOT YENİ BİR YETKİ VERMEZ — `withTenant()` ile BİREBİR aynı
+   * güvenlik garantisi (çağıranın `insertTenant`'ın ürettiği id'yi GUC'a
+   * ayarlayabilmesi). `@arkesoft/db`'nin `withNewTenant()` doc'una bkz.
+   *
+   * @throws istemci tenant context için kaydedilmemişse (fail-closed,
+   *   `@arkesoft/db` `tenant-context.ts`).
+   */
+  withNewTenant<T>(
+    insertTenant: (tx: PlatformTenantWriter) => Promise<{ readonly id: string }>,
+    callback: (tx: TenantTransactionClient, tenantId: string) => Promise<T>,
+  ): Promise<T> {
+    return withNewTenantInPackageDb(this.#client, insertTenant, callback)
   }
 
   async onModuleDestroy(): Promise<void> {

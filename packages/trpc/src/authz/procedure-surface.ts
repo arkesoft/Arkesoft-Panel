@@ -96,4 +96,12 @@ export const PROCEDURE_SURFACE = {
     permission: 'security:write',
     operation: 'mutation',
   },
+  // ROADMAP v0.1.0, T-019/S3 — on ikinci/on üçüncü/on dördüncü kayıt
+  // (ADR-0021). Üçü de `builder: 'protected'`: kiracı kavramı
+  // `checkSlugAvailability`/`createTenant` için GEÇERSİZ, `onboardingChecklist`
+  // için kiracı GİRDİDEN seçilir (host'tan DEĞİL) — `tenant`/`permission`
+  // builder'ları ikisinde de DERLENEMEZDİ (`ctx.tenant` daraltması yok).
+  'registration.checkSlugAvailability': { builder: 'protected', operation: 'query' },
+  'registration.createTenant': { builder: 'protected', operation: 'mutation' },
+  'registration.onboardingChecklist': { builder: 'protected', operation: 'query' },
 } as const satisfies Readonly<Record<string, ProcedureSurfaceEntry>>

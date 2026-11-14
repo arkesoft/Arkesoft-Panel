@@ -39,6 +39,9 @@
 // BAŞINDA (diğer tüm modüllerin konvansiyonu — `L-N8`'in şikayet ettiği
 // "259 satırlık dosyanın 242. satırı" sapması düzeltildi). `assertNever`
 // `resolvePanelErrorMessage`'ın EXHAUSTIVE `switch`'i için (aşağıda).
+import { registrationFieldErrorKeySchema } from '@arkesoft/trpc'
+import type { RegistrationFieldErrorKey } from '@arkesoft/trpc'
+
 import type { PanelError } from '../errors/panel-error.js'
 
 import { assertNever } from '../errors/assert-never.js'
@@ -206,6 +209,65 @@ export function formatSupportCodeLine(requestId: string | null): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// T-019/S8 EKLEMESİ (ROADMAP v0.1.0, F13 — panelin `fields` kanalı, AC-5).
+// `PanelError.known.fields`'ın (`../errors/panel-error.ts`) i18n anahtarlarını
+// Türkçe metne çözen KAPALI dünya. `PANEL_ERROR_CODES`/`ERROR_MESSAGES`/
+// `resolveErrorMessage`'IN BİREBİR AYNI deseni (AÇIK imza + KAPALI dünya
+// daraltma + güvenli jenerik geri düşüş) — bu kataloğun İKİNCİ ailesi.
+// `apps/admin` bu alt görevin BİRİNCİL yazıcısıdır (dosya başı yorumu);
+// S10 (sihirbaz UI) bu bloğa YALNIZCA EKLER, gövdeyi DEĞİŞTİRMEZ.
+//
+// Metinler docs/ux/T-019-kayit-ve-kiraci-olusturma.md "Microcopy" bölümünden
+// (satır 262-265, "Alan hatası anahtarı" sütunu) BİREBİR alındı — uydurulmadı.
+//
+// Allowlist'in TEK kaynağı `@arkesoft/trpc`'nin `registrationFieldErrorKeySchema`
+// şemasıdır — burada elle kopyalanmış İKİNCİ bir liste YOK
+// (`REGISTRATION_FIELD_ERROR_KEYS` doğrudan o şemadan TÜRETİLİR).
+
+/**
+ * {@link registrationFieldErrorKeySchema}'nın kapalı kümesi — `@arkesoft/trpc`
+ * şemasından TÜRETİLİR, elle kopyalanmaz (S8'in allowlist kaynağı garantisi).
+ */
+export const REGISTRATION_FIELD_ERROR_KEYS = registrationFieldErrorKeySchema.options
+
+/**
+ * Derleme zamanı KAPALI dünya: `registrationFieldErrorKeySchema`'ya yeni bir
+ * üye eklenip burada metin yazılmazsa `tsc --noEmit` KIRILIR (`ERROR_MESSAGES`
+ * ile AYNI `satisfies` deseni).
+ */
+const FIELD_ERROR_MESSAGES = {
+  'errors.slug.taken':
+    'Bu mağaza adresi başka bir mağaza tarafından kullanılıyor. Başka bir adres dene.',
+  'errors.slug.reserved':
+    'Bu adres platform tarafından kullanıldığı için seçilemez. Başka bir adres dene.',
+  'errors.slug.invalidFormat':
+    'Bu adreste yalnızca küçük harf, rakam ve tire kullanılabilir; tire ile başlayıp bitemez.',
+  'errors.slug.unreachable':
+    'Bu mağaza adresi şu an kullanılamıyor çünkü tam adresi çok uzun oluyor. Daha kısa bir adres dene.',
+} satisfies Record<RegistrationFieldErrorKey, string>
+
+/** `key`'in kapalı dünyadaki bir {@link RegistrationFieldErrorKey} olup olmadığını runtime'da daraltır. */
+function isRegistrationFieldErrorKey(key: string): key is RegistrationFieldErrorKey {
+  return (REGISTRATION_FIELD_ERROR_KEYS as readonly string[]).includes(key)
+}
+
+/**
+ * Bir alan hatası i18n anahtarını (`PanelError.known.fields[alanAdı]`) Türkçe
+ * metne çözer. İmza `string` alır (bir {@link RegistrationFieldErrorKey}
+ * DEĞİL) — `resolveErrorMessage` ile AYNI savunma derinliği: `fields`
+ * `normalizePanelError` tarafından ZATEN allowlist'ten süzülmüş olsa da, bu
+ * fonksiyon KENDİ BAŞINA fail-closed'dır; kapalı kümeye uymayan hiçbir değer
+ * (ham sunucu metni dahil) HİÇBİR koşulda ekrana basılmaz, jenerik mesaja
+ * düşer (AC-5, NEGATİF TEST 1/3).
+ */
+export function resolveRegistrationFieldErrorMessage(key: string): string {
+  if (isRegistrationFieldErrorKey(key)) {
+    return FIELD_ERROR_MESSAGES[key]
+  }
+  return GENERIC_ERROR_MESSAGE
+}
+
+// ---------------------------------------------------------------------------
 // S5 EKLEMESİ (ROADMAP v0.0.7, T-008/S5) — bu bölümün ÜSTÜNDEKİ hiçbir satır
 // değişmedi (yukarıdaki dosya başı yorumu: "yalnızca EKLER"). Ekran metinleri
 // (boş durum, form etiketleri, buton metinleri, hata ekranı başlıkları,
@@ -277,10 +339,51 @@ export const MESSAGES = {
       challengeExpiredMessage:
         'Doğrulama süreniz doldu. Güvenliğiniz için tekrar giriş yapmanız gerekiyor.',
     },
+    // -----------------------------------------------------------------
+    // ROADMAP v0.1.0 (T-019/S10) EKLEMESİ — docs/ux/T-019-kayit-ve-kiraci-
+    // olusturma.md "Microcopy" bölümünden BİREBİR alındı (`auth.signUp.*`,
+    // `auth.signIn.*`'in kardeşi). ⚠ `existingAccountNotice` BİLEREK
+    // EKLENMEDİ — ölçülmüş bir UI PLANINDAN SAPMA: Better Auth'un
+    // `sign-up.mjs` kaynağı + `auth-instance.ts:690`'daki
+    // `requireEmailVerification: true` BİRLİKTE var olan bir e-postayla
+    // kayıt denemesini YENİ bir kayıtla BİREBİR AYNI 2xx gövdeye eşliyor
+    // (kasıtlı enumeration savunması) — bu anahtarın hiçbir çağrı yeri
+    // olamaz, eklemek ölü metin olurdu (bkz. `sign-up-controller.ts` dosya
+    // başı yorumu, RİSKLER).
+    // -----------------------------------------------------------------
+    signUp: {
+      title: 'Hesap oluştur',
+      emailLabel: 'E-posta adresi',
+      passwordLabel: 'Şifre',
+      passwordConfirmLabel: 'Şifre (tekrar)',
+      submit: 'Hesap oluştur',
+      submitting: 'Hesap oluşturuluyor…',
+      emailRequired: 'E-posta adresinizi girin.',
+      emailInvalid: 'Geçerli bir e-posta adresi girin.',
+      passwordRequired: 'Şifrenizi girin.',
+      passwordConfirmRequired: 'Şifrenizi tekrar girin.',
+      passwordMismatch: 'Şifreler eşleşmiyor.',
+      // `auth.signIn.fieldGenericError`'ın AYNI fail-closed geri düşüşü
+      // (DÜZELTME TURU 1, `solid` M5 ║ `wcag` M3 — bu alt görevin KENDİ
+      // formu için tekrarı): tanınmayan bir Zod `issue.code`'u SESSİZCE
+      // kaybolmaz.
+      fieldGenericError: 'Bu alanda bir sorun var. Lütfen kontrol edip tekrar deneyin.',
+      goToSignIn: 'Giriş yap',
+      haveAccountPrompt: 'Zaten hesabın var mı?',
+      emailPendingTitle: 'E-postanı doğrula',
+      emailPendingBody:
+        '{eposta} adresine bir doğrulama bağlantısı gönderdik. Gelen kutunuzdaki bağlantıya tıklayıp giriş yapabilirsiniz.',
+      resendEmail: 'E-posta gelmedi mi? Yeniden gönder',
+      resendingEmail: 'Gönderiliyor…',
+    },
   },
   meta: {
     signInTitle: 'Giriş yap · Arkesoft Panel',
     dashboardTitle: 'Panel · Arkesoft Panel',
+    // ROADMAP v0.1.0 (T-019/S10) EKLEMESİ.
+    signUpTitle: 'Hesap oluştur · Arkesoft Panel',
+    storeWizardTitle: 'Mağaza oluştur · Arkesoft Panel',
+    onboardingChecklistTitle: 'Kurulum adımların · Arkesoft Panel',
   },
   loading: {
     sessionChecking: 'Oturumunuz doğrulanıyor…',
@@ -291,6 +394,45 @@ export const MESSAGES = {
     empty: {
       heading: 'Panel şu anda boş',
       body: 'Ürün, sipariş ve mağaza ayarları gibi yönetim ekranları bu panele adım adım ekleniyor. Şu an burada yapabileceğiniz bir işlem yok. Yeni bir bölüm eklendiğinde, giriş yaptığınızda burada göreceksiniz.',
+    },
+    // -------------------------------------------------------------------
+    // ROADMAP v0.1.0 (T-019/S10) EKLEMESİ — docs/ux/T-019 "Microcopy"
+    // bölümünden BİREBİR alındı (`dashboard.onboarding.*`, Ekran 7-8).
+    // ⚠ `empty.*` (ÜSTTE) artık `/`'in bu alt görevle DEĞİŞEN "mağaza yok"
+    // dalı tarafından TÜKETİLMİYOR (bkz. `_app.index.tsx` dosya başı yorumu,
+    // RİSKLER) — SİLİNMEDİ (bu dosya yalnızca EKLER), teknik borca not
+    // düşüldü.
+    // -------------------------------------------------------------------
+    onboarding: {
+      noStoreTitle: 'Henüz bir mağazan yok',
+      noStoreBody: 'Mağazanı oluşturarak başlayabilirsin, yalnızca birkaç dakika sürer.',
+      createStoreButton: 'Mağaza oluştur',
+      checklistTitle: 'Kurulum adımların',
+      pendingBanner:
+        'Mağazan oluşturuldu ama henüz ziyaretçilere açık değil. Yayına alma adımı çok yakında burada olacak.',
+      comingSoonBadge: 'Yakında',
+      provisioningStepHelp: 'Bu özellik çok yakında burada olacak.',
+      loadError: 'Kurulum durumun şu anda yüklenemedi.',
+      stepDoneLabel: 'Tamamlandı',
+      stepTodoLabel: 'Bekliyor',
+      stepAccountLabel: 'Hesabını oluşturdun',
+      stepStoreIdentityLabel: 'Mağazanın adını ve adresini belirledin',
+      stepSiteTypeLabel: 'Mağazanın türünü seçtin',
+      stepSubscriptionLabel: 'Deneme aboneliğin başladı',
+      stepProvisioningLabel: 'Siteni yayına al',
+      // ⭐⭐ BAĞLAYICI TEK CÜMLE (brief'ten birebir, S10 handoff'u) — dört ret
+      // modu (kiracı yok/üye değil/soft-delete/biçim bozuk) AYNI mesaja
+      // indirgenir, ayrım YAPILMAZ (ADR-0021 §2 koşul C).
+      slugNotFoundOrForbidden: 'Bu adrese erişiminiz yok veya böyle bir mağaza yok.',
+    },
+    // `/`'in "zaten bir mağaza oluşturdun mu?" manuel adres girişi
+    // (docs/ui P6) — `dashboard.onboarding.*`'den AYRI bir alt-kök (ui
+    // planının RİSKLER #9'unun öngördüğü yeni kök, bu alt görevin KENDİ
+    // adlandırması).
+    home: {
+      manualAddressPrompt: 'Zaten bir mağaza oluşturdun mu?',
+      manualAddressLabel: 'Mağaza adresi',
+      manualAddressSubmit: 'Devam et',
     },
   },
   // DÜZELTME TURU 1 (`wcag` low 8c): `AppShell`'in atlama (skip) bağlantısı.
@@ -426,6 +568,52 @@ export const MESSAGES = {
       sessionGoneClose: 'Kapat',
       sessionGoneNotice: 'Bu oturum artık mevcut değil. Liste güncellendi.',
     },
+  },
+  // ---------------------------------------------------------------------
+  // ROADMAP v0.1.0 (T-019/S10) EKLEMESİ — docs/ux/T-019 "Microcopy"
+  // bölümünden BİREBİR alındı (`registration.*`, Faz 2, `/magaza-olustur`).
+  // ⚠ `slug.raceLostNotice` (ux'in tablosunda adı geçen bir anahtar) BİLEREK
+  // AYRI bir satır olarak EKLENMEDİ — gerçek metin zaten S8'in
+  // `FIELD_ERROR_MESSAGES['errors.slug.taken']`'inden geliyor
+  // (`slug-outcome-message.ts`'in `resolveSlugFieldErrorMessage('taken')`
+  // çağrısı); ikinci bir kopya DRY'yi ihlal eder ve kullanılmayan (ölü)
+  // bir anahtar olurdu.
+  // ---------------------------------------------------------------------
+  registration: {
+    storeName: {
+      stepLabel: 'Mağaza adı',
+      inputLabel: 'Mağazanın adı',
+      required: 'Mağazanın bir adı olmalı.',
+      next: 'İleri',
+    },
+    slug: {
+      stepLabel: 'Mağaza adresi',
+      inputLabel: 'Mağazanın adresi',
+      help: 'Mağazan şu adresten yayına girecek: {önizleme}',
+      back: 'Geri',
+      next: 'İleri',
+      available: 'Bu adres kullanılabilir.',
+      taken: 'Bu mağaza adresi başka bir mağaza tarafından kullanılıyor. Başka bir adres dene.',
+      reserved: 'Bu adres platform tarafından kullanıldığı için seçilemez. Başka bir adres dene.',
+      invalidFormat:
+        'Bu adreste yalnızca küçük harf, rakam ve tire kullanılabilir; tire ile başlayıp bitemez.',
+      unreachable:
+        'Bu mağaza adresi şu an kullanılamıyor çünkü tam adresi çok uzun oluyor. Daha kısa bir adres dene.',
+      checking: 'Kontrol ediliyor…',
+    },
+    siteType: {
+      stepLabel: 'Site tipi',
+      legend: 'Mağazan ne türde olacak?',
+      ecommerceLabel: 'E-ticaret (ürün satışı yapacağım)',
+      corporateLabel: 'Kurumsal site (tanıtım, bilgi amaçlı)',
+      required: 'Bir site tipi seç.',
+      back: 'Geri',
+      submit: 'Mağazanı oluştur',
+      submitting: 'Oluşturuluyor…',
+    },
+    // ux'in "Adım 2 / 3" metin-alternatifi şartı (mobil davranış +
+    // erişilebilirlik niyeti ⑤) — üç adımın ÜÇÜ de bu ŞABLONU paylaşır.
+    stepProgressLabel: 'Adım {adim} / {toplam}',
   },
 } as const
 
