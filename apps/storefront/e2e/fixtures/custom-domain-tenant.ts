@@ -44,6 +44,26 @@
 // `check_adr22_k1d_shellout_boundary` allowlist'i bu dosyada hâlâ BİREBİR
 // AYNI "docker exec"/"psql" jetonlarını görüyor — tarama GÜNCELLEME
 // GEREKTİRMİYOR (ölçüldü, S9a raporunda).
+//
+// ⚠⚠⚠ GATE DÜZELTME (devops, T-020 gate fix turu 1, 2026-11-15 —
+// `solid`+`security` tur 1'in BAĞIMSIZ buluştuğu `high` bulgu, S-1/İŞ ①):
+// ADR-0022 Karar 1 DÖRT korumayı ZORUNLU kılıyor; bu dosyada (a) fail-closed
+// loopback allowlist VE (b) `NODE_ENV`/test-ortamı kapısı EKSİKTİ (kardeş
+// dosya `apps/admin/e2e/fixtures/tenant-cleanup.ts` ikisini de taşıyordu).
+// SÖMÜRÜ SENARYOSU (security ölçtü): `DOCKER_HOST=tcp://10.0.0.5:2375`
+// ile çalışan bir geliştirici/koşucu `pnpm --filter @arkesoft/storefront
+// test:e2e` koşturursa `docker ps`/`docker exec` UZAKTAKİ bir daemon'da
+// çözülür — yerel kapı OLMADIĞI için hiçbir şey durdurmaz; sonuç UZAK bir
+// veritabanında tablo-sahibi rolüyle (RLS BAYPAS) `INSERT`/`DELETE FROM
+// tenant` çalıştırmak olur. Düzeltme: admin'in `assertDockerHostIsLoopback`
+// + `assertTestEnvironment` çifti BİREBİR buraya taşındı (emsal
+// `apps/api/src/__tests__/helpers/create-test-app.ts:380-408`'in
+// `REDIS_URL` hostname denetimiyle AYNI desen) ve her iki fonksiyon
+// `resolvePostgresContainerName`/`runSql`'in BAŞINDA (admin'deki çağrı
+// noktalarıyla AYNI yerlerde) çağrılıyor. `NODE_ENV`'i BU dosya AYARLAMAZ,
+// yalnızca OKUR — tek yazıcı `apps/storefront/playwright.config.ts`
+// (`NODE_ENV ??= 'test'`, admin'in `playwright.config.ts:53` emsali).
+// (c)'nin biçim kapısı da GÜÇLENDİRİLDİ — aşağıya, `E2E_FIXTURE_ID_PATTERN`.
 import { execFileSync } from 'node:child_process'
 
 /**
@@ -56,6 +76,70 @@ import { execFileSync } from 'node:child_process'
 const POSTGRES_HOST_PORT = process.env['POSTGRES_PORT'] ?? '5432'
 const POSTGRES_USER = process.env['POSTGRES_USER'] ?? 'arkesoft'
 const POSTGRES_DB = process.env['POSTGRES_DB'] ?? 'arkesoft'
+
+/**
+ * Koruma (a) allowlist'i — `apps/admin/e2e/fixtures/tenant-cleanup.ts:166-170`
+ * ve `apps/api/src/__tests__/helpers/create-test-app.ts:380-384` ile
+ * BİREBİR AYNI küme (emsal).
+ */
+const DOCKER_HOST_ALLOWED_HOSTNAMES: ReadonlySet<string> = new Set([
+  '127.0.0.1',
+  '::1',
+  'localhost',
+])
+
+/**
+ * E2E fixture tenant id/slug biçimi — `uniqueSuffix()`'in ürettiği
+ * `<önek>-<13+ haneli zaman damgası>-<rastgele alfasayısal kuyruk>` kalıbı
+ * (`uniqueSuffix('e2e-soft-deleted')` → `e2e-soft-deleted-1731712345678-
+ * ab12cd`). `apps/admin/e2e/fixtures/tenant-cleanup.ts`'in
+ * `E2E_FIXTURE_TENANT_SLUG_PATTERN`'ı ile AYNI disiplin (zaman damgalı
+ * segment ZORUNLU) — ama storefront'un kuyruk segmentini (zaman
+ * damgasından SONRAKİ rastgele parça) de HESABA katacak şekilde
+ * genişletilmiş. Koruma (c)'nin biçim kapısı — GATE DÜZELTME notu.
+ */
+const E2E_FIXTURE_ID_PATTERN = /^e2e-[a-z0-9-]+-\d{10,}-[a-z0-9]{1,10}$/
+
+/**
+ * Koruma (b) — bu dosya `NODE_ENV`'i AYARLAMAZ, yalnızca OKUR. Tek yazıcı
+ * `playwright.config.ts` (`NODE_ENV ??= 'test'`) — admin ikizinin AYNI
+ * disiplini.
+ */
+function assertTestEnvironment(): void {
+  const nodeEnv = process.env['NODE_ENV']
+  if (nodeEnv !== 'test') {
+    throw new Error(
+      `e2e fixture yalnızca NODE_ENV=test ortamında koşabilir — fail-closed kapı tetiklendi (ölçülen process.env.NODE_ENV: ${String(nodeEnv)}). playwright.config.ts bu değeri ayarlamalı.`,
+    )
+  }
+}
+
+/**
+ * Koruma (a) — `DOCKER_HOST` loopback DIŞINDA bir daemon'a işaret ediyorsa
+ * fırlatır (fail-closed). `apps/admin/e2e/fixtures/tenant-cleanup.ts`'in
+ * `assertDockerHostIsLoopback`'i ile BİREBİR AYNI gövde.
+ */
+function assertDockerHostIsLoopback(): void {
+  const dockerHost = process.env['DOCKER_HOST']
+  if (dockerHost === undefined || dockerHost === '') {
+    // Tanımsız/boş ⇒ docker CLI varsayılan YEREL soketi kullanır — güvenli.
+    return
+  }
+  let hostname: string
+  try {
+    hostname = new URL(dockerHost).hostname
+  } catch (error) {
+    throw new Error(
+      `e2e fixture: DOCKER_HOST ayrıştırılamadı — fail-closed kapı tetiklendi (DOCKER_HOST: ${dockerHost})`,
+      { cause: error },
+    )
+  }
+  if (!DOCKER_HOST_ALLOWED_HOSTNAMES.has(hostname)) {
+    throw new Error(
+      `e2e fixture yalnızca loopback docker daemon'a (127.0.0.1/::1/localhost) karşı koşabilir — fail-closed kapı tetiklendi (çözülen host: ${hostname})`,
+    )
+  }
+}
 
 /**
  * `docker ps`'in KENDİSİ tek bir koşumda değişmeyen bir gerçeği sorguluyor
@@ -76,6 +160,8 @@ function resolvePostgresContainerName(): string {
   if (cachedContainerName !== undefined) {
     return cachedContainerName
   }
+  assertTestEnvironment()
+  assertDockerHostIsLoopback()
   let output: Buffer
   try {
     output = execFileSync(
@@ -128,6 +214,8 @@ export interface CustomDomainTenantFixture extends TenantFixture {
 }
 
 function runSql(sql: string): void {
+  assertTestEnvironment()
+  assertDockerHostIsLoopback()
   const containerName = resolvePostgresContainerName()
   try {
     execFileSync(
@@ -210,7 +298,22 @@ export function createCustomDomainTenantFixture(): CustomDomainTenantFixture {
   return fixture
 }
 
-/** Her iki fixture türü için de TEK temizlik yolu — `id` tekil anahtar olduğu için tek satır siler. */
+/**
+ * Her iki fixture türü için de TEK temizlik yolu — `id` tekil anahtar
+ * olduğu için tek satır siler. GATE DÜZELTME (koruma (c)'nin biçim kapısı):
+ * `fixture.id` `E2E_FIXTURE_ID_PATTERN`'a UYMUYORSA fırlatır — çıplak
+ * `DELETE FROM tenant` YASAK (`apps/admin/e2e/fixtures/tenant-cleanup.ts`'in
+ * `deleteFixtureTenantBySlug`/`deleteFixtureUserByEmail`'i ile AYNI
+ * disiplin). Bu dosyanın `id`'si HER ZAMAN `uniqueSuffix()`'in kendi
+ * ürettiği değer olduğu için pratikte bu kapı tetiklenmez — ama "çağıranın
+ * verdiği id'ye güven" yerine "biçimi doğrula" ikinci bir savunma katmanı
+ * sağlar (tek nokta arızası yok, admin ikizinin emsali).
+ */
 export function deleteTenantFixture(fixture: TenantFixture): void {
+  if (!E2E_FIXTURE_ID_PATTERN.test(fixture.id)) {
+    throw new Error(
+      `e2e fixture: "${fixture.id}" e2e fixture id biçimine uymuyor — fail-closed kapı tetiklendi (çıplak silme reddedildi)`,
+    )
+  }
   runSql(`DELETE FROM tenant WHERE id = '${fixture.id}';`)
 }

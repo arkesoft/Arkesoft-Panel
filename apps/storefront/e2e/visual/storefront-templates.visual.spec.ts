@@ -41,8 +41,15 @@ import { storefrontVisualUrl } from './visual-port.js'
 
 const DEMO_TENANT_HOST = 'demo-magaza.arkesoft.localhost'
 // `storefront-host.spec.ts:62`'nin AYNI sabiti — dosyalar arası paylaşılan
-// modül yok (CLAUDE.md §4, dosyalar arası bağımsızlık ilkesi diğer e2e
-// dosyalarıyla AYNI, bkz. `storefront-theme.spec.ts:67` emsali).
+// modül yok, diğer storefront e2e dosyalarıyla AYNI (emsal:
+// `storefront-theme.spec.ts:67`'nin AYNI yardımcısı/gerekçesi).
+//
+// GATE DÜZELTME (devops, T-020 gate fix turu 1, `solid` tur 1, [low], İŞ
+// ⑥): yukarıdaki satır ESKİDEN "CLAUDE.md §4, dosyalar arası bağımsızlık
+// ilkesi" diye VAR OLMAYAN bir CLAUDE.md ilkesine atıf yapıyordu
+// (`grep "bağımsızlık" CLAUDE.md` → 0 eşleşme) — uydurulmuş kaynak atfı.
+// Bu BİR CLAUDE.md kuralı DEĞİL; yalnızca bu dosyanın da izlediği, repoda
+// zaten var olan BİLİNÇLİ bir desen tekrarıdır (bkz. yukarıdaki emsal).
 const NEVER_EXISTED_HOST = 'yok.arkesoft.localhost'
 
 /** `page.goto`'nun `null` döndürmediğini doğrular — diğer storefront e2e dosyalarıyla AYNI yardımcı, paylaşılan modül YOK (bilinçli, dosya başı notu). */

@@ -629,51 +629,84 @@ check_auth_budget_pin_freshness() {
 
 # ---------------------------------------------------------------------------
 # ADR-0022 Karar 1(d) — "fabrika sızma yasağı" + po'nun allowlist kararı
-# (ROADMAP T-020/S7, İŞ ③).
+# (ROADMAP T-020/S7, İŞ ③; GATE DÜZELTME: devops, T-020 gate fix turu 1,
+# 2026-11-15, `solid`+`security` tur 1'in bağımsız ölçtüğü S-2/İŞ ②).
 #
 # ADR-0022 Karar 1(d) BİREBİR: "`apps/*/src/**` içinden `child_process`+
 # `psql` kullanımı `pnpm guards` taramasıyla YASAKLANIR — fabrika üretim
 # koduna SIZAMAZ." Bugün İKİ MEŞRU fixture var (ikisi de `e2e/` altında,
 # `src/` DEĞİL): `apps/storefront/e2e/fixtures/custom-domain-tenant.ts`
 # (v0.0.8'den beri) ve `apps/admin/e2e/fixtures/tenant-cleanup.ts` (S5
-# yazdı). Bu fonksiyon İKİ alt kontrol yapar (TEK `run_step` altında — İŞ
-# ①/②/③ "üç yeni adım" sayısını KORUR, DÖRDE ÇIKARMAZ):
+# yazdı). Bu fonksiyon ÜÇ alt kontrol yapar (TEK `run_step` altında — İŞ
+# ①/②/③ "üç yeni adım" sayısını KORUR, dörde ÇIKARMAZ):
 #
-#   1. `apps/*/src/**` (her `apps/<ad>/src` ağacı, `__tests__` hariç) İÇİNDE
-#      "docker exec"/"psql" jetonlarından BİRİ bile görünürse İHLAL — ADR'nin
-#      "SIFIR" şartı, AC4'teki TEK-ALLOWLIST modelinin AKSİNE burada HİÇBİR
-#      istisna dosya YOK.
-#   2. `apps/**` + `packages/**` (`.ts`, `node_modules`/`dist`/`generated`/
-#      `.turbo` hariç) genelinde "docker exec" VE "psql" jetonlarının İKİSİNİ
-#      BİRDEN taşıyan dosya KÜMESİNİN tam olarak yukarıdaki İKİ fixture'a
-#      eşit olduğunu doğrular (po kararı, bağlayıcı — gerekçe aynen: "S7'nin
-#      taraması docker exec+psql içeren dosya kümesinin TAM OLARAK bu ikisi
-#      olduğunu doğrular ⇒ üçüncü kopya SESSİZCE doğamaz"). Üçüncü bir
-#      dosya (ör. yeni bir app'in e2e fixture'ı) aynı deseni yeniden
-#      yazarsa bu kontrol onu YAKALAR — alt kontrol 1 yalnızca `src/`'i
-#      görür, bu da `e2e/` dahil HER YERİ görür.
+#   1. `apps/*/src/**` (her `apps/<ad>/src` ağacı, İSTİSNASIZ — `__tests__`
+#      DAHİL, bkz. gate fix notu altta) İÇİNDE "docker exec"/"psql"
+#      jetonlarından BİRİ bile görünürse İHLAL.
+#   2. `apps/**` + `packages/**` + `scripts/**` (`.ts`, `node_modules`/
+#      `dist`/`generated`/`.turbo` hariç) genelinde GERÇEK kabuk-çağrısı
+#      MEKANİZMASINI (aşağıya bkz.) taşıyan dosya KÜMESİNİN tam olarak
+#      yukarıdaki İKİ fixture'a eşit olduğunu doğrular (po kararı, bağlayıcı
+#      — "üçüncü kopya SESSİZCE doğamaz").
+#   3. Yukarıdaki İKİ allowlist dosyasının HER İKİSİ de ADR-0022 K1'in (a)
+#      ve (b) korumalarını (`assertDockerHostIsLoopback`/
+#      `assertTestEnvironment`) TAŞIDIĞINI POZİTİF olarak doğrular.
+#
+# ⚠⚠⚠ GATE DÜZELTME (S-2, İŞ ②) — ALT KONTROL 2 ARTIK DÜZYAZIYI DEĞİL
+# MEKANİZMAYI EŞLİYOR: önceki sürüm "docker exec" (bitişik, tek dizge)
+# jetonunu arıyordu — ama GERÇEK çağrı `execFileSync('docker', ['exec', …,
+# 'psql', …])`'dür, dizi öğeleri AYRI satırlardadır ve "docker exec" hiçbir
+# zaman bitişik GEÇMEZ. `security` tur 1 ÖLÇTÜ: depodaki HER "docker exec"
+# geçişi bir YORUM ya da bir hata mesajı METNİYDİ — tarama korumak istediği
+# ÇAĞRIYI değil, YANINDAKİ AÇIKLAMA metnini eşliyordu; jetonu içermeyen
+# ÜÇÜNCÜ bir kopya (gerçek mekanizmayı taşıyan ama yorumunda "docker exec"
+# bitişik metni OLMAYAN) bu yüzden SESSİZCE doğabilirdi (sandbox'ta
+# kanıtlandı, S-2 raporu). Düzeltme: artık dizi ÖĞESİ biçimindeki tek
+# tırnaklı literalleri ('exec' VE 'psql' birlikte — bu, gerçek
+# `execFileSync` dizi argümanının İKİ öğesidir) arıyor; `security`'nin
+# ÖLÇTÜĞÜ hata-mesajı metinlerinde ("Denenen komut: docker exec … psql …")
+# bu literaller TIRNAKSIZ geçtiği için ORADA EŞLEŞMEZ — tarama artık GERÇEK
+# ÇAĞRIYI eşliyor, yanındaki METNİ değil (ölçüldü: `grep` bu literalleri
+# yalnızca GERÇEK `execFileSync` dizilerinde buluyor, iki allowlist
+# dosyasının HİÇBİR yorum/hata-mesajı satırında DEĞİL).
+#
+# `scripts/**` KAPSAMA ALINDI (`solid` tur 1 bulgusu) — ADR-0022 Karar 6
+# `scripts/`'i birinci sınıf bir TypeScript alanı yaptı (`scripts/
+# playwright/base.ts`); allowlist taraması önceden bu dizini GÖRMÜYORDU.
+#
+# ALT KONTROL 1'İN `__tests__` İSTİSNASI KALDIRILDI (`solid` tur 1 bulgusu —
+# önceki `--exclude-dir=__tests__` bu yorumun "HİÇBİR istisna dosya YOK"
+# iddiasıyla ÇELİŞİYORDU). ÖLÇÜLDÜ (gate fix turu 1): `apps/*/src` altında
+# `__tests__` DAHİL hiçbir dosyada "docker exec"/"psql" jetonu YOK — istisna
+# kaldırmak bugün DAVRANIŞ DEĞİŞTİRMİYOR, yalnızca yorumla kodu HİZALIYOR.
 #
 # ⚠ DÜRÜST SINIR (ADR'de YAZILI, burada da TEKRARLANIYOR): iki `runSql`
 # gövdesinin (custom-domain-tenant.ts / tenant-cleanup.ts) METİNSEL SAPMASI
 # bu kontrolle YAKALANMAZ — bu, deponun bu sınıfta ZATEN KABUL ETTİĞİ bir
 # borç (ADR-0022). Bu tarama ÇOĞALMAYI kapatıyor, SAPMAYI değil.
 #
-# Literal-jeton kuralı (AGENT_BASELINE.md §5): "docker exec" ve "psql"
-# jetonları bu fonksiyonun KENDİ metninde BİTİŞİK YAZILMAZ — AC8/AC16 ile
-# AYNI disiplin. Bugün tarama hedefi (`apps/**/src`, `apps/**`+`packages/**`,
-# `.ts` uzantılı) bu `.sh` dosyasının KENDİSİNİ KAPSAMIYOR, ama hedef küme
-# ileride genişlerse (ör. `scripts/**`'e) bu yorum/kod BİTİŞİK yazılmış
-# olsaydı KENDİ KENDİNİ eşletirdi (AC16/AC8'in AYNI gerekçesi).
+# Literal-jeton kuralı (AGENT_BASELINE.md §5): bu fonksiyonun aradığı
+# jetonlar KENDİ metninde (yorumlarda) BİTİŞİK/TIRNAKLI YAZILMAZ — AC8/AC16
+# ile AYNI disiplin. Hedef küme `scripts/**`'i de kapsadığı için bu `.sh`
+# dosyası `--include='*.ts'` yüzünden KENDİSİNİ asla eşlemez (yalnızca
+# `.ts` dosyaları taranıyor), ama disiplin AYNI gerekçeyle sürdürülüyor.
 # ---------------------------------------------------------------------------
 check_adr22_k1d_shellout_boundary() {
   local token_a1='dock' token_a2='er exec'
   local shellout_needle="${token_a1}${token_a2}"
   local token_b1='ps' token_b2='ql'
   local psql_needle="${token_b1}${token_b2}"
+  # Mekanizma jetonları (S-2 düzeltmesi) — GERÇEK execFileSync dizi
+  # öğeleri: tek tırnaklı "exec" ve "psql" literalleri, parçalardan
+  # kurulur (yukarıdaki AYNI literal-jeton disiplini).
+  local token_c1="'ex" token_c2="ec'"
+  local exec_array_needle="${token_c1}${token_c2}"
+  local token_d1="'ps" token_d2="ql'"
+  local psql_array_needle="${token_d1}${token_d2}"
 
   local violation=false
 
-  # --- Alt kontrol 1: apps/*/src/** içinde SIFIR (ADR Karar 1(d) birebir) ---
+  # --- Alt kontrol 1: apps/*/src/** içinde SIFIR, İSTİSNASIZ ---
   local src_dirs
   src_dirs="$(find apps -maxdepth 2 -type d -name src 2>/dev/null)"
   if [ -z "$src_dirs" ]; then
@@ -687,7 +720,7 @@ check_adr22_k1d_shellout_boundary() {
   done <<<"$src_dirs"
 
   local src_matches
-  src_matches="$(grep -rnE --include='*.ts' --exclude-dir=__tests__ -- \
+  src_matches="$(grep -rnE --include='*.ts' -- \
     "${shellout_needle}|${psql_needle}" "${src_dir_array[@]}" 2>/dev/null || true)"
   if [ -n "$src_matches" ]; then
     echo "ADR-0022 K1(d) İHLALİ — apps/*/src/** içinde fabrika üretim koduna sızmış bir kabuk-çağrısı jetonu bulundu:"
@@ -695,30 +728,52 @@ check_adr22_k1d_shellout_boundary() {
     violation=true
   fi
 
-  # --- Alt kontrol 2: 'docker exec'+'psql' KULLANAN dosya kümesi TAM OLARAK
-  #     bu ikisi (po kararı — üçüncü kopya sessizce doğmasın) -------------
+  # --- Alt kontrol 2: GERÇEK execFileSync mekanizmasını ('exec'+'psql' dizi
+  #     öğeleri) KULLANAN dosya kümesi TAM OLARAK bu ikisi (po kararı —
+  #     üçüncü kopya sessizce doğmasın); hedef apps+packages+scripts ------
   local allowed_file_1='apps/storefront/e2e/fixtures/custom-domain-tenant.ts'
   local allowed_file_2='apps/admin/e2e/fixtures/tenant-cleanup.ts'
 
-  local shellout_file_matches actual_files expected_files
-  shellout_file_matches="$(grep -rlE --include='*.ts' \
+  local exec_array_file_matches actual_files expected_files
+  exec_array_file_matches="$(grep -rlE --include='*.ts' \
     --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=generated --exclude-dir=.turbo \
-    -- "$shellout_needle" apps packages 2>/dev/null || true)"
-  actual_files="$(printf '%s\n' "$shellout_file_matches" | grep -v '^$' \
-    | xargs -r grep -lE -- "$psql_needle" 2>/dev/null | sort)"
+    -- "$exec_array_needle" apps packages scripts 2>/dev/null || true)"
+  actual_files="$(printf '%s\n' "$exec_array_file_matches" | grep -v '^$' \
+    | xargs -r grep -lE -- "$psql_array_needle" 2>/dev/null | sort)"
   expected_files="$(printf '%s\n' "$allowed_file_1" "$allowed_file_2" | sort)"
 
   if [ "$actual_files" != "$expected_files" ]; then
-    echo "ADR-0022 K1(d) allowlist İHLALİ — 'docker exec'+'psql' kullanan dosya kümesi beklenen İKİ fixture'dan SAPTI (üçüncü bir kopya doğmuş olabilir):"
+    echo "ADR-0022 K1(d) allowlist İHLALİ — gerçek kabuk-çağrısı mekanizmasını (execFileSync 'exec'+'psql') kullanan dosya kümesi beklenen İKİ fixture'dan SAPTI (üçüncü bir kopya doğmuş olabilir):"
     echo "Beklenen:"; printf '%s\n' "$expected_files"
     echo "Gerçek:"; printf '%s\n' "$actual_files"
     violation=true
   fi
 
+  # --- Alt kontrol 3 (S-2'nin POZİTİF iddiası): her allowlist dosyası
+  #     ADR-0022 K1'in (a)+(b) koruma fonksiyonlarının İKİSİNİ de taşımalı
+  #     — S-1'in (storefront kopyasının bu ikisini TAŞIMADAN eklenmesi)
+  #     tekrarını MEKANİKLEŞTİRİR. ----------------------------------------
+  local allowed_file
+  for allowed_file in "$allowed_file_1" "$allowed_file_2"; do
+    if [ ! -f "$allowed_file" ]; then
+      echo "ADR-0022 K1(d) İHLALİ — beklenen allowlist dosyası bulunamadı: $allowed_file"
+      violation=true
+      continue
+    fi
+    if ! grep -q "assertDockerHostIsLoopback" "$allowed_file"; then
+      echo "ADR-0022 K1(d) İHLALİ — $allowed_file içinde koruma (a) (assertDockerHostIsLoopback) YOK."
+      violation=true
+    fi
+    if ! grep -q "assertTestEnvironment" "$allowed_file"; then
+      echo "ADR-0022 K1(d) İHLALİ — $allowed_file içinde koruma (b) (assertTestEnvironment) YOK."
+      violation=true
+    fi
+  done
+
   if [ "$violation" = true ]; then
     return 1
   fi
-  echo "ADR-0022 K1(d): apps/*/src/** temiz VE 'docker exec'+'psql' kullanan dosya kümesi TAM OLARAK beklenen iki fixture ($allowed_file_1, $allowed_file_2)."
+  echo "ADR-0022 K1(d): apps/*/src/** istisnasız temiz; gerçek kabuk-çağrısı mekanizmasını kullanan dosya kümesi TAM OLARAK beklenen iki fixture ($allowed_file_1, $allowed_file_2) VE ikisi de (a)+(b) korumalarını taşıyor."
   return 0
 }
 

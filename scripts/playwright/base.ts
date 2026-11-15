@@ -90,6 +90,18 @@ export function createPlaywrightBaseConfig(
     // admin/storefront'un BUGÜNKÜ emsaliyle birebir — paylaşılan değişken
     // altyapıya (tek Postgres/Redis/Mailpit) paralel yüklenmeyi engeller.
     workers: overrides.workers ?? 1,
+    // ⚠⚠ GATE DÜZELTME (devops, T-020 gate fix turu 1, `security` tur 1
+    // S-4, [low], "yolu üstündeyse kapat"): depo PUBLIC
+    // (`gh repo view` → `"visibility":"PUBLIC"`) — Playwright'ın
+    // VARSAYILANI zaten `retries: 0` olduğu için `on-first-retry` trace'i
+    // BUGÜN hiç üretmiyor, ama bu BUGÜNE KADAR hiçbir yapılandırmanın
+    // `retries`'i AYARLAMAMASININ TESADÜFÜYDÜ — tek satırlık, zararsız
+    // görünen bir `retries: 2` eklemesi (CI'da ÇOK YAYGIN) başarısız bir
+    // koşumun `set-cookie`/`Authorization` başlıklarını taşıyan
+    // `trace.zip`'ini PUBLIC, giriş GEREKTİRMEYEN bir Actions artefaktına
+    // yükler. Bu satır o tesadüfü AÇIK bir karara çevirir — bir SONRAKİ
+    // ajan "retries ekleyelim, flaky testler geçsin" DEMESİN.
+    retries: overrides.retries ?? 0,
     use: {
       // ⚠ R-9 (po, T-020): trace/video artefaktları OTURUM ÇEREZİ ve
       // `Authorization` BAŞLIĞI taşır — bu iki ayar azaltmanın PARÇASI:

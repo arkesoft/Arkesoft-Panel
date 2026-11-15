@@ -65,6 +65,20 @@ import {
   storefrontVisualUrl,
 } from './e2e/visual/visual-port.js'
 
+// ⚠⚠⚠ GATE DÜZELTME (devops, T-020 gate fix turu 1, 2026-11-15 —
+// `solid`+`security` tur 1'in BAĞIMSIZ buluştuğu `high` bulgu, S-1/İŞ ①):
+// ADR-0022 K1(b)'nin fail-closed `NODE_ENV=test` kapısı için BURADA
+// sabitleniyor (`apps/admin/playwright.config.ts:53` emsali BİREBİR —
+// `playwright test` NODE_ENV'i KENDİSİ AYARLAMAZ, ÖLÇÜLDÜ:
+// `node -e "console.log(process.env.NODE_ENV)"` → `undefined`).
+// `fixtures/custom-domain-tenant.ts`'in `assertTestEnvironment()`'ı bu
+// değeri OKUR, AYARLAMAZ — tek yazıcı BURASI. `??=` — zaten `test` İSE
+// DOKUNULMAZ. DEV (`astro dev`) `webServer.command`'ı AŞAĞIDA bu değeri
+// çocuk sürecinden AÇIKÇA GERİ ALIR (`env NODE_ENV=development env -u …`)
+// — NODE_ENV=test'in dev sunucusuna SIZMASI (Vite/React'ın geliştirme
+// dışı bir moda düşmesi) riske değmez.
+process.env['NODE_ENV'] ??= 'test'
+
 // T-011/S3 — HALKA 3 KATMAN 1 (yükleme, DEĞİŞTİRİLMEDİ): bkz. orijinal
 // gerekçe — Playwright KOŞUCU süreci kendi ortamını `webServer`'ın
 // yüklemesinden BAĞIMSIZ olarak ister. ⚠ Görsel koşumda (`ARKESOFT_
@@ -158,8 +172,20 @@ export default createPlaywrightBaseConfig({
   webServer: !isVisualRun
     ? {
         // T-011/S3 — HALKA 3 KATMAN 1 (dedektör temizliği, DEĞİŞTİRİLMEDİ):
-        // `package.json`'ın `dev` script'indeki önekle BİREBİR AYNI.
-        command: `env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u AI_AGENT astro dev --port ${String(STOREFRONT_E2E_PORT)}`,
+        // `package.json`'ın `dev` script'indeki önekle BİREBİR AYNI —
+        // `env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u AI_AGENT astro
+        // dev` metni BU satırda AYNEN geçmeli (env-contract.test.ts
+        // P6/P8'in `"${prefix} astro dev"` alt dizge pini, DOKUNULMADI).
+        // ⚠⚠ GATE DÜZELTME (devops, T-020 gate fix turu 1, S-1/İŞ ① önerisi
+        // #3): yukarıdaki dosya başı `NODE_ENV ??= 'test'` pini bu ÇOCUK
+        // sürece SIZMASIN diye DIŞ bir `env NODE_ENV=development` sarmalayıcı
+        // EKLENDİ (admin'in `env NODE_ENV=development vite …` deseninin
+        // BİREBİR ikizi, TERS yönde sarmalama) — İÇ `env -u …` öneki
+        // DEĞİŞMEDİ, yukarıdaki P6/P8 pini BU YÜZDEN BOZULMAZ (sandbox'ta
+        // `env A=1 env -u X Y printenv` ile doğrulandı: dış `env` NODE_ENV'i
+        // SETLER, iç `env` agent-dedektör değişkenlerini UNSETLER, ikisi
+        // ÇARPIŞMAZ).
+        command: `env NODE_ENV=development env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u AI_AGENT astro dev --port ${String(STOREFRONT_E2E_PORT)}`,
         url: DEV_BASE_URL,
         // T-011/S3 — HALKA 3 KATMAN 2 (DEĞİŞTİRİLMEDİ): koşulsuz `false`.
         reuseExistingServer: false,

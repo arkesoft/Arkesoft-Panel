@@ -1388,7 +1388,12 @@ jobs:
           done
           echo "Redis PING ortalaması (yük altında, 5 örnek): $(( ping_total_ms / 5 )) ms — HEALTH_COMMAND_TIMEOUT_MS (1500 ms) ile karşılaştırılmalı." >> "$GITHUB_STEP_SUMMARY"
 
-          echo "Sentetik makine yükü başlatıldı ($cpu_workers CPU işçisi + 1 disk I/O döngüsü + 20 Redis SET/GET işçisi; EVAL busy-loop YOK)."
+          # GATE DÜZELTME (Orkestratör, T-020 gate fix turu 1, İŞ ④,
+          # 2026-11-15): bu satır "20" diyordu ama S9e döngüyü ("seq 1 5")
+          # 20'den 5'e düşürmüştü (yukarıdaki (C) bloğu) — log satırı
+          # GÜNCELLENMEMİŞTİ. Bu satır ÖLÇÜM KOŞULUNU raporlayan kanıt
+          # olduğu için yanlış sayı yanıltıcıydı; `solid` tur 1 `low` bulgu.
+          echo "Sentetik makine yükü başlatıldı ($cpu_workers CPU işçisi + 1 disk I/O döngüsü + 5 Redis SET/GET işçisi; EVAL busy-loop YOK)."
 
       - name: E2E süitini çalıştır (pnpm test:e2e)
         shell: bash
