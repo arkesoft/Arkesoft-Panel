@@ -1273,30 +1273,107 @@ jobs:
 
       # ROADMAP v0.0.19 (T-020/S9'un ölçeceği "AC-12 yük altında koşum"
       # şartı) — VARSAYILAN KAPALI, bir depo değişkeniyle açılır/kapanır.
-      # Mekanizma T-019 düzeltme turu 4'ün ÖLÇÜLMÜŞ yükü: "redis-cli EVAL"
-      # busy-loop + gerçek Redis KOMUT trafiği ("yes" ile CPU yüklemek KANIT
-      # DEĞİLDİ — AGENT_BASELINE §4 ders 2; kök neden I/O beklemesiydi, CPU
-      # DEĞİL). "vars." İFADESİ BİLEREK YALNIZCA "if:" İÇİNDE — "run:"
-      # bloğunun İÇİNDE KULLANILMADI (guards'ın "run bloğu içi şablon
-      # ifadesi yasağı" adımını kırardı).
-      - name: Sentetik Redis yükü (varsayılan KAPALI — AC-12 yük koşumu)
+      #
+      # ⚠⚠ MEKANİZMA S9d'DE DEĞİŞTİ (ÖLÇÜLMÜŞ ARIZA). ÖNCEKİ tasarım (T-019
+      # düzeltme turu 4'ten taşınan "redis-cli EVAL" busy-loop, 40 eşzamanlı
+      # SONSUZ döngü) gerçek yük koşumunda ("ARKESOFT_E2E_SYNTHETIC_LOAD=1"
+      # ile tetiklenen koşum) "test:e2e"de 4 testi düşürdü — ÜÇÜ aynı satırda
+      # ("expect(signUpResponse.ok()).toBe(true)"). Kök neden burada ÖLÇÜLDÜ
+      # (devops S9d, yerel ölçüm — "arkesoft-load-test-redis" adlı geçici
+      # konteyner, redis:8.10-alpine, port 16380, Docker Desktop/macOS):
+      # Redis TEK İŞ PARÇACIKLI; 8 eşzamanlı SONSUZ EVAL busy-loop'u ALTINDA
+      # TEK bir PING 15339 ms sürdü (yüksüz PING: 76-111 ms). "apps/api/src/
+      # redis/create-redis-connection.ts:60"taki "'health'" profilinin
+      # "HEALTH_COMMAND_TIMEOUT_MS = 1500" sabiti bu süre AŞILINCA
+      # "apps/api/src/auth/rate-limit/rate-limit.service.ts:154-158"
+      # "RateLimitStoreUnavailableError" (503, FAIL-CLOSED — BİLİNÇLİ,
+      # security tur2 S-7, "apps/api/src/**" BU TURDA DEĞİŞTİRİLMEDİ) FIRLATIR.
+      # Yani sign-up DOĞRU şekilde REDDEDİLDİ; kusur ÜRÜNDE değil, YÜK
+      # ÜRETECİNDEYDİ — "makine meşgul" yerine "Redis TAMAMEN YOK" simüle
+      # ediyordu (AC-12'nin niyeti BU DEĞİL).
+      #
+      # DÜZELTME — yön (C), CPU/IO + Redis'e DOKUNAN-ama-BLOKE-ETMEYEN
+      # trafiğin BİRLEŞİMİ:
+      #   (A) CPU yükü Redis'e HİÇ DOKUNMADAN — "nproc" kadar sıkı döngü
+      #       işçisi runner'ın CPU'sunu doyurur (genel rekabet/yavaşlama).
+      #       T-019'un "yes ile CPU yüklemek KANIT DEĞİLDİ" dersiyle (AGENT_
+      #       BASELINE §4 ders 2) ÇELİŞMEZ — o ders KÖK NEDENİ TEŞHİS ETMEK
+      #       (I/O beklemesi) içindi; burada amaç GENEL makine yükü.
+      #   (B) disk I/O yükü — "ionice -c3" (DÜŞÜK öncelik; Postgres/
+      #       Playwright'ın disk erişimini AÇ BIRAKMAZ, tamamen BOĞMAZ) ile
+      #       tekrarlanan "dd" yazması + "conv=fsync" (sayfa önbelleğinde
+      #       KALMAZ, gerçek diske YAZDIRILIR).
+      #   (C) Redis KOMUT trafiği KALDI ama "EVAL" busy-loop YOK — düz SET/
+      #       GET (her komut mikrosaniye mertebesinde, uzun BLOKE EDEN tek
+      #       komut YOK). Yerel ölçüm (yukarıdaki not — aynı geçici konteyner):
+      #       8 CPU işçisi + 20 eşzamanlı SET/GET işçisi ALTINDA 10 ardışık
+      #       PING ortalama 283 ms / maksimum 362 ms — "HEALTH_COMMAND_
+      #       TIMEOUT_MS = 1500"ün ÇOK altında; 1 dakikalık load average
+      #       3.03'ten 8.87'ye ÇIKTI (gerçek yük KANITI, "adım koştu" DEĞİL).
+      #
+      # "vars." İFADESİ BİLEREK YALNIZCA "if:" İÇİNDE — "run:" bloğunun
+      # İÇİNDE KULLANILMADI (guards'ın "run bloğu içi şablon ifadesi
+      # yasağı" adımını kırardı).
+      - name: Sentetik makine yükü (varsayılan KAPALI — AC-12 yük koşumu)
         if: ${{ vars.ARKESOFT_E2E_SYNTHETIC_LOAD == '1' }}
         shell: bash
         run: |
           set -euo pipefail
-          for worker in $(seq 1 40); do
+
+          {
+            echo '## Sentetik makine yükü — ölçüm'
+            echo
+            echo "Yük ÖNCESİ load average: $(cat /proc/loadavg)"
+            echo "Yük ÖNCESİ çalışan konteyner sayısı: $(docker ps -q | wc -l)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # (A) CPU yükü — Redis'e DOKUNMADAN.
+          cpu_workers="$(nproc)"
+          for _ in $(seq 1 "$cpu_workers"); do
+            ( while :; do :; done ) &
+          done
+
+          # (B) disk I/O yükü — düşük öncelik, tekrarlanan GERÇEK yazma
+          # ("conv=fsync" — sayfa önbelleğinde kalmaz).
+          (
+            while :; do
+              ionice -c3 dd if=/dev/zero of=/tmp/arkesoft-synthetic-io bs=1M count=32 conv=fsync >/dev/null 2>&1 || true
+            done
+          ) &
+          rm -f /tmp/arkesoft-synthetic-io 2>/dev/null || true
+
+          # (C) Redis KOMUT trafiği — EVAL busy-loop YOK, düz SET/GET.
+          for worker in $(seq 1 20); do
             (
-              while true; do
-                docker exec arkesoft-ci-redis redis-cli EVAL \
-                  'local x = 0 for i = 1, 450000000 do x = x + 1 end return x' 0 \
-                  >/dev/null 2>&1 || true
+              while :; do
                 docker exec arkesoft-ci-redis redis-cli SET "arkesoft:synthetic-load:$worker" "$(date +%s%N)" >/dev/null 2>&1 || true
                 docker exec arkesoft-ci-redis redis-cli GET "arkesoft:synthetic-load:$worker" >/dev/null 2>&1 || true
               done
             ) &
           done
+
           disown -a 2>/dev/null || true
-          echo "Sentetik Redis yükü başlatıldı (40 eşzamanlı EVAL busy-loop + SET/GET)."
+
+          # Yükün RAMPA olması için kısa bekleme, sonra gerçek ölçüm —
+          # "adım koştu" YETMEZ, aşağıdaki sayılar kanıt.
+          sleep 3
+
+          ping_total_ms=0
+          {
+            echo
+            echo "Yük ALTINDA load average: $(cat /proc/loadavg)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for attempt in $(seq 1 5); do
+            ping_start_ns="$(date +%s%N)"
+            docker exec arkesoft-ci-redis redis-cli PING >/dev/null 2>&1 || true
+            ping_end_ns="$(date +%s%N)"
+            ping_ms=$(( (ping_end_ns - ping_start_ns) / 1000000 ))
+            echo "Redis PING örnek $attempt (yük altında): ${ping_ms} ms" >> "$GITHUB_STEP_SUMMARY"
+            ping_total_ms=$(( ping_total_ms + ping_ms ))
+          done
+          echo "Redis PING ortalaması (yük altında, 5 örnek): $(( ping_total_ms / 5 )) ms — HEALTH_COMMAND_TIMEOUT_MS (1500 ms) ile karşılaştırılmalı." >> "$GITHUB_STEP_SUMMARY"
+
+          echo "Sentetik makine yükü başlatıldı ($cpu_workers CPU işçisi + 1 disk I/O döngüsü + 20 Redis SET/GET işçisi; EVAL busy-loop YOK)."
 
       - name: E2E süitini çalıştır (pnpm test:e2e)
         shell: bash
