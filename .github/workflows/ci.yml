@@ -1328,7 +1328,17 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           # (A) CPU yükü — Redis'e DOKUNMADAN.
-          cpu_workers="$(nproc)"
+          # ⚠⚠ YARI DOYGUNLUK, TAM DOYGUNLUK DEĞİL (T-020/S9e, Orkestratör
+          # ölçümü — CI koşumu 43720424701). "nproc" kadar işçi, 4 çekirdekli
+          # runner'da %100 doygunluk üretti ve Chromium/Node/Astro/API'ye CPU
+          # BIRAKMADI: süit 22 sn'den 6.0 DAKİKAYA çıktı (~16×) ve zamanlamaya
+          # duyarlı iki assert düştü. Bu "yük altında" değil STRES TESTİdir;
+          # AC-12'nin niyeti GERÇEKÇİ REKABET (bkz. AGENT_BASELINE §4 ders 2),
+          # kaynak reddi değil. "nproc/2" (en az 1) yarım çekirdek bırakır.
+          # ⚠ Bu sayıyı "nproc"a geri çevirmek, ölçülmüş bir sahte-kırmızı
+          # kaynağını geri getirir — yapmayın.
+          cpu_workers="$(( $(nproc) / 2 ))"
+          [ "$cpu_workers" -lt 1 ] && cpu_workers=1
           for _ in $(seq 1 "$cpu_workers"); do
             ( while :; do :; done ) &
           done
@@ -1343,7 +1353,12 @@ jobs:
           rm -f /tmp/arkesoft-synthetic-io 2>/dev/null || true
 
           # (C) Redis KOMUT trafiği — EVAL busy-loop YOK, düz SET/GET.
-          for worker in $(seq 1 20); do
+          # ⚠ 20 → 5 (T-020/S9e): her işçi bir "docker exec" SÜRECİ doğuruyor;
+          # 20 işçi CPU rekabetine (A)'nın üstüne ikinci bir yük bindiriyordu.
+          # Beş işçi Redis'te gözlenebilir rekabet üretmeye yetiyor (S9d'nin
+          # yerel ölçümü: 20 işçi PING'i 283 ms'e çıkardı — eşik 1500 ms, yani
+          # dörtte bire düşürmek bile eşiğin çok altında anlamlı rekabet bırakır).
+          for worker in $(seq 1 5); do
             (
               while :; do
                 docker exec arkesoft-ci-redis redis-cli SET "arkesoft:synthetic-load:$worker" "$(date +%s%N)" >/dev/null 2>&1 || true
