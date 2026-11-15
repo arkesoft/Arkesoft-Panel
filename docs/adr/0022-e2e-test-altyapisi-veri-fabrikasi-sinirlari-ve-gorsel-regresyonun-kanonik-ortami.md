@@ -57,6 +57,28 @@ Bu fabrika dört korumayı **zorunlu** taşır:
 (d) `apps/*/src/**` içinden `child_process`+`psql` kullanımı `pnpm guards` taramasıyla
 yasaklanır — fabrika üretim koduna sızamaz.
 
+> ⚠ **AÇIKLAYICI NOT (`devops`, T-020/S9a, 2026-11-15 — CI koşumu `43713883521`).**
+> Karar 1'in ilk **UYGULAMASI** (v0.0.8'den devralınan desen + T-020/S5) *"çalışan
+> Postgres konteyneri"*ni **sabit bir isimle** (`arkesoft-postgres`) buluyordu. Bu,
+> CI'da **arızalıydı**: GitHub Actions `services:` konteynerinin adı **otomatik
+> üretiliyor** ⇒ üç testin `afterAll` temizliği ve `globalTeardown`
+> **`"No such container: arkesoft-postgres"`** ile düştü (⭐ **testlerin kendisi
+> geçti** — 20 passed; kırılan yalnızca temizlik).
+>
+> ⭐ **Karar 1'in METNİ bir isim ZORUNLU KILMIYOR** — kusur **kararda değil,
+> uygulamadaydı**. Düzeltme, konteyner adını **host'ta yayınlanan porttan dinamik
+> çözüyor** (`docker ps --filter publish=<port>`), ardından **aynı** `docker exec …
+> psql` yazma yolunu kullanıyor. ⚠ Ölçülmüş ayrıntı: `--filter expose=<port>`
+> **yanlış pozitif** verir (başka bir konteyner aynı portu container-içi expose edip
+> host'a farklı porta map'leyebilir); **`publish`** filtresi doğru ayırt eder.
+>
+> ⇒ **Karar 1 DEĞİŞMEDİ**; `docker exec … psql` yolu ve **dört koruma ((a)-(d))**
+> aynen geçerli. Değerlendirilip **elenen** iki alternatif: host-seviyesi
+> `psql -h/-p` (⚠ `psql` istemcisi geliştirici makinesinde **kurulu değil** ⇒ bugünkü
+> *"yalnızca Docker"* gereksinimine göre **gerileme**) · CI'da Postgres'i adlandırılmış
+> `docker run` ile kaldırmak (⚠ `api` job'u da `services: postgres` kullanıyor ⇒
+> **gereksiz patlama yarıçapı**).
+
 **Karar 2 — İkinci test-only bağlantı profili AÇILMAYACAK.** T-019'un tetikleyicisi
 **ateşlenmiyor**: Karar 1'in yolu bir alt süreçtir; bağlantı havuzu, `commandTimeout`
 veya `connectTimeout` gibi ayarlanacak **hiçbir profil yüzeyi yoktur**. Dolayısıyla
