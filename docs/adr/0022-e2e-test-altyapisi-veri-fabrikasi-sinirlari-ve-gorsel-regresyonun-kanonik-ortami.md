@@ -1,6 +1,6 @@
 # ADR-0022 — Uçtan uca test altyapısı: veri fabrikası sınırı, proje matrisi ve görsel regresyonun kanonik ortamı
 
-- **Durum:** Önerildi
+- **Durum:** Kabul edildi
 - **Tarih:** 2026-11-15
 - **Karar verenler:** architect (T-020), Orkestratör, kullanıcı (dört bağlayıcı kapsam kararı, 2026-11-15)
 - **İlgili versiyon:** `v0.0.19` (bkz. `ROADMAP.md`)
