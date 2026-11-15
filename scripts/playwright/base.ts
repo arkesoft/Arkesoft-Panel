@@ -101,6 +101,25 @@ export function createPlaywrightBaseConfig(
     // `trace.zip`'ini PUBLIC, giriş GEREKTİRMEYEN bir Actions artefaktına
     // yükler. Bu satır o tesadüfü AÇIK bir karara çevirir — bir SONRAKİ
     // ajan "retries ekleyelim, flaky testler geçsin" DEMESİN.
+    //
+    // ⚠⚠ GATE DÜZELTME (S-11, İŞ ④, devops, T-020 gate fix turu 2,
+    // 2026-11-15): `security`+`solid` tur 2 BAĞIMSIZ ÖLÇTÜ — bu PİN
+    // yalnızca ÜST SEVİYEDE; Playwright `projects[].retries`'i de
+    // DESTEKLİYOR ve o, üst seviyeyi PROJE BAZINDA EZER — bu dosyaya
+    // hiç dokunmadan `apps/admin/playwright.config.ts`'in `projects:`
+    // dizisine `retries: 2` eklemek yukarıdaki satırı EL DEĞMEDEN
+    // bırakırken `on-first-retry` trace'ini yine PUBLIC artefakta
+    // yükleyebilirdi (`solid`: bu satır o zamana kadar DAVRANIŞSAL
+    // OLARAK NO-OP'tu — belge, kapı DEĞİL). Düzeltme kapı tarafı:
+    // `scripts/guards.sh`'in `check_playwright_retries_single_source`
+    // adımı artık `apps/**`/`packages/**`/`scripts/**` genelindeki TÜM
+    // `.ts` dosyalarını tarayıp `retries` jetonunun YALNIZCA bu dosyada
+    // geçtiğini zorluyor — bir `projects[]` girdisine (veya başka bir
+    // `overrides` çağrısına) `retries` eklenmesi `pnpm guards`'ı KIRMIZI
+    // yapar (ölçüldü, devops T-020 gate fix turu 2 raporu). Seçim PİN
+    // (iddia küçültme değil) — gerekçe R-9 (depo PUBLIC, trace oturum
+    // çerezi + `Authorization` taşıyor) ve bu satır "flaky test geçsin"
+    // refleksinin EN OLASI hedefi.
     retries: overrides.retries ?? 0,
     use: {
       // ⚠ R-9 (po, T-020): trace/video artefaktları OTURUM ÇEREZİ ve

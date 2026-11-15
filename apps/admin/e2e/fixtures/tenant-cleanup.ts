@@ -88,6 +88,16 @@
 // (d)'nin allowlist'i (`scripts/guards.sh`, `check_adr22_k1d_shellout_
 // boundary`) bu dosyada hâlâ BİREBİR AYNI "docker exec"/"psql" jetonlarını
 // görüyor — tarama GÜNCELLEME GEREKTİRMİYOR (ölçüldü, S9a raporunda).
+//
+// ⚠⚠ GATE DÜZELTME (devops, T-020 gate fix turu 2, 2026-11-15 — S-9/S-10,
+// İŞ ③): koruma (a) (`assertDockerHostIsLoopback`) tur 1'de YALNIZCA
+// `DOCKER_HOST` ortam değişkenini okuyordu; `docker context use <uzak>`
+// (DOCKER_HOST tanımsız) ile kapı baypas EDİLEBİLİYORDU ve
+// `DOCKER_HOST=unix:///…` (colima/podman) MEŞRU bir yerel soketi
+// REDDEDİYORDU. `assertDockerHostIsLoopback` artık `DOCKER_HOST`'u
+// DOĞRUDAN OKUMUYOR — ayrıntı fonksiyonun KENDİ docblock'unda
+// (`apps/storefront/e2e/fixtures/custom-domain-tenant.ts`'in BİREBİR
+// AYNI gövdesiyle — po'nun "iki kopya, ortak modül değil" kararı).
 import { execFileSync } from 'node:child_process'
 
 /**
@@ -196,27 +206,62 @@ function assertTestEnvironment(): void {
   }
 }
 
-/** Koruma (a) — dosya başı notu. */
+/**
+ * Koruma (a) — dosya başı notu (GATE DÜZELTME, S-9/S-10, İŞ ③). Gövde
+ * `apps/storefront/e2e/fixtures/custom-domain-tenant.ts`'in
+ * `assertDockerHostIsLoopback`'i ile BİREBİR AYNI.
+ */
 function assertDockerHostIsLoopback(): void {
-  const dockerHost = process.env['DOCKER_HOST']
-  if (dockerHost === undefined || dockerHost === '') {
-    // Tanımsız/boş ⇒ docker CLI varsayılan YEREL soketi kullanır — güvenli.
-    return
-  }
-  let hostname: string
+  const endpoint = resolveEffectiveDockerEndpoint()
+  let endpointUrl: URL
   try {
-    hostname = new URL(dockerHost).hostname
+    endpointUrl = new URL(endpoint)
   } catch (error) {
     throw new Error(
-      `tenant-cleanup: DOCKER_HOST ayrıştırılamadı — fail-closed kapı tetiklendi (DOCKER_HOST: ${dockerHost})`,
+      `tenant-cleanup: docker'ın efektif daemon uç noktası ayrıştırılamadı — fail-closed kapı tetiklendi (uç nokta: ${endpoint})`,
       { cause: error },
     )
   }
-  if (!DOCKER_HOST_ALLOWED_HOSTNAMES.has(hostname)) {
+  if (endpointUrl.protocol === 'unix:' || endpointUrl.protocol === 'npipe:') {
+    // Yerel soket (unix domain socket) / Windows named pipe — hostname
+    // TAŞIMAZ, KOŞULSUZ güvenli.
+    return
+  }
+  if (!DOCKER_HOST_ALLOWED_HOSTNAMES.has(endpointUrl.hostname)) {
     throw new Error(
-      `tenant-cleanup yalnızca loopback docker daemon'a (127.0.0.1/::1/localhost) karşı koşabilir — fail-closed kapı tetiklendi (çözülen host: ${hostname})`,
+      `tenant-cleanup yalnızca loopback docker daemon'a (unix://, npipe:// veya 127.0.0.1/::1/localhost üzerinden tcp://,ssh://) karşı koşabilir — fail-closed kapı tetiklendi (çözülen uç nokta: ${endpoint})`,
     )
   }
+}
+
+/**
+ * Docker CLI'ın GERÇEKTEN bağlanacağı daemon uç noktasını döner —
+ * `DOCKER_HOST` ortam değişkeni TANIMLIYSA onu, DEĞİLSE aktif context'in
+ * uç noktasını (bu ikisi docker CLI'ın KENDİ önceliğiyle AYNI sıra).
+ * Komut başarısızsa veya boş dönerse fail-closed fırlatır (sessiz "yerel
+ * ⇒ güvenli" varsayımı YOK — S-9'un tam tersi).
+ */
+function resolveEffectiveDockerEndpoint(): string {
+  let output: Buffer
+  try {
+    output = execFileSync(
+      'docker',
+      ['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}'],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    )
+  } catch (error) {
+    throw new Error(
+      'tenant-cleanup: docker\'ın efektif daemon uç noktası okunamadı ("docker context inspect" başarısız oldu) — fail-closed kapı tetiklendi.',
+      { cause: error },
+    )
+  }
+  const endpoint = output.toString('utf8').trim()
+  if (endpoint === '') {
+    throw new Error(
+      "tenant-cleanup: docker context'in efektif daemon uç noktası boş döndü — fail-closed kapı tetiklendi.",
+    )
+  }
+  return endpoint
 }
 
 function runSql(sql: string): void {

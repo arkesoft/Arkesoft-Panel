@@ -64,6 +64,14 @@
 // yalnızca OKUR — tek yazıcı `apps/storefront/playwright.config.ts`
 // (`NODE_ENV ??= 'test'`, admin'in `playwright.config.ts:53` emsali).
 // (c)'nin biçim kapısı da GÜÇLENDİRİLDİ — aşağıya, `E2E_FIXTURE_ID_PATTERN`.
+//
+// ⚠⚠ GATE DÜZELTME (devops, T-020 gate fix turu 2, 2026-11-15 — S-9/S-10,
+// İŞ ③): yukarıdaki (a) kapısı tur 1'de YALNIZCA `DOCKER_HOST` ortam
+// değişkenini okuyordu; `docker context use <uzak>` (DOCKER_HOST
+// tanımsız) ile kapı baypas EDİLEBİLİYORDU ve `DOCKER_HOST=unix:///…`
+// (colima/podman) MEŞRU bir yerel soketi REDDEDİYORDU. `assertDockerHostIsLoopback`
+// artık `DOCKER_HOST`'u DOĞRUDAN OKUMUYOR — ayrıntı fonksiyonun KENDİ
+// docblock'unda.
 import { execFileSync } from 'node:child_process'
 
 /**
@@ -115,30 +123,82 @@ function assertTestEnvironment(): void {
 }
 
 /**
- * Koruma (a) — `DOCKER_HOST` loopback DIŞINDA bir daemon'a işaret ediyorsa
- * fırlatır (fail-closed). `apps/admin/e2e/fixtures/tenant-cleanup.ts`'in
- * `assertDockerHostIsLoopback`'i ile BİREBİR AYNI gövde.
+ * ⚠⚠ GATE DÜZELTME (S-9/S-10, İŞ ③, devops, T-020 gate fix turu 2,
+ * 2026-11-15): BU KAPI ESKİDEN YALNIZCA `DOCKER_HOST` ortam değişkenini
+ * okuyordu — `security` tur 2 ÖLÇTÜ: `DOCKER_HOST` TANIMSIZKEN docker
+ * CLI'ın efektif daemon'u `docker context use <uzak>` ile AYARLANMIŞ bir
+ * CONTEXT'ten gelebilir ve bu kapı o durumda erken `return` edip
+ * ("yerel soket ⇒ güvenli") UZAK bir daemon'a karşı `docker exec`
+ * çalıştırılmasına İZİN verirdi (S-9, `medium`). Ek olarak
+ * `DOCKER_HOST=unix:///…` (colima/podman/Docker Desktop) MEŞRU bir yerel
+ * soketi `new URL(...).hostname === ''` olduğu için REDDEDİYORDU (S-10,
+ * `low`). Düzeltme: artık `DOCKER_HOST` ortam değişkenini DOĞRUDAN
+ * OKUMUYOR — `resolveEffectiveDockerEndpoint()` ile docker'ın KENDİSİNDEN
+ * efektif uç noktayı soruyor (`docker context inspect --format
+ * '{{.Endpoints.docker.Host}}'`); bu komut `DOCKER_HOST` override'ını DA
+ * yansıtıyor (bu makinede ÖLÇÜLDÜ: override'lı bir alt kabukta komut
+ * override'ı basıyor, gerçek aktif context DEĞİŞMİYOR) — tek sorgu hem
+ * context hem env eksenini kapsıyor. `unix://`/`npipe://` şemaları
+ * (yerel soket/named pipe, hostname TAŞIMAZ) KOŞULSUZ güvenli; diğer
+ * şemalar (`tcp://`/`ssh://` dahil) hostname allowlist'iyle (aşağıdaki
+ * SET, DEĞİŞMEDİ) denetleniyor — bu aynı zamanda S-10'u da kapatıyor
+ * (artık `unix://` hostname'e bakmadan kabul ediliyor).
+ * `apps/admin/e2e/fixtures/tenant-cleanup.ts`'in `assertDockerHostIsLoopback`'i
+ * ile BİREBİR AYNI gövde (po'nun "iki kopya, ortak modül değil" kararı —
+ * ADR-0022 K1 — geçerli; `pnpm guards`'ın ADR-0022 K1(d) alt kontrol 3'ü
+ * artık bu eşitliği MEKANİK olarak zorluyor).
  */
 function assertDockerHostIsLoopback(): void {
-  const dockerHost = process.env['DOCKER_HOST']
-  if (dockerHost === undefined || dockerHost === '') {
-    // Tanımsız/boş ⇒ docker CLI varsayılan YEREL soketi kullanır — güvenli.
-    return
-  }
-  let hostname: string
+  const endpoint = resolveEffectiveDockerEndpoint()
+  let endpointUrl: URL
   try {
-    hostname = new URL(dockerHost).hostname
+    endpointUrl = new URL(endpoint)
   } catch (error) {
     throw new Error(
-      `e2e fixture: DOCKER_HOST ayrıştırılamadı — fail-closed kapı tetiklendi (DOCKER_HOST: ${dockerHost})`,
+      `e2e fixture: docker'ın efektif daemon uç noktası ayrıştırılamadı — fail-closed kapı tetiklendi (uç nokta: ${endpoint})`,
       { cause: error },
     )
   }
-  if (!DOCKER_HOST_ALLOWED_HOSTNAMES.has(hostname)) {
+  if (endpointUrl.protocol === 'unix:' || endpointUrl.protocol === 'npipe:') {
+    // Yerel soket (unix domain socket) / Windows named pipe — hostname
+    // TAŞIMAZ, KOŞULSUZ güvenli.
+    return
+  }
+  if (!DOCKER_HOST_ALLOWED_HOSTNAMES.has(endpointUrl.hostname)) {
     throw new Error(
-      `e2e fixture yalnızca loopback docker daemon'a (127.0.0.1/::1/localhost) karşı koşabilir — fail-closed kapı tetiklendi (çözülen host: ${hostname})`,
+      `e2e fixture yalnızca loopback docker daemon'a (unix://, npipe:// veya 127.0.0.1/::1/localhost üzerinden tcp://,ssh://) karşı koşabilir — fail-closed kapı tetiklendi (çözülen uç nokta: ${endpoint})`,
     )
   }
+}
+
+/**
+ * Docker CLI'ın GERÇEKTEN bağlanacağı daemon uç noktasını döner —
+ * `DOCKER_HOST` ortam değişkeni TANIMLIYSA onu, DEĞİLSE aktif context'in
+ * uç noktasını (bu ikisi docker CLI'ın KENDİ önceliğiyle AYNI sıra).
+ * Komut başarısızsa veya boş dönerse fail-closed fırlatır (sessiz "yerel
+ * ⇒ güvenli" varsayımı YOK — S-9'un tam tersi).
+ */
+function resolveEffectiveDockerEndpoint(): string {
+  let output: Buffer
+  try {
+    output = execFileSync(
+      'docker',
+      ['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}'],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    )
+  } catch (error) {
+    throw new Error(
+      'e2e fixture: docker\'ın efektif daemon uç noktası okunamadı ("docker context inspect" başarısız oldu) — fail-closed kapı tetiklendi.',
+      { cause: error },
+    )
+  }
+  const endpoint = output.toString('utf8').trim()
+  if (endpoint === '') {
+    throw new Error(
+      "e2e fixture: docker context'in efektif daemon uç noktası boş döndü — fail-closed kapı tetiklendi.",
+    )
+  }
+  return endpoint
 }
 
 /**
