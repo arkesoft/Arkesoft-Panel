@@ -67,8 +67,20 @@ fail() {
   echo "⚠⚠ [run-visual.sh] GÖRSEL REGRESYON KOŞUMU BAŞARISIZ (gürültülü, bilinçli — ADR-0022'nin 'exit 0 ile sessizce geçme YASAK' maddesi):" >&2
   echo "    $1" >&2
   echo "" >&2
-  echo "    Geçerli alternatif: AC-8/AC-9 kanıtı CI'da (T-020/S9, '.github/workflows/ci.yml'in 'e2e' job'u) üretilir." >&2
-  echo "    Bu makinede görsel testler koşturulamıyor; devops raporuna 'geri çekilme' olarak işlendi." >&2
+  # DÜZELTME (T-020/S9b, devops — ölçülmüş İKİNCİ kusur): bu mesaj eskiden
+  # ORTAMA BAKMADAN "alternatif CI'dır" diyordu. CI'nın KENDİSİNDE
+  # çalışırken bu DÖNGÜSELDİR — CI, ADR-0022 Karar 4'ün KANONİK ortamıdır,
+  # ertelenecek İKİNCİ bir ortam YOK. `$CI` (GitHub Actions'ın kendiliğinden
+  # `true` verdiği standart değişken — `playwright.config.ts`/bu script'in
+  # `docker run -e "CI=${CI:-}"` satırı da AYNI değişkene güveniyor) burada
+  # da okunup mesaj ORTAMA göre dallanır.
+  if [ -n "${CI:-}" ]; then
+    echo "    Bu BİR GERİ ÇEKİLME DEĞİL: şu an CI'dasınız — ADR-0022 Karar 4'ün KANONİK ortamı BURASI, ertelenecek alternatif bir ortam YOK." >&2
+    echo "    Bu gerçek bir arıza; AC-8/AC-9 kanıtı bu koşumda ÜRETİLEMEDİ — devops/Orkestratöre BİLDİRİLMELİDİR." >&2
+  else
+    echo "    Geçerli alternatif: AC-8/AC-9 kanıtı CI'da (T-020/S9, '.github/workflows/ci.yml'in 'e2e' job'u) üretilir." >&2
+    echo "    Bu makinede görsel testler koşturulamıyor; devops raporuna 'geri çekilme' olarak işlendi." >&2
+  fi
   exit 1
 }
 
@@ -223,9 +235,28 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# DÜZELTME (T-020/S9b, devops — ÖLÇÜLMÜŞ KÖK NEDEN, CI koşumu
+# `43715630561`/job `132816529246`): bu döngüdeki `curl` çağrısında
+# `--max-time`/`--connect-timeout` YOKTU. `demo-magaza` sayfası tam bir
+# kiracı çözümü + `storefront.currentTenant` tRPC çağrısı YAPAR
+# (`src/middleware.ts`); bu çağrı `apps/storefront/src/lib/
+# storefront-server-fetch.ts:61`deki `AbortSignal.timeout(5000)` İLE
+# SINIRLI — yani downstream API (henüz) hazır/yanıtlamıyor DEĞİLSE TEK bir
+# deneme ~5 SANİYE sürebilir (ÖLÇÜLDÜ: bilinçli "asılı" bir sahte yukarı
+# akış sunucusuna karşı `curl -w '%{time_total}'` → `5.051030`). "30 deneme
+# × 0.5s = 15s" bütçesi bu şekilde SESSİZCE 2-3 GERÇEK denemeye düşüyordu —
+# döngünün NİYETİ (30 kez, hızlı aralıklarla sormak) hiç GERÇEKLEŞMİYORDU.
+# Bu SÜREYİ BÜYÜTEREK "düzeltilmiyor" (CLAUDE.md §10 md 6, eşik gevşetme) —
+# sağlıklı bir yanıt HER ZAMAN <100ms sürüyor (ÖLÇÜLDÜ, SOĞUK sunucudaki
+# İLK istek dahil: `time_total=0.081214`), bu yüzden `--max-time 1`
+# GERÇEK başarıyı ASLA kesmez, yalnızca asılı/yavaş bir denemeyi erken
+# keserek döngünün KALAN bütçeyi GERÇEKTEN kullanmasını sağlar.
 READY=0
+LAST_PROBE_CODE="(ilk deneme henüz yapılmadı)"
 for _ in $(seq 1 30); do
-  if curl -s -o /dev/null -H "Host: demo-magaza.arkesoft.localhost:${VISUAL_PORT}" "http://127.0.0.1:${VISUAL_PORT}/" -w '%{http_code}' 2>/dev/null | grep -q '^200$'; then
+  CODE="$(curl -s -o /dev/null --max-time 1 --connect-timeout 1 -H "Host: demo-magaza.arkesoft.localhost:${VISUAL_PORT}" "http://127.0.0.1:${VISUAL_PORT}/" -w '%{http_code}' 2>/dev/null)" || true
+  LAST_PROBE_CODE="$CODE"
+  if [ "$CODE" = "200" ]; then
     READY=1
     break
   fi
@@ -238,7 +269,7 @@ done
 if [ "$READY" != "1" ]; then
   echo "--- sunucu günlüğü ($SERVER_LOG) ---" >&2
   cat "$SERVER_LOG" >&2 || true
-  fail "Üretim sunucusu ${VISUAL_PORT} portunda sağlıklı hâle gelmedi (30 deneme × 0.5s)."
+  fail "Üretim sunucusu ${VISUAL_PORT} portunda sağlıklı hâle gelmedi (30 deneme × 0.5s, deneme başı en fazla 1s sınır; son gözlenen HTTP kodu: ${LAST_PROBE_CODE:-boş})."
 fi
 log "Üretim sunucusu sağlıklı (http://demo-magaza.arkesoft.localhost:${VISUAL_PORT}/ → 200)."
 
