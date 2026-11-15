@@ -313,7 +313,9 @@ catalog:
   '@tanstack/router-plugin': 1.168.48 # 2026-10-22 yayınlandı
   # @playwright/test: dist-tag "latest" (2026-10-14) — 17 gün. Node motoru
   # ">=20" — kapsıyor. Paket düzeyinde kullanım (v0.0.7 asgari, bkz. T-008
-  # PM kararı); kök toplayıcı v0.0.19'da.
+  # PM kararı); kök toplayıcı v0.0.19'da GERÇEKLEŞTİ (T-020/S3): kök
+  # package.json artık aynı catalog girdisini devDependency olarak taşıyor —
+  # yeni ana bağımlılık DEĞİL, sürüm burada zaten sabitliydi.
   '@playwright/test': 1.64.1 # 2026-10-14 yayınlandı
   # eslint-plugin-react-hooks: Kullanıcı onayı (2026-10-31, T-008 PO) —
   # React bağımlılığıyla birlikte eklenmesi deponun kendi taahhüdüydü

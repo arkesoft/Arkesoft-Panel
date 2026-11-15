@@ -25,5 +25,10 @@
     "typeRoots": ["../packages/config/node_modules/@types"],
     "erasableSyntaxOnly": true
   },
-  "include": ["*.ts"]
+  // "include" T-020/S4'te "playwright/*.ts" ile GENİŞLETİLDİ (ADR-0022 Karar 6
+  // düzeltme notu, `po` R-A): genişletme YAPILMADAN `scripts/playwright/base.ts`
+  // ne `check_scripts_typecheck` (`tsc -p scripts/tsconfig.json`) ne de
+  // `check_scripts_eslint` (`projectService` aynı dosyayı okur) tarafından
+  // GÖRÜLÜR — üst seviyedeki mevcut davranış (yalnızca "*.ts") KORUNUYOR.
+  "include": ["*.ts", "playwright/*.ts"]
 }

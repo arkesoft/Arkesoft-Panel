@@ -6,13 +6,15 @@
 // (orkestratör notu, bu dosya bunları BAŞLATMAZ).
 //
 // AC18 ORAN SINIRI BÜTÇESİ (bağlayıcı — DÜZELTME TURU 2: yorum düzeltildi,
-// `solid` tur 2 M-N1): `/auth/sign-in/email` IP bazlı `platform:auth:*`
-// sayacını tüketiyor (20/pencere, BAŞARILI istekler DE sayılıyor). Bütçe
-// SPEC BAŞINA DEĞİL, **KOŞUM BAŞINA** (iki spec dosyasının İKİSİ DE AYNI
-// IP'yi paylaşır) ve TOPLAM ≤4 — TEK doğruluk kaynağı `playwright.config.ts`
-// (orada toplam ve her dosyanın payı yazılı, burada TEKRAR EDİLMİYOR ki
-// üçüncü bir spec eklendiğinde iki yer senkronsuz kalmasın). Bu dosyanın
-// payı TAM OLARAK 3:
+// `solid` tur 2 M-N1; T-020/S5 GÜNCELLEMESİ: tek doğruluk kaynağı artık
+// `e2e/auth-budget.ts`, `playwright.config.ts` DEĞİL — bütçe DOSYASI
+// TAŞINDI, bu paragraf yalnızca referansı GÜNCELLEDİ): `/auth/sign-in/email`
+// IP bazlı `platform:auth:*` sayacını tüketiyor (20/pencere, BAŞARILI
+// istekler DE sayılıyor). Bütçe SPEC BAŞINA DEĞİL, **KOŞUM BAŞINA** (TÜM
+// spec dosyaları AYNI IP'yi paylaşır) — toplam ve her dosyanın payı
+// `e2e/auth-budget.ts`'in `SPEC_AUTH_COST`'unda yazılı, BURADA TEKRAR
+// EDİLMİYOR ki yeni bir spec eklendiğinde iki yer senkronsuz kalmasın. Bu
+// dosyanın payı TAM OLARAK 3:
 //   1. Programatik (`createVerifiedFixtureUser` + tek `sign-in/email`) —
 //      AC9'un `page.route()` testleri bu storageState'i YENİDEN KULLANIR,
 //      kendi sign-in'leri YOK.
@@ -27,7 +29,18 @@
 // KIRAR, asıl mekanizma bu).
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 
+import { deleteFixtureUserByEmail } from './fixtures/tenant-cleanup.js'
+
 const FIXTURE_PASSWORD = 'arkesoft-e2e-fixture-password-123'
+
+/**
+ * T-020/S5 — ADR-0022 D-1 (architect ölçtü): bu dosya ÜÇ kez
+ * `createVerifiedFixtureUser` çağırıyor (üç ayrı `app_user` satırı) ve
+ * eskiden HİÇBİRİNİ silmiyordu (`afterAll` yoktu, yalnızca `context.
+ * close()`). Her çağrı kendi e-postasını BURAYA EKLER, dosyanın SONUNDAKİ
+ * TEK `test.afterAll` üçünü de temizler.
+ */
+const createdFixtureEmails: string[] = []
 const MAILPIT_BASE_URL = 'http://127.0.0.1:8025'
 
 interface MailpitAddress {
@@ -170,6 +183,7 @@ test.describe.serial('Panel akışı (T-008)', () => {
     request,
   }) => {
     const { email, password } = await createVerifiedFixtureUser(request)
+    createdFixtureEmails.push(email)
 
     await page.goto('/sign-in')
     await expectBasicPageInvariants(page)
@@ -295,6 +309,7 @@ test.describe.serial('Panel akışı (T-008)', () => {
     request,
   }) => {
     const { email, password } = await createVerifiedFixtureUser(request)
+    createdFixtureEmails.push(email)
 
     await page.goto('/sign-in')
 
@@ -341,6 +356,7 @@ test.describe.serial('Panel akışı (T-008)', () => {
       }
       const requestContext = await playwright.request.newContext({ baseURL })
       const fixtureUser = await createVerifiedFixtureUser(requestContext)
+      createdFixtureEmails.push(fixtureUser.email)
 
       // Bu dosyadaki ÜÇÜNCÜ ve SON `sign-in/email` çağrısı (AC18 bütçesi
       // 3/4) — bu `beforeAll`'un ürettiği çerez TÜM `AC9` alt testleri
@@ -584,5 +600,15 @@ test.describe.serial('Panel akışı (T-008)', () => {
     await page.getByRole('button', { name: 'Giriş yap' }).press('Enter')
     await expect(emailField).toHaveAttribute('aria-invalid', 'true')
     await expect(page.getByText('Geçerli bir e-posta adresi girin.')).toBeVisible()
+  })
+
+  // T-020/S5 — ADR-0022 D-1'in teardown'ı: dosya başındaki
+  // `createdFixtureEmails`'in topladığı ÜÇ e-postanın (iki üst seviye test +
+  // AC9'un nested `beforeAll`'u) HEPSİNİ siler. OUTER describe'a KAYITLI —
+  // nested `describe`'un (AC9) tüm testleri BİTTİKTEN SONRA çalışır.
+  test.afterAll(() => {
+    for (const email of createdFixtureEmails) {
+      deleteFixtureUserByEmail(email)
+    }
   })
 })

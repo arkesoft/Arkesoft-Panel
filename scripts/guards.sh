@@ -528,6 +528,201 @@ check_ac16_no_real_dns_call() {
 }
 
 # ---------------------------------------------------------------------------
+# AC-1 — kök `test:e2e` / `test:visual` / `test:visual:update` script
+# VARLIĞI (ROADMAP T-020/S7, İŞ ①).
+#
+# AMAÇ: `S3` ve `S6` bu üç script'i kök `package.json`'a ekledi; BUGÜNE
+# KADAR hiçbir mekanizma varlıklarını KORUMUYORDU — biri silinse `pnpm
+# guards` YEŞİL kalırdı ve CLAUDE.md §6'nın belgelediği komut sessizce
+# "özlem" hâline dönerdi (AGENT_BASELINE.md §6'nın "kök `test:e2e` YOK"
+# notuyla AYNI sınıf regresyon, bu sürüm tam o boşluğu kapatıyor). `jq`
+# BURADA `.scripts["<ad>"]` anahtarını OKUR, DEĞERİN İÇERİĞİNİ
+# yorumlamaz/çalıştırmaz — yalnızca BOŞ/YOK olmadığını doğrular (sahte
+# yeşil dedektörlerinin KULLANDIĞI jq zaten bu script'te MEVCUT bağımlılık).
+# ---------------------------------------------------------------------------
+check_ac1_root_e2e_visual_scripts() {
+  local package_json="package.json"
+  if [ ! -f "$package_json" ]; then
+    echo "AC-1 taraması hata verdi: $package_json bulunamadı — fail-closed."
+    return 1
+  fi
+
+  local required_scripts=("test:e2e" "test:visual" "test:visual:update")
+  local violation=false
+  local script_name value
+  for script_name in "${required_scripts[@]}"; do
+    if ! value="$(jq -r --arg key "$script_name" '.scripts[$key] // ""' "$package_json")"; then
+      echo "AC-1 taraması hata verdi: $package_json jq ile okunamadı — fail-closed."
+      return 1
+    fi
+    if [ -z "$value" ]; then
+      echo "AC-1 İHLALİ — kök $package_json 'scripts.$script_name' tanımlı değil (boş veya yok)."
+      violation=true
+    fi
+  done
+
+  if [ "$violation" = true ]; then
+    return 1
+  fi
+  echo "AC-1: kök $package_json üçünü de tanımlıyor — test:e2e, test:visual, test:visual:update."
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Bütçe pin tazeliği — `apps/admin/e2e/auth-budget.ts`'in BAĞIMSIZ
+# `AUTH_IP_LIMITS` pin'i ↔ `rate-limit.policy.ts`'in gerçek sabitleri
+# (ROADMAP T-020/S7, İŞ ②, AC-4'ün DÖRDÜNCÜ ayağı).
+#
+# `auth-budget.ts`'in dosya başı yorumu BİREBİR şunu söylüyor: "dördüncü
+# değişmez (pin tazeliği) BU alt görevin kapsamı DIŞINDA — guards.sh'e
+# gidiyor (T-020/S7)". `AUTH_IP_LIMITS = { signIn: 20, signUp: 10 }`
+# `apps/admin`'in `apps/api`'ye KAYNAK bağımlılığı OLMADIĞI için BAĞIMSIZ
+# (ithal edilmeden) yazılmış bir kopyadır — kaynak sabitlerin (`LOGIN_IP_LIMIT`,
+# `EMAIL_IP_LIMIT`) ADI veya DEĞERİ değişirse bu kopya SESSİZCE bayatlar.
+#
+# Emsal (okunup uygulandı): `apps/storefront/e2e/storefront-theme.spec.ts`'in
+# "bağımsız pin + tutarlılık pini" deseni (`EXPECTED_COLOR_PRIMARY_HEX`
+# hardcoded, AYRI bir assertion onu kaynaktan türeyen değerle karşılaştırır).
+# Buradaki fark: karşılaştırma bir e2e test'i İÇİNDE DEĞİL, bu mekanik
+# kapıda yapılıyor — çünkü iki dosya da (`auth-budget.ts`/`rate-limit.
+# policy.ts`) birbirini İTHAL EDEMEZ, bağımsız bir üçüncü gözlemci gerekir.
+#
+# `sign_in_pin`/`sign_up_pin` `auth-budget.ts`'TEN DİNAMİK OKUNUR (BURADA
+# TEKRAR HARDCODE EDİLMEZ) — aksi hâlde bu kontrolün KENDİSİ üçüncü,
+# koordinesiz bir pin olurdu ve amacını (tazelik denetimi, kopyalama DEĞİL)
+# kaybederdi.
+# ---------------------------------------------------------------------------
+check_auth_budget_pin_freshness() {
+  local admin_pin_file="apps/admin/e2e/auth-budget.ts"
+  local api_policy_file="apps/api/src/auth/rate-limit/rate-limit.policy.ts"
+
+  if [ ! -f "$admin_pin_file" ] || [ ! -f "$api_policy_file" ]; then
+    echo "Bütçe pin tazeliği taraması hata verdi: $admin_pin_file veya $api_policy_file bulunamadı — fail-closed."
+    return 1
+  fi
+
+  local sign_in_pin sign_up_pin
+  sign_in_pin="$(grep -oE 'signIn:[[:space:]]*[0-9]+' "$admin_pin_file" | grep -oE '[0-9]+' | head -n 1)"
+  sign_up_pin="$(grep -oE 'signUp:[[:space:]]*[0-9]+' "$admin_pin_file" | grep -oE '[0-9]+' | head -n 1)"
+
+  if [ -z "$sign_in_pin" ] || [ -z "$sign_up_pin" ]; then
+    echo "Bütçe pin tazeliği taraması hata verdi: $admin_pin_file'te AUTH_IP_LIMITS.signIn/signUp sayısal değeri okunamadı — fail-closed."
+    return 1
+  fi
+
+  local violation=false
+  if ! grep -nE "LOGIN_IP_LIMIT[[:space:]]*=[[:space:]]*${sign_in_pin}\\b" "$api_policy_file" >/dev/null; then
+    echo "Bütçe pin tazeliği İHLALİ — $admin_pin_file'in AUTH_IP_LIMITS.signIn (${sign_in_pin}) değeri $api_policy_file'teki LOGIN_IP_LIMIT ile UYUŞMUYOR (ad veya değer değişmiş olabilir)."
+    violation=true
+  fi
+  if ! grep -nE "EMAIL_IP_LIMIT[[:space:]]*=[[:space:]]*${sign_up_pin}\\b" "$api_policy_file" >/dev/null; then
+    echo "Bütçe pin tazeliği İHLALİ — $admin_pin_file'in AUTH_IP_LIMITS.signUp (${sign_up_pin}) değeri $api_policy_file'teki EMAIL_IP_LIMIT ile UYUŞMUYOR (ad veya değer değişmiş olabilir)."
+    violation=true
+  fi
+
+  if [ "$violation" = true ]; then
+    return 1
+  fi
+  echo "Bütçe pin tazeliği: AUTH_IP_LIMITS.signIn/signUp (${sign_in_pin}/${sign_up_pin}) $api_policy_file'teki LOGIN_IP_LIMIT/EMAIL_IP_LIMIT ile UYUŞUYOR."
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# ADR-0022 Karar 1(d) — "fabrika sızma yasağı" + po'nun allowlist kararı
+# (ROADMAP T-020/S7, İŞ ③).
+#
+# ADR-0022 Karar 1(d) BİREBİR: "`apps/*/src/**` içinden `child_process`+
+# `psql` kullanımı `pnpm guards` taramasıyla YASAKLANIR — fabrika üretim
+# koduna SIZAMAZ." Bugün İKİ MEŞRU fixture var (ikisi de `e2e/` altında,
+# `src/` DEĞİL): `apps/storefront/e2e/fixtures/custom-domain-tenant.ts`
+# (v0.0.8'den beri) ve `apps/admin/e2e/fixtures/tenant-cleanup.ts` (S5
+# yazdı). Bu fonksiyon İKİ alt kontrol yapar (TEK `run_step` altında — İŞ
+# ①/②/③ "üç yeni adım" sayısını KORUR, DÖRDE ÇIKARMAZ):
+#
+#   1. `apps/*/src/**` (her `apps/<ad>/src` ağacı, `__tests__` hariç) İÇİNDE
+#      "docker exec"/"psql" jetonlarından BİRİ bile görünürse İHLAL — ADR'nin
+#      "SIFIR" şartı, AC4'teki TEK-ALLOWLIST modelinin AKSİNE burada HİÇBİR
+#      istisna dosya YOK.
+#   2. `apps/**` + `packages/**` (`.ts`, `node_modules`/`dist`/`generated`/
+#      `.turbo` hariç) genelinde "docker exec" VE "psql" jetonlarının İKİSİNİ
+#      BİRDEN taşıyan dosya KÜMESİNİN tam olarak yukarıdaki İKİ fixture'a
+#      eşit olduğunu doğrular (po kararı, bağlayıcı — gerekçe aynen: "S7'nin
+#      taraması docker exec+psql içeren dosya kümesinin TAM OLARAK bu ikisi
+#      olduğunu doğrular ⇒ üçüncü kopya SESSİZCE doğamaz"). Üçüncü bir
+#      dosya (ör. yeni bir app'in e2e fixture'ı) aynı deseni yeniden
+#      yazarsa bu kontrol onu YAKALAR — alt kontrol 1 yalnızca `src/`'i
+#      görür, bu da `e2e/` dahil HER YERİ görür.
+#
+# ⚠ DÜRÜST SINIR (ADR'de YAZILI, burada da TEKRARLANIYOR): iki `runSql`
+# gövdesinin (custom-domain-tenant.ts / tenant-cleanup.ts) METİNSEL SAPMASI
+# bu kontrolle YAKALANMAZ — bu, deponun bu sınıfta ZATEN KABUL ETTİĞİ bir
+# borç (ADR-0022). Bu tarama ÇOĞALMAYI kapatıyor, SAPMAYI değil.
+#
+# Literal-jeton kuralı (AGENT_BASELINE.md §5): "docker exec" ve "psql"
+# jetonları bu fonksiyonun KENDİ metninde BİTİŞİK YAZILMAZ — AC8/AC16 ile
+# AYNI disiplin. Bugün tarama hedefi (`apps/**/src`, `apps/**`+`packages/**`,
+# `.ts` uzantılı) bu `.sh` dosyasının KENDİSİNİ KAPSAMIYOR, ama hedef küme
+# ileride genişlerse (ör. `scripts/**`'e) bu yorum/kod BİTİŞİK yazılmış
+# olsaydı KENDİ KENDİNİ eşletirdi (AC16/AC8'in AYNI gerekçesi).
+# ---------------------------------------------------------------------------
+check_adr22_k1d_shellout_boundary() {
+  local token_a1='dock' token_a2='er exec'
+  local shellout_needle="${token_a1}${token_a2}"
+  local token_b1='ps' token_b2='ql'
+  local psql_needle="${token_b1}${token_b2}"
+
+  local violation=false
+
+  # --- Alt kontrol 1: apps/*/src/** içinde SIFIR (ADR Karar 1(d) birebir) ---
+  local src_dirs
+  src_dirs="$(find apps -maxdepth 2 -type d -name src 2>/dev/null)"
+  if [ -z "$src_dirs" ]; then
+    echo "ADR-0022 K1(d) taraması hata verdi: apps/*/src dizini bulunamadı — fail-closed."
+    return 1
+  fi
+  local src_dir_array=()
+  while IFS= read -r src_dir_line; do
+    [ -z "$src_dir_line" ] && continue
+    src_dir_array+=("$src_dir_line")
+  done <<<"$src_dirs"
+
+  local src_matches
+  src_matches="$(grep -rnE --include='*.ts' --exclude-dir=__tests__ -- \
+    "${shellout_needle}|${psql_needle}" "${src_dir_array[@]}" 2>/dev/null || true)"
+  if [ -n "$src_matches" ]; then
+    echo "ADR-0022 K1(d) İHLALİ — apps/*/src/** içinde fabrika üretim koduna sızmış bir kabuk-çağrısı jetonu bulundu:"
+    printf '%s\n' "$src_matches"
+    violation=true
+  fi
+
+  # --- Alt kontrol 2: 'docker exec'+'psql' KULLANAN dosya kümesi TAM OLARAK
+  #     bu ikisi (po kararı — üçüncü kopya sessizce doğmasın) -------------
+  local allowed_file_1='apps/storefront/e2e/fixtures/custom-domain-tenant.ts'
+  local allowed_file_2='apps/admin/e2e/fixtures/tenant-cleanup.ts'
+
+  local shellout_file_matches actual_files expected_files
+  shellout_file_matches="$(grep -rlE --include='*.ts' \
+    --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=generated --exclude-dir=.turbo \
+    -- "$shellout_needle" apps packages 2>/dev/null || true)"
+  actual_files="$(printf '%s\n' "$shellout_file_matches" | grep -v '^$' \
+    | xargs -r grep -lE -- "$psql_needle" 2>/dev/null | sort)"
+  expected_files="$(printf '%s\n' "$allowed_file_1" "$allowed_file_2" | sort)"
+
+  if [ "$actual_files" != "$expected_files" ]; then
+    echo "ADR-0022 K1(d) allowlist İHLALİ — 'docker exec'+'psql' kullanan dosya kümesi beklenen İKİ fixture'dan SAPTI (üçüncü bir kopya doğmuş olabilir):"
+    echo "Beklenen:"; printf '%s\n' "$expected_files"
+    echo "Gerçek:"; printf '%s\n' "$actual_files"
+    violation=true
+  fi
+
+  if [ "$violation" = true ]; then
+    return 1
+  fi
+  echo "ADR-0022 K1(d): apps/*/src/** temiz VE 'docker exec'+'psql' kullanan dosya kümesi TAM OLARAK beklenen iki fixture ($allowed_file_1, $allowed_file_2)."
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # actionlint — yalnızca kurulu ise (indirme CI'a özgü, kapsam dışı — bkz.
 # dosya başı not). Yerelde yoksa BLOKLAMADAN uyarı verir.
 # ---------------------------------------------------------------------------
@@ -552,6 +747,9 @@ run_step "AC4 — GUC jetonları yalnızca tenant-context.ts'te" check_ac4_guc_t
 run_step "K8 — .env ↔ .env.example anahtar adı drift kontrolü" check_k8_env_example_drift
 run_step "Slug grameri tek-kaynak taraması" check_slug_grammar_single_source
 run_step "AC-16 — gerçek DNS çağrısı yokluğu taraması" check_ac16_no_real_dns_call
+run_step "AC-1 — kök test:e2e/test:visual/test:visual:update script varlığı" check_ac1_root_e2e_visual_scripts
+run_step "Bütçe pin tazeliği — AUTH_IP_LIMITS ↔ rate-limit.policy.ts" check_auth_budget_pin_freshness
+run_step "ADR-0022 K1(d) — fabrika sızma yasağı + allowlist" check_adr22_k1d_shellout_boundary
 run_step "actionlint (yerelde kuruluysa)" check_actionlint_if_available
 
 echo ""

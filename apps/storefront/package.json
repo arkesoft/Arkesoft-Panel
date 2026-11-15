@@ -9,7 +9,9 @@
     "build": "astro build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests --fsModuleCachePath node_modules/.vitest-cache",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test --project=storefront-desktop --project=storefront-mobile",
+    "test:visual": "bash ../../scripts/run-visual.sh",
+    "test:visual:update": "bash ../../scripts/run-visual.sh --update",
     "lint": "eslint .",
     "clean": "rm -rf dist .turbo .astro"
   },

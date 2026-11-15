@@ -21,6 +21,7 @@
 // handoff'un bağlayıcı kısıtı).
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 
+import { deleteFixtureTenantBySlug, deleteFixtureUserByEmail } from './fixtures/tenant-cleanup.js'
 import { createVerifiedFixtureUser, type FixtureUser } from './helpers/verified-fixture-user.js'
 
 /**
@@ -53,7 +54,13 @@ function isCreateTenantResponseEnvelope(value: unknown): value is CreateTenantRe
 }
 
 test.describe.serial('Kayıt ve mağaza oluşturma akışı (T-019)', () => {
-  let fixtureUser: FixtureUser
+  // T-020/S5 — ADR-0022 D-1 (architect ölçtü): bu describe HER koşumda bir
+  // `tenant` + `app_user` + `tenant_membership` SIZDIRIYORDU (`afterAll`
+  // yoktu, yalnızca `context.close()` vardı). `FixtureUser | undefined` —
+  // `createdSlug`'ın AYNI disiplini (:60-63 notu): `beforeAll` BAŞARISIZ
+  // olursa Playwright `afterAll`'ı YİNE çalıştırır ve `fixtureUser` çalışma
+  // zamanında GERÇEKTEN `undefined` kalabilir — tip bu gerçeği söylemeli.
+  let fixtureUser: FixtureUser | undefined
   let storageStateAfterSignIn: Awaited<ReturnType<APIRequestContext['storageState']>>
   // `string | undefined` — bu `describe.serial` BLOĞUNUN SIRASINA bağımlı:
   // değer ANCAK aşağıdaki mağaza oluşturma testi (`:236`) başarıyla
@@ -382,5 +389,21 @@ test.describe.serial('Kayıt ve mağaza oluşturma akışı (T-019)', () => {
     await expect(page.getByText('Kurulum durumun şu anda yüklenemedi.')).toHaveCount(0)
 
     await context.close()
+  })
+
+  // -------------------------------------------------------------------
+  // T-020/S5 — ADR-0022 D-1'in teardown'ı. SIRA ÖNEMLİ: önce `tenant`
+  // (varsa — `createdSlug` yalnızca mağaza oluşturma testi BAŞARILI
+  // olursa atanır), sonra `app_user` — `tenant_membership` ikisinden
+  // BİRİNİN `onDelete: Cascade`'iyle zaten gider (dosya başı notu,
+  // `fixtures/tenant-cleanup.ts`), sıra SIRF okunabilirlik için.
+  // -------------------------------------------------------------------
+  test.afterAll(() => {
+    if (createdSlug !== undefined) {
+      deleteFixtureTenantBySlug(createdSlug)
+    }
+    if (fixtureUser !== undefined) {
+      deleteFixtureUserByEmail(fixtureUser.email)
+    }
   })
 })

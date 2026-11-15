@@ -17,6 +17,9 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:isolation": "turbo run test:isolation",
+    "test:e2e": "turbo run test:e2e --concurrency=1",
+    "test:visual": "turbo run test:visual --concurrency=1",
+    "test:visual:update": "turbo run test:visual:update --concurrency=1",
     "clean": "turbo run clean && rm -rf .turbo",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -44,6 +47,7 @@
   "devDependencies": {
     "@arkesoft/config": "workspace:*",
     "@changesets/cli": "catalog:",
+    "@playwright/test": "catalog:",
     "prettier": "catalog:",
     "turbo": "catalog:",
     "typescript": "catalog:",

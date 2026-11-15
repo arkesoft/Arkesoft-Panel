@@ -99,6 +99,51 @@
     },
     "clean": {
       "cache": false
+    },
+    // GEREKÇE (T-020/S3, po'nun R-B bulgusu — Orkestratör doğruladı) — bu
+    // görev tanımında "concurrency" ALANI YOK, çünkü turbo.json'ın task
+    // şeması eşzamanlılık ayarı taşımıyor; eşzamanlılık SADECE bir CLI
+    // bayrağıdır (`--concurrency=1`) ve kök `package.json`'daki "test:e2e"
+    // script'inin İÇİNE sabitlenmiştir — SİLİNMESİN. Neden: `turbo run
+    // test:e2e`, varsayılan eşzamanlılıkla admin ve storefront'u PARALEL
+    // planlar; ikisi de AYNI Postgres/Redis/Mailpit'e VE AYNI IP oran-sınırı
+    // bütçesine (EMAIL_IP_LIMIT=10/saat) aynı anda yüklenir ⇒ 429 ⇒ "flaky
+    // gibi görünen" sahte kırmızı (AC-12'yi sahte yeşile çevirir). `pnpm
+    // test`/`test:isolation`'ı bugün koruyan şey run-gates'in AYRI `turbo
+    // run` çağrıları — e2e'de o koruma YOK, bu yüzden pin BURADA zorunlu.
+    // `cache: false`: e2e dış altyapıya (Postgres/Redis/Mailpit/API) bağımlı,
+    // önbelleklenemez. `dependsOn: ["^build", "generate"]`: bayat-dist
+    // tuzağını kapatır (T-019'da beş kez önlendi; ROADMAP:1250'nin dersi) —
+    // KALDIRILAMAZ.
+    "test:e2e": {
+      "dependsOn": ["^build", "generate"],
+      "cache": false
+    },
+    // GEREKÇE (T-020/S6, ADR-0022 Karar 4/5) — `AC-2`'nin ŞART KOŞTUĞU
+    // `dependsOn: ["^build", "generate"]` BURADA DA TUTULUYOR (kaldırma
+    // yetkisi `devops`'ta DEĞİL): çağrı grafiğindeki UPSTREAM paketlerin
+    // (`@arkesoft/themes-modern` dahil) derlemesini `test:visual`'dan ÖNCE
+    // garanti eder — bayat-dist tuzağının (T-019'da beş kez önlenen sınıf)
+    // AYNI korunması.
+    // ⚠⚠ R-G (po) ÖLÇÜLDÜ VE ÇÜRÜTÜLDÜ (devops, bu alt görev) — `po`'nun
+    // beklediği "çift `astro build`" riski `npx turbo run test:visual
+    // --dry=json` ile GERÇEK görev grafiği üzerinde DOĞRUDAN ölçüldü:
+    // `"^build"` yalnızca BAĞIMLI paketlerin `build` görevini çalıştırır
+    // (`@arkesoft/config`/`db`/`errors`/`tenancy`/`theme-sdk`/`themes-
+    // modern`/`trpc`/`ui`); graf `@arkesoft/storefront#build` ADLI BİR
+    // GÖREV TAŞIMAZ (Astro'nun KENDİ `build` script'i yalnızca `scripts/
+    // run-visual.sh`'in İÇİNDE, TEK SEFER çağrılır). ⇒ `pnpm test:visual`
+    // tek koşumda `astro build`'i YALNIZCA BİR KEZ çalıştırır — "çift
+    // derleme" GERÇEKLEŞMİYOR, `po`'nun çıkarımı bağımlılık grafiğinin
+    // `dependsOn`'ı PAKETİN KENDİ `build`'İNE de uyguladığı YANLIŞ
+    // varsayımına dayanıyordu.
+    "test:visual": {
+      "dependsOn": ["^build", "generate"],
+      "cache": false
+    },
+    "test:visual:update": {
+      "dependsOn": ["^build", "generate"],
+      "cache": false
     }
   }
 }

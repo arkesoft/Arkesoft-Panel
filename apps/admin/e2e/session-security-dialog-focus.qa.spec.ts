@@ -59,6 +59,16 @@ import { createHmac } from 'node:crypto'
 import { expect, test, type APIRequestContext } from '@playwright/test'
 import { z } from 'zod'
 
+import { deleteFixtureUserByEmail } from './fixtures/tenant-cleanup.js'
+
+/**
+ * T-020/S5 — ADR-0022 D-1 (architect ölçtü): bu dosya İKİ kez
+ * `createVerifiedFixtureUser` çağırıyor (iki ayrı `app_user` satırı) ve
+ * eskiden HİÇBİRİNİ silmiyordu. Her çağrı kendi e-postasını BURAYA EKLER,
+ * dosyanın SONUNDAKİ TEK `test.afterAll` ikisini de temizler.
+ */
+const createdFixtureEmails: string[] = []
+
 const FIXTURE_PASSWORD = 'arkesoft-e2e-med2-fixture-password-123'
 const MAILPIT_BASE_URL = 'http://127.0.0.1:8025'
 
@@ -254,6 +264,7 @@ test.describe.serial('Diyalog iptali odağı tetikleyiciye döndürür (qa tur 2
     // `sign-in/email` çağrısı (bu test için AC18 payı: 2 sign-in).
     const primaryRequest = await playwright.request.newContext({ baseURL })
     const { email, password } = await createVerifiedFixtureUser(primaryRequest, 'med2-sessions')
+    createdFixtureEmails.push(email)
 
     const primarySignIn = await primaryRequest.post('/auth/sign-in/email', {
       data: { email, password },
@@ -330,6 +341,7 @@ test.describe.serial('Diyalog iptali odağı tetikleyiciye döndürür (qa tur 2
 
     const requestContext = await playwright.request.newContext({ baseURL })
     const { email, password } = await createVerifiedFixtureUser(requestContext, 'med2-2fa')
+    createdFixtureEmails.push(email)
 
     const signInResponse = await requestContext.post('/auth/sign-in/email', {
       data: { email, password },
@@ -398,5 +410,13 @@ test.describe.serial('Diyalog iptali odağı tetikleyiciye döndürür (qa tur 2
     await expect(disableTrigger).toBeFocused()
 
     await context.close()
+  })
+
+  // T-020/S5 — ADR-0022 D-1'in teardown'ı: yukarıdaki İKİ `createVerifiedFixtureUser`
+  // çağrısının topladığı e-postaları siler.
+  test.afterAll(() => {
+    for (const email of createdFixtureEmails) {
+      deleteFixtureUserByEmail(email)
+    }
   })
 })
