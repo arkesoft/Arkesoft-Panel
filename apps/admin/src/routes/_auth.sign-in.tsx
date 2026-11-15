@@ -31,6 +31,7 @@ import { Button, Card, CardContent, Input } from '@arkesoft/ui'
 import { signInWithEmail } from '../api/auth-rest.js'
 import { invalidateSessionIdentity } from '../api/session-refresh.js'
 import { ErrorState } from '../components/ErrorState.js'
+import { resolveShapeErrorMessage } from '../errors/resolve-shape-error-message.js'
 import {
   TwoFactorChallengeForm,
   type TwoFactorChallengeMode,
@@ -40,8 +41,8 @@ import { formatSupportCodeLine, MESSAGES, resolvePanelErrorMessage } from '../me
 
 /**
  * Şekil doğrulaması — zorunlu alan + e-posta biçimi. `.email()`'in KENDİ
- * mesaj metni KULLANILMAZ (yukarıdaki dosya başı yorumu); `resolveEmail
- * FieldErrorMessage`/`resolvePasswordFieldErrorMessage` yalnızca
+ * mesaj metni KULLANILMAZ (yukarıdaki dosya başı yorumu); `resolveShape
+ * ErrorMessage` (`../errors/resolve-shape-error-message.js`) yalnızca
  * `issue.code`'u (react-hook-form'un `error.type`'ı) okur.
  */
 const signInFormSchema = z.object({
@@ -59,36 +60,11 @@ type SignInFormValues = z.infer<typeof signInFormSchema>
 // kopyası silindi — `../messages/messages.js`'teki `resolvePanelErrorMessage`
 // (`_app.tsx`'in de kullandığı AYNI tek doğruluk kaynağı) kullanılıyor.
 
-// DÜZELTME TURU 1 (`solid` M5 ║ `wcag` M3 — bağlayıcı, WCAG 3.3.1/3.3.3):
-// tanınmayan `issue.code` artık SESSİZCE `undefined` DÖNMÜYOR — her iki
-// çözücü de FAIL-CLOSED: bilinmeyen kod jenerik ama GÖRÜNÜR bir alan
-// hatasına düşer (`resolveErrorMessage`'ın desenin AYNISI). Böylece Zod'un
-// şeması ileride genişlese bile `Input` HER ZAMAN `aria-invalid` + bir mesaj
-// render eder; form sessizce gönderilmez, kullanıcı hiçbir şey görmeden
-// kalmaz (CLAUDE.md §10/16 — hatayı `null`'a çevirip sessizce devam etmek
-// yasak).
-function resolveEmailFieldErrorMessage(errorType: string | undefined): string | undefined {
-  if (errorType === undefined) {
-    return undefined
-  }
-  if (errorType === 'too_small') {
-    return MESSAGES.auth.signIn.emailRequired
-  }
-  if (errorType === 'invalid_format') {
-    return MESSAGES.auth.signIn.emailInvalid
-  }
-  return MESSAGES.auth.signIn.fieldGenericError
-}
-
-function resolvePasswordFieldErrorMessage(errorType: string | undefined): string | undefined {
-  if (errorType === undefined) {
-    return undefined
-  }
-  if (errorType === 'too_small') {
-    return MESSAGES.auth.signIn.passwordRequired
-  }
-  return MESSAGES.auth.signIn.fieldGenericError
-}
+// GATE TUR 1 DÜZELTMESİ (`solid`, docs/gates/T-019-solid-tur1.md): alan
+// hatası eşlemesi (DÜZELTME TURU 1'in FAIL-CLOSED kararı DAHİL) artık
+// `../errors/resolve-shape-error-message.js`'te — `_auth.kayit.tsx`'in AYNI
+// mesaj → alan eşlemesini TEKRAR tanımlamasının (export'suz, testsiz) önüne
+// geçmek için tek eve taşındı, bkz. o dosyanın başı.
 
 export const Route = createFileRoute('/_auth/sign-in')({
   component: SignInPage,
@@ -144,8 +120,15 @@ function SignInPage(): JSX.Element {
     defaultValues: { email: '', password: '' },
   })
 
-  const emailErrorMessage = resolveEmailFieldErrorMessage(errors.email?.type)
-  const passwordErrorMessage = resolvePasswordFieldErrorMessage(errors.password?.type)
+  const emailErrorMessage = resolveShapeErrorMessage(errors.email?.type, {
+    required: MESSAGES.auth.signIn.emailRequired,
+    invalidFormat: MESSAGES.auth.signIn.emailInvalid,
+    genericError: MESSAGES.auth.signIn.fieldGenericError,
+  })
+  const passwordErrorMessage = resolveShapeErrorMessage(errors.password?.type, {
+    required: MESSAGES.auth.signIn.passwordRequired,
+    genericError: MESSAGES.auth.signIn.fieldGenericError,
+  })
 
   /**
    * 2FA doğrulaması BAŞARILI — AC11 madde 2: önbellek TAZELENİR, aksi hâlde

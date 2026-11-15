@@ -342,6 +342,12 @@ oluştur"a dönüş bağlantıları gerçek `Link`. Form `Enter` ile gönderilir
 ③ **Canlı bölgeler.** P4'ün slug durumu `role="status"` `aria-live="polite"` —
 debounce sayesinde yalnızca SONUÇ değiştiğinde duyurulur (her tuş vuruşunda değil).
 
+> ⚠ **Not (`docs`, T-019, 2026-11-15).** Bu iddia `wcag` tur 1'de **kısmen
+> yanlıştı**: yavaş yazan bir AT kullanıcısında `'checking'` ara durumu da canlı
+> bölgeye giriyordu ve her harfte çift anons üretiyordu. `frontend`'in `W-1`
+> düzeltmesi (düzeltme turu 2) `'checking'`'i canlı bölgeden çıkardı; iddia
+> artık bu kenar durumda da **tam doğru**.
+
 ④ **`aria-invalid`+`aria-describedby` / `aria-describedby` (fieldset).** P1/P3/P4'ün
 alan hataları `Input.error`'a gider (docs/ui T-016:213'ün BAĞLAYICI kuralı — ayrı
 `role="alert"` kutusu YOK, çift duyuru üretir). P5'in "seçim yok" hatası

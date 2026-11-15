@@ -308,12 +308,30 @@ const RATE_LIMITED_ROUTES: ReadonlyMap<string, RateLimitPolicy> = new Map([
     false,
     'sessionUserId',
   ),
+  // T-019 gate tur1 düzeltmesi (security, medium) — ÜÇÜNCÜ rota:
+  // `onboardingChecklist`, `trpc-rate-limited-paths.ts`'in GÜNCELLENMİŞ dosya
+  // başı yorumuna bkz. Önceki değerlendirme ("girdi zaten üye olduğu bilinen
+  // bir kiracıya aittir, numaralandırma yüzeyi DEĞİL") ÖLÇÜLEREK YANLIŞ
+  // bulundu — `input.slug` SALDIRGAN kontrolündedir ve prosedür ÜYE
+  // OLUNMAYAN slug'ları da AYNI 404'e indirger, bu yüzden TAM OLARAK
+  // `checkSlugAvailability` ile AYNI numaralandırma sınıfı. AYNI eşik/kapsam
+  // ailesi (`LOGIN_ACCOUNT_LIMIT`/`LOGIN_IP_LIMIT`, `sessionUserId`) burada da
+  // YENİDEN KULLANILIR — dördüncü, koordinesiz bir aile İCAT EDİLMEDİ.
+  buildPolicy(
+    'GET /trpc/registration.onboardingChecklist',
+    'login',
+    LOGIN_ACCOUNT_LIMIT,
+    LOGIN_IP_LIMIT,
+    false,
+    'sessionUserId',
+  ),
 ])
 
 /**
- * İsteğin oran sınırlı ON DÖRT rotadan birine ait olup olmadığını belirler
+ * İsteğin oran sınırlı ON BEŞ rotadan birine ait olup olmadığını belirler
  * (T-016 FIX turu 1, madde 1/F1 — dört → on; T-017/S1, K1 — on → on iki;
- * T-019/S9a — on iki → on dört, dosya başı GÜNCELLEME yorumları). Normalizasyon `auth-delegated-paths.ts`'in
+ * T-019/S9a — on iki → on dört; T-019 gate tur1 düzeltmesi (security,
+ * medium) — on dört → on beş, dosya başı GÜNCELLEME yorumları). Normalizasyon `auth-delegated-paths.ts`'in
  * `isAuthDelegatedPath`'iyle BİREBİR aynı (sondaki `/` soyulur, sorgu
  * dizesi/fragman karışmaz, büyük/küçük harf DUYARLI, metot büyük/küçük harf
  * DUYARSIZ).

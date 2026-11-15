@@ -14,7 +14,8 @@
 //      "sahipsiz kiracı yapısal olarak imkânsız" iddiasının mekanik kanıtı).
 //   2. Derleme zamanı NEGATİF tip pini (modül seviyesi, hiçbir yerden
 //      çağrılmaz) — `PlatformTenantWriter`'ın `user`/`account`/`session`/
-//      `verification`/`twoFactor`/`$transaction` TAŞIMADIĞINI kanıtlar
+//      `verification`/`twoFactor`/`$transaction` TAŞIMADIĞINI VE `plan`
+//      üyesinin SALT OKUNUR (yalnızca `findUnique`) olduğunu kanıtlar
 //      (`auth-model-narrowing.pin.ts`'in deseniyle BİREBİR — bu dosyanın
 //      `.test.ts` olması `tsc`'nin onu TARAMASINI engellemez, Vitest'in
 //      `it()` bulmamasıyla İLGİSİZ bir eksen).
@@ -67,17 +68,24 @@ describe('withNewTenant', () => {
     })
     createdUserIds.push(user.id)
 
+    // T-019 gate tur1 düzeltmesi (`solid` M3 önerilen düzeltme): `plan` fixture
+    // yazımı `PlatformTenantWriter` daraltıldıktan SONRA artık `insertTenant`
+    // fazında YAPILAMAZ (`tx.plan.upsert` o fazda tip-seviyesinde erişilemez —
+    // yalnızca `findUnique` taşır, aşağıdaki pin bunu kanıtlıyor). Fixture
+    // satırı bu yüzden transaction'ın DIŞINDA, `testMigrationPrisma`
+    // (tabloların sahibi, bkz. `test-client.ts`) ile ÖNCEDEN yazılır —
+    // `insertTenant` bloğu yalnızca `tx.plan.findUnique(...)` ile OKUR.
+    await testMigrationPrisma.plan.upsert({
+      where: { id: testPlanId },
+      create: { id: testPlanId, name: 'withNewTenant Test Planı', limits: testPlanLimits },
+      update: {},
+    })
+
     const tenantId = await withNewTenant(
       testAppPrisma,
       async (tx) => {
-        // `PlatformTenantWriter`'ın İKİNCİ üyesi (`plan`) burada EGZERSİZ
-        // EDİLİR — kayıt akışının "trial planını OKUMA/yazma" ihtiyacının
-        // karşılığı (ADR-0021 §4, `PlatformTenantWriter` doc'u).
-        await tx.plan.upsert({
-          where: { id: testPlanId },
-          create: { id: testPlanId, name: 'withNewTenant Test Planı', limits: testPlanLimits },
-          update: {},
-        })
+        const plan = await tx.plan.findUnique({ where: { id: testPlanId } })
+        expect(plan).not.toBeNull()
 
         const tenant = await tx.tenant.create({
           data: { slug, name: 'withNewTenant Testi', status: TenantStatus.active },
@@ -206,5 +214,33 @@ export function pinPlatformTenantWriterDropsAuthModelsAndTransaction(
     tx.twoFactor,
     // @ts-expect-error — "$transaction" PlatformTenantWriter'da YOK (iç içe transaction yapısal olarak imkânsız), erişilemez.
     tx.$transaction,
+  ]
+}
+
+/**
+ * T-019 gate tur1 düzeltmesi (`solid` M3 + `security` S-2, BAĞIMSIZ
+ * BULUNDU): `PlatformTenantWriter.plan` artık `Pick<TransactionClient['plan'],
+ * 'findUnique'>` ile daraltılır — `insertTenant`'ın GERÇEKTE kullandığı TEK
+ * metot budur (`registration.service.ts` ölçüldü). `plan` delegesinin DML
+ * yüzeyi (`create`/`update`/`upsert`/`delete`/`deleteMany`) KASITLI OLARAK
+ * ERİŞİLEMEZ OLMALIDIR — negatif kanıt: bu pin EKLENMEDEN ÖNCE
+ * `tx.plan.delete(...)` DERLENİYORDU (ilk sürümün M3/S-2 bulgusu). Her
+ * satırdaki `@ts-expect-error` GERÇEKTEN bir tip hatası bulmazsa
+ * `pnpm typecheck` KIRMIZIYA döner.
+ */
+export function pinPlatformTenantWriterPlanIsReadOnly(
+  tx: PlatformTenantWriter,
+): readonly unknown[] {
+  return [
+    // @ts-expect-error — "plan.create" PlatformTenantWriter'da YOK ("plan" salt-okunur daraltıldı, yalnızca "findUnique" taşır), erişilemez.
+    tx.plan.create,
+    // @ts-expect-error — "plan.update" PlatformTenantWriter'da YOK, erişilemez.
+    tx.plan.update,
+    // @ts-expect-error — "plan.upsert" PlatformTenantWriter'da YOK, erişilemez.
+    tx.plan.upsert,
+    // @ts-expect-error — "plan.delete" PlatformTenantWriter'da YOK (negatif kanıt: bu pin EKLENMEDEN ÖNCE derleniyordu), erişilemez.
+    tx.plan.delete,
+    // @ts-expect-error — "plan.deleteMany" PlatformTenantWriter'da YOK, erişilemez.
+    tx.plan.deleteMany,
   ]
 }

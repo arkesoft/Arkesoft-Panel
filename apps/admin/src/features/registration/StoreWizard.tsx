@@ -21,7 +21,7 @@ import {
   resolvePanelErrorMessage,
   resolveRegistrationFieldErrorMessage,
 } from '../../messages/messages.js'
-import { buildSlugPreviewAddress, resolveSlugLiveStatusMessage } from './slug-outcome-message.js'
+import { buildSlugPreviewAddress, resolveSlugCheckDisplayMessages } from './slug-outcome-message.js'
 import { createTenantSlugReferenceStore } from './stored-tenant-reference.js'
 import {
   StoreWizardController,
@@ -189,22 +189,37 @@ export function StoreWizard(): JSX.Element {
                 }}
               />
               {(() => {
-                const liveMessage =
-                  state.slugCheckErrorMessage ?? resolveSlugLiveStatusMessage(state.slugCheckStatus)
-                if (liveMessage === null) {
-                  return null
-                }
+                // wcag tur 2 `W-1` düzeltmesi: `'checking'` canlı bölgeye
+                // DÜŞMEZ (yavaş yazan AT kullanıcısında her tuş vuruşunda
+                // çift anons yaratıyordu) — görsel gösterge AYRI, `aria-live`
+                // TAŞIMAYAN bir öğede kalır. Sonuç `role="status"`/
+                // `aria-live="polite"` öğesinde kalır (bu Task'ın UI planı,
+                // docs/ui madde ③, BU düzeltmeyle tam doğru hâle gelir).
+                const { visualCheckingMessage, liveStatusMessage } =
+                  resolveSlugCheckDisplayMessages(
+                    state.slugCheckStatus,
+                    state.slugCheckErrorMessage,
+                  )
                 return (
-                  <p
-                    role="status"
-                    aria-live="polite"
-                    className={`text-(length:--font-size-small) ${resolveSlugStatusTextColorClassName(state.slugCheckStatus, state.slugCheckErrorMessage !== null)}`}
-                  >
-                    {state.slugCheckStatus === 'available' ? (
-                      <span aria-hidden="true">✓ </span>
+                  <>
+                    {visualCheckingMessage !== null ? (
+                      <p className="text-(length:--font-size-small) text-(--color-text-secondary)">
+                        {visualCheckingMessage}
+                      </p>
                     ) : null}
-                    {liveMessage}
-                  </p>
+                    {liveStatusMessage !== null ? (
+                      <p
+                        role="status"
+                        aria-live="polite"
+                        className={`text-(length:--font-size-small) ${resolveSlugStatusTextColorClassName(state.slugCheckStatus, state.slugCheckErrorMessage !== null)}`}
+                      >
+                        {state.slugCheckStatus === 'available' ? (
+                          <span aria-hidden="true">✓ </span>
+                        ) : null}
+                        {liveStatusMessage}
+                      </p>
+                    ) : null}
+                  </>
                 )
               })()}
               <p className="text-(length:--font-size-small) text-(--color-text-secondary)">

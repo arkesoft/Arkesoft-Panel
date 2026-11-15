@@ -134,6 +134,35 @@ describe('resolveRateLimitPolicy — K3 eşikleri (MODÜL SABİTİ, env OKUNMAZ)
     expect(resolveRateLimitPolicy(method, path)).toBeUndefined()
   })
 
+  // ROADMAP v0.1.0, T-019/S9a (architect F15, ADR-0021 §2 koşul E) — ÜÇÜNCÜSÜ
+  // (`onboardingChecklist`) T-019 gate tur1 düzeltmesi (security, medium):
+  // ÖNCEDEN oran sınırına BAĞLANMAMIŞTI (yanlış "numaralandırma yüzeyi
+  // DEĞİL" gerekçesiyle — `trpc-rate-limited-paths.ts`'in dosya başı
+  // yorumuna bkz). ÜÇÜ de AYNI eşik/kapsam ailesini (`LOGIN_ACCOUNT_LIMIT`/
+  // `LOGIN_IP_LIMIT`, `sessionUserId`) PAYLAŞIR — bu test ÜÇÜNÜN DE
+  // `RATE_LIMITED_ROUTES`'a GERÇEKTEN kayıtlı olduğunu (modül yüklenirken
+  // `buildPolicy`'nin yazım-hatası guard'ından GEÇTİĞİNİ VE
+  // `resolveRateLimitPolicy`'nin onları ÇÖZEBİLDİĞİNİ) doğrular.
+  it.each([
+    'GET /trpc/registration.checkSlugAvailability',
+    'POST /trpc/registration.createTenant',
+    'GET /trpc/registration.onboardingChecklist',
+  ])(
+    '%s → hesap 5 / IP 20, "login" penceresi, `sessionUserId` kapsamı, SIFIRLANMAZ',
+    (routeKey) => {
+      const [method, path] = routeKey.split(' ', 2) as [string, string]
+      const policy = resolveRateLimitPolicy(method, path)
+      expect(policy).toEqual({
+        routeKey,
+        windowKind: 'login',
+        accountLimit: 5,
+        ipLimit: 20,
+        resetAccountOnSuccess: false,
+        accountScopeSource: 'sessionUserId',
+      })
+    },
+  )
+
   it('metot büyük/küçük harf DUYARSIZ eşleşir', () => {
     expect(resolveRateLimitPolicy('post', '/auth/sign-in/email')).toBeDefined()
   })

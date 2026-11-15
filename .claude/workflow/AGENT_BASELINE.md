@@ -135,6 +135,35 @@ düzenlemede** kapanıyorsa, uygulayan ajan onu da kapatır — ayrı tur açıl
 **Gate ajanı için sonuç:** `low` yazdığında düzeltme beklemiyorsun; **borç satırının metnini**
 yaz (SEV, `dosya:satır`, açıklama, sorumlu ajan, vade önerisi) ki `docs` kopyalayabilsin.
 
+### Ölçüm disiplini (2026-11-15, T-019) — dört ders
+
+T-019'un gate fazı beş düzeltme turu, bir kullanıcı kararı ve ~%11'lik bir flake'in
+dört kez "kapandı" sanılmasına mal oldu. Dördü de vakalarıyla kayıtlı — gerekçesiz
+kural tutmuyor:
+
+1. **Ardışık yeşil koşum, flake'in yokluğunu KANITLAMAZ.** Gereken koşum sayısı
+   **gözlenen orana göre hesaplanır**. Vakalar: Orkestratör 3 yeşile dayanıp "K7
+   kapandı" dedi → `qa` çürüttü · `backend` 14 yeşile (sonra 31'e) dayanıp
+   "üretilemedi" dedi → Orkestratör çürüttü. Aritmetik: **%15** oranda **5**
+   koşumun tamamının yeşil gelmesi **≈%44**, **15** koşum **≈%9**. **Doğru standart**
+   (`qa` tur 3 uyguladı): istatistik tek başına değil — **mekanik izolasyon +
+   nedensel açıklama + yeterli koşum**, üçü birlikte.
+2. **Sakin makinede ölçüm, yük kaynaklı flake için KANIT DEĞİL.** Vaka: üç tur kanıtı
+   sakin makinede topladı; flake **26 konteyner / load avg 2.8-5.9** altında çıkıyordu.
+   ⇒ Ölçümün koşulları (makine yükü, `docker ps`, load avg) **rapora yazılır**; yük
+   ölçülmemişse sonucun kanıt değeri düşüktür ve bu söylenir. Yük tasarımı da doğru
+   eksende olmalı: `yes` süreçleri CPU yükler ama kök neden I/O beklemesi olduğunda
+   hiçbir şey kanıtlamaz (tur 4 bunu `EVAL` busy-loop'la çözdü).
+3. **Turbo önbelleği yeşili sahte yapabilir.** Vaka: Orkestratör 6 koşum sonrası
+   şüphelendi ve `@arkesoft/api:test`'in **`cache bypass, force executing`** olduğunu
+   doğruladı. ⇒ Test koşumu raporlanırken önbellek durumu teyit edilir. Yan ders:
+   grep desenleri ANSI renk kodlarına takılır — eşleşme yokluğu "çalışmadı" demek
+   değildir.
+4. **`Grep`/`Glob` çağrılarında `path` AÇIKÇA verilir.** Vaka: `solid` tur 2 cwd'ye
+   güvendi, kök `apps/api` olarak çözüldü, "No matches found" döndü ve _"tur 1'in iki
+   `low`'u kapandı"_ yanlış sonucu neredeyse yazıldı — ajan kendini yakaladı. ⇒ cwd'ye
+   güvenmek sessiz yanlış-negatif üretir.
+
 ---
 
 ## 5. Her ajan için geçerli yasaklar
@@ -150,7 +179,21 @@ yaz (SEV, `dosya:satır`, açıklama, sorumlu ajan, vade önerisi) ki `docs` kop
   sahibi olmadığın bir dosyada çalıştırma. Teşhis için `--check`/`--list-different` kullan,
   bulguyu `RİSKLER`de bildir ve düzeltmeyi dosya sahibine bırak.
   (T-001'de `release` ajanı `docs`'un ADR dosyasında `prettier --write` çalıştırdı; dosya git'te
-  takip edilmediği için geri alınamadı.)
+  takip edilmediği için geri alınamadı.) ⭐ **Kuralın işe yaradığı vaka (T-019):** `db` ajanı
+  `backend`'in dosyasını biçimlendirmeyi **reddetti** ve bulguyu Orkestratöre eskalasyon olarak
+  bildirdi — kural tam burada tasarlandığı gibi çalıştı.
+- **`git stash` / `git checkout --` / `git restore` / `git add` / `git commit` YASAK.** Okuma
+  (`git diff`/`status`/`show`) serbest. Vaka (T-019, G2): bir ajan commit'lenmemiş bir dosyayı
+  sildi; aynı Task'ta başka bir ajan bir `sed` kazası yaptı. Yazma amaçlı `git` komutu çalıştırma
+  ihtiyacı doğarsa `DURUM: NEEDS_INPUT` ile Orkestratöre dön.
+- **Eşzamanlı komut koşturma — kendi gürültünü bulgu sanma.** T-019'da iki ajan (S9a, S7) bu
+  yüzden düştü; `qa` tur 1 kazara eşzamanlı `pnpm test` + `test:isolation` koşturup bir kapıyı
+  fail-closed etti. ⭐ Ölçümün **ne zaman** alındığı da kayda geçer — bir ajanın "9/9" ölçümü
+  ortam bozulmadan **önce** alınmıştı, bu sayede geçerli kaldı.
+- **Rapor/doküman dosyası yazan ajan `prettier --write` ile bitirir.** T-019'da dört ajan
+  (`perf`, `security`, `solid`×2) bunu atlayıp `format:check`'i kırdı; Orkestratör elle kapattı.
+  ⚠ **`Bash` aracı olmayan gate ajanları** (`solid`/`wcag`) bunu yapamaz ⇒ onlar için
+  biçimlendirmeyi **Orkestratör** kapatır.
 - **Yıkıcı veritabanı komutlarında kullanıcı onayı tek kullanımlıktır.** `prisma migrate reset`
   gibi komutlar bir AI ajanı tarafından çağrıldığında Prisma kullanıcının onay mesajının
   **birebir metnini** `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION` içinde ister. Bu kapıyı

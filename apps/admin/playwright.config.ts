@@ -17,21 +17,22 @@
 // kırılır (sessizce başka porta kaymaz).
 //
 // AC18 (bütçe, bağlayıcı — DÜZELTME TURU 2: `solid` tur 2 M-N1, yorum
-// düzeltildi; qa tur 2/DAR İŞ ①: ÜÇÜNCÜ spec dosyası eklendi, toplam
-// AŞAĞIDA yeniden hesaplandı): `workers: 1` + HER SPEC dosyasının KENDİSİ
+// düzeltildi; qa tur 2/DAR İŞ ①: ÜÇÜNCÜ spec dosyası eklendi; T-019/S11
+// (v0.1.0 kayıt akışı): DÖRDÜNCÜ spec dosyası eklendi, toplam AŞAĞIDA
+// yeniden hesaplandı): `workers: 1` + HER SPEC dosyasının KENDİSİ
 // `test.describe.serial` kullanıyor — `/auth/sign-in/email` IP bazlı
 // `platform:auth:*` sayacını (gerçek sınır `LOGIN_IP_LIMIT` = 20 deneme /
 // 15 dk, `rate-limit.policy.ts:127` — BAŞARILI istekler DE sayılıyor,
-// SIFIRLANMAZ) paylaşan ÜÇ spec dosyası var (`panel-flow.spec.ts` +
+// SIFIRLANMAZ) paylaşan DÖRT spec dosyası var (`panel-flow.spec.ts` +
 // `qa-blind-spot-and-negative-scenarios.qa.spec.ts` + `session-security-
-// dialog-focus.qa.spec.ts`), paralel koşum bu sayacı YARIŞTIRMAZ ama
-// ÜÇÜ AYNI IP'den aynı pencereyi TÜKETİR.
+// dialog-focus.qa.spec.ts` + `registration-flow.spec.ts`), paralel koşum
+// bu sayacı YARIŞTIRMAZ ama DÖRDÜ AYNI IP'den aynı pencereyi TÜKETİR.
 //
 // TEK doğruluk kaynağı (architect Risk 5 — bağlayıcı) BURASI: koşum
 // başına (TÜM spec dosyalarının TOPLAMI, TEK dosya DEĞİL) gerçek sınıra
 // (20/pencere) GÜVENLİ bir pay bırakılması — bu dosyanın kendi KARARI
 // "güvenli pay" için SABİT bir tavan sayı DEĞİL, ÖLÇÜLEN gerçek toplamın
-// 20'nin ÇOK altında kalması (bugün 7/20, %65 pay) VE hesap bazlı sınırın
+// 20'nin ÇOK altında kalması (bugün 8/20, %60 pay) VE hesap bazlı sınırın
 // (`LOGIN_ACCOUNT_LIMIT`, aynı dosya) her testin KENDİ fixture kullanıcısı
 // İÇİN tek haneli denemede kalmasıdır. Yeni bir spec dosyası `/auth/
 // sign-in/email` veya `/auth/sign-up/email`'e GERÇEK bir çağrı eklerse bu
@@ -39,18 +40,36 @@
 // başında yorumlar (bkz. `panel-flow.spec.ts` + ilgili `qa` dosyaları),
 // TOPLAMI TEKRAR ETMEZ.
 //
-// Bugünkü ÖLÇÜLMÜŞ toplam (qa tur 2/DAR, İŞ ① — `session-security-dialog-
-// focus.qa.spec.ts` EKLENDİ; gerçek sınıra göre KARŞILAŞTIRMALI):
+// Bugünkü ÖLÇÜLMÜŞ toplam (T-019/S11, v0.1.0 kayıt akışı —
+// `registration-flow.spec.ts` EKLENDİ; gerçek sınıra göre KARŞILAŞTIRMALI):
 //   sign-in: panel-flow.spec.ts (3) + qa-blind-spot-…qa.spec.ts (1) +
-//            session-security-dialog-focus.qa.spec.ts (3) = 7/20
+//            session-security-dialog-focus.qa.spec.ts (3) +
+//            registration-flow.spec.ts (1 — `beforeAll`'daki TEK
+//            `/auth/sign-in/email` çağrısı, dosyanın KENDİ koduyla) = 8/20
 //   sign-up: panel-flow.spec.ts (3) + qa-blind-spot-…qa.spec.ts (0) +
-//            session-security-dialog-focus.qa.spec.ts (2) = 5
-// (ÖNCEKİ tur: sign-in 4, sign-up 3 — iki dosyayla; bu turda ÜÇÜNCÜ dosya
-// +3 sign-in + 2 sign-up ekledi, gerçek 20/pencere sınırına göre HÂLÂ
-// büyük pay var; "≤4" biçimindeki ÖNCEKİ ifade iki dosyanın o ANKİ toplamı
-// idi, gerçek sınırın KENDİSİ DEĞİLDİ — qa tur 2/DAR raporunda VARSAYIM
-// olarak işaretlendi, architect/Orkestratör'ün gözden geçirmesi gerekirse
-// diye.)
+//            session-security-dialog-focus.qa.spec.ts (2) +
+//            registration-flow.spec.ts (1 — spec dosyası kendi başına
+//            `/auth/sign-up/email` ÇAĞIRMAZ; `beforeAll`'da BİR kez
+//            çağırdığı ORTAK yardımcı `e2e/helpers/verified-fixture-
+//            user.ts`'in `createVerifiedFixtureUser`'ı içindeki TEK
+//            `sign-up/email` çağrısından gelir) = 6
+// (ÖNCEKİ tur: sign-in 7, sign-up 5 — üç dosyayla; bu turda DÖRDÜNCÜ dosya
+// +1 sign-in + 1 sign-up ekledi, gerçek 20/pencere sınırına göre HÂLÂ
+// büyük pay var — kalan 12/20.)
+//
+// ⚠⚠ İKİ EKSİK UYARI (`docs`, T-019, 2026-11-15 — `qa` tur 2'nin ölçtüğü
+// `Q-1` kök nedeninin yan bulgusu):
+// (a) Bu blok BUGÜN YALNIZCA bu dizindeki spec dosyalarının payını sayıyor.
+//     `pnpm test` DE AYNI sayaçları tüketiyor — test harness'ı (`apps/api`)
+//     ile canlı dev API AYNI Redis'i paylaşıyor, yani kök `pnpm test` bir
+//     e2e koşumundan ÖNCE veya SONRA çalışırsa sign-up/sign-in IP sayaçlarına
+//     KENDİ katkısını ekler. Bu blok o katkıyı HİÇ SAYMIYOR — toplam yukarıda
+//     yazılı sayılardan DAHA YÜKSEK olabilir.
+// (b) `/auth/sign-up/email` için gerçek sınır sign-in'den FARKLI: `EMAIL_IP_
+//     LIMIT = 10`/saat (`rate-limit.policy.ts:134`), 15 dk DEĞİL. ⇒ tam e2e
+//     süiti (yukarıdaki sign-up 6 + `pnpm test`'in katkısı) **saatte
+//     yalnızca BİR KEZ** güvenle koşturulabilir; art arda iki tam koşum
+//     aynı saat içinde sign-up'ı 429'a düşürebilir.
 //
 // MEKANİK bir çapraz-dosya toplam denetimi (DEĞERLENDİRİLDİ, KURULMADI):
 // statik regex taraması "gerçek ağ çağrısı" ile "page.route() ile taklit

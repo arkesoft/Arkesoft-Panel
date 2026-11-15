@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildSlugPreviewAddress,
+  resolveSlugCheckDisplayMessages,
   resolveSlugFieldErrorMessage,
   resolveSlugLiveStatusMessage,
   SLUG_LIVE_STATUS_MESSAGE_KEY_COUNT,
@@ -34,6 +35,41 @@ describe('resolveSlugLiveStatusMessage', () => {
 
   it('"available" metni olumlu/kullanılabilir anlamı taşır', () => {
     expect(resolveSlugLiveStatusMessage('available')).toBe('Bu adres kullanılabilir.')
+  })
+})
+
+describe('resolveSlugCheckDisplayMessages', () => {
+  // wcag tur 1 `W-1` (ÖLÇÜLDÜ): `'checking'` HER tuş vuruşunda SENKRON
+  // yazılıyordu ve TEK bir aria-live öğesi bunu da taşıyordu ⇒ yavaş/
+  // karakter-karakter yazan AT kullanıcısında her harfte "Kontrol
+  // ediliyor…" + ~400ms sonra sonuç ÇİFT anonsu. Bu test takımı "checking"in
+  // canlı bölgeye ARTIK düşmediğini, sonucun ise düştüğünü pinler.
+  it('"idle" + hata yok: ikisi de null (henüz gösterilecek bir şey yok)', () => {
+    expect(resolveSlugCheckDisplayMessages('idle', null)).toEqual({
+      visualCheckingMessage: null,
+      liveStatusMessage: null,
+    })
+  })
+
+  it('"checking": görsel göstergede metin VAR, canlı bölgede YOK (wcag tur 1 W-1 düzeltmesi — mutasyon testi: biri `liveStatusMessage` için tekrar `resolveSlugLiveStatusMessage(status)` yazarsa bu assert kırılır)', () => {
+    const result = resolveSlugCheckDisplayMessages('checking', null)
+    expect(result.visualCheckingMessage).toBe('Kontrol ediliyor…')
+    expect(result.liveStatusMessage).toBeNull()
+  })
+
+  it.each(['available', 'taken', 'reserved', 'invalidFormat', 'unreachable'] as const)(
+    'sonuç ("%s"): canlı bölgede metin VAR, görsel göstergede YOK',
+    (outcome) => {
+      const result = resolveSlugCheckDisplayMessages(outcome, null)
+      expect(result.liveStatusMessage).toBe(resolveSlugLiveStatusMessage(outcome))
+      expect(result.visualCheckingMessage).toBeNull()
+    },
+  )
+
+  it('taşıma (transport) hatası VARSA: durum ne olursa olsun canlı bölgeye gider, görsel gösterge gösterilmez', () => {
+    const result = resolveSlugCheckDisplayMessages('checking', 'Bağlantı hatası.')
+    expect(result.liveStatusMessage).toBe('Bağlantı hatası.')
+    expect(result.visualCheckingMessage).toBeNull()
   })
 })
 

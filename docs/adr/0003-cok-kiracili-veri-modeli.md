@@ -158,6 +158,20 @@ Bu karar doğrulanmış sayılır, ancak **iki kısıt altında:**
 
 - **Neden `updated_at` v0.0.3'te tetik değil?** Prisma ile trigger yazımı elle SQL gerektirir; migrate diff'in otomatik algılaması bozulur. v0.0.13'in `@db.GeneratedValue('ALWAYS')` Postgres kendi güncellemesini yapabilir.
 - **Neden `planId` nullable?** Plan v0.17.0'da gelecek; FK + constraint v0.0.3'te önceden yazılmaz (migration başına bir büyük değişiklik).
+  > ⚠ **Güncelleme (`docs`, T-019/v0.1.0, 2026-11-15) — satır yarı doğru, yarı
+  > eski.** `Plan` ve `Subscription` modelleri **v0.1.0'da geldi** — ama yalnızca
+  > model + `trial` aboneliğinin otomatik doğması + limitlerin **veri olarak**
+  > yazılması (kullanıcı kararı, 2026-11-12). **Enforcement, tahsilat,
+  > yükseltme/düşürme, oransal hesap hâlâ v0.17.0'da** — bu kısım değişmedi.
+  > `Tenant.planId` kolonu **hâlâ bağlanmadı**: yukarıdaki "FK + constraint
+  > önceden yazılmaz" lafzı bu kolon için **geçerliliğini sürdürüyor**, ama
+  > artık geçici bir bekleme değil — kolon **DEPRECATED** ilan edildi. Tek
+  > doğruluk kaynağı `Subscription.planId` (`NOT NULL`, `ON DELETE RESTRICT`).
+  > `Tenant.planId` hiçbir yerde yazılmadı/okunmadı (sıfır yazıcı, sıfır
+  > okuyucu); `DROP COLUMN` en erken v0.3.0, kendi PR'ında (yıkıcı migration
+  > kuralı, CLAUDE.md §4). Aynı düzeltme `.claude/workflow/tasks/T-001.md:138`
+  > ve `:1208` (Varsayımlar `V2`) için de not edildi — geçmiş Task kaydı
+  > yeniden yazılmadı, yanına tarihli not eklendi.
 - **Neden soft delete User tablosunda?** Better Auth v0.0.5 kullanıcı silme desteği isteyecek; history + tentative recovery denetim alanı için gerekli.
 
 ---

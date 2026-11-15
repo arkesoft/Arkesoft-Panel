@@ -132,14 +132,34 @@ export function withTenant<T>(
  * YALNIZCA İKİ üye: `tenant` (yeni kiracı satırını yazmak için — RLS'siz
  * platform tablosu, GUC kurulmadan INSERT meşrudur) ve `plan` (kayıt
  * akışının `trial` planını OKUMASI için — `Plan` de platform seviyesi,
- * `tenant_id` TAŞIMAZ). `user`/`account`/`session`/`verification`/
- * `twoFactor` BİLEREK YOK (`AUTH_SECRET_BEARING_MODELS`'in BİREBİR aynısı —
- * bu geri çağrım kimlik doğrulama tablolarına erişmemeli) ve `$transaction`
- * BİLEREK YOK (`AppPrismaDatabase`/`TenantTransactionClient`'ın BİREBİR aynı
- * kararı — iç içe transaction yapısal olarak İMKÂNSIZ olmalı). Negatif tip
- * pini: `__tests__/tenant-context-new-tenant.test.ts`.
+ * `tenant_id` TAŞIMAZ).
+ *
+ * ⚠⚠ DÜZELTME (ROADMAP v0.1.0, T-019 gate tur1 düzeltmesi — `solid` M3 +
+ * `security` S-2, İKİ gate BAĞIMSIZ OLARAK aynı satırı buldu): `plan` üyesi
+ * İLK sürümde `Pick<TransactionClient, 'tenant' | 'plan'>` ile `plan`
+ * delegesinin TAMAMINI (create/update/upsert/delete DAHİL) veriyordu — bu
+ * doc o sürümde de "`plan` … OKUMASI için" diyordu, yani kod kendi
+ * dokümante ettiği niyetten DAHA GENİŞTİ. Negatif kanıt: `insertTenant`
+ * bloğuna `await tx.plan.delete({ where: { id: TRIAL_PLAN_ID } })` yazmak
+ * O SÜRÜMDE DERLENİYORDU (kayıt yolundan platform fiyatlandırma satırı
+ * silinebilirdi). `plan` artık KENDİ İÇİNDE `Pick<TransactionClient['plan'],
+ * 'findUnique'>` ile daraltılır — `insertTenant`'ın GERÇEKTE kullandığı TEK
+ * metot budur (ölçüldü: `apps/api/src/registration/registration.service.ts`
+ * `insertTenant` fazında `tx.plan.findUnique(...)` DIŞINDA `plan` üzerinde
+ * hiçbir çağrı yok). `tx.plan.delete(...)`/`update(...)`/`upsert(...)`/
+ * `create(...)`/`deleteMany(...)` artık `pnpm typecheck`'te KIRILIR (negatif
+ * pin: `__tests__/tenant-context-new-tenant.test.ts`).
+ *
+ * `user`/`account`/`session`/`verification`/`twoFactor` BİLEREK YOK
+ * (`AUTH_SECRET_BEARING_MODELS`'in BİREBİR aynısı — bu geri çağrım kimlik
+ * doğrulama tablolarına erişmemeli) ve `$transaction` BİLEREK YOK
+ * (`AppPrismaDatabase`/`TenantTransactionClient`'ın BİREBİR aynı kararı — iç
+ * içe transaction yapısal olarak İMKÂNSIZ olmalı). Negatif tip pini:
+ * `__tests__/tenant-context-new-tenant.test.ts`.
  */
-export type PlatformTenantWriter = Pick<TransactionClient, 'tenant' | 'plan'>
+export type PlatformTenantWriter = Pick<TransactionClient, 'tenant'> & {
+  readonly plan: Pick<TransactionClient['plan'], 'findUnique'>
+}
 
 /**
  * Kayıt akışının TEK transaction'ı (ROADMAP v0.1.0, T-019/S1, architect VERİ
@@ -163,10 +183,24 @@ export type PlatformTenantWriter = Pick<TransactionClient, 'tenant' | 'plan'>
  * patlarsa SAHİPSİZ bir kiracı kalır, slug `@unique` yüzünden KALICI
  * tutulur, kullanıcı aynı slug'la tekrar deneyemez.
  *
- * ⚠⚠ BU FONKSİYON YENİ BİR YETKİ VERMEZ. Çağıranın GUC'u keyfi bir kiracıya
- * ayarlayabilmesi bugünkü `withTenant(herhangiBirId, …)` ile BİREBİR aynıdır
- * — yeni bir kaçış kapısı DEĞİLDİR, aynı güvenlik garantisinin (çağıranın
- * `tenantId`'yi doğru seçmesine güvenme) ikinci bir çağrı yoludur.
+ * ⚠⚠ BU FONKSİYON YENİ BİR YETKİ VERMEZ — hem GUC EKSENİNDE hem TABLO ERİŞİMİ
+ * EKSENİNDE (ikincisi T-019 gate tur1 düzeltmesiyle DOĞRU hâle geldi,
+ * aşağıya bkz.).
+ *
+ * GUC ekseni: çağıranın GUC'u keyfi bir kiracıya ayarlayabilmesi bugünkü
+ * `withTenant(herhangiBirId, …)` ile BİREBİR aynıdır — yeni bir kaçış kapısı
+ * DEĞİLDİR, aynı güvenlik garantisinin (çağıranın `tenantId`'yi doğru
+ * seçmesine güvenme) ikinci bir çağrı yoludur.
+ *
+ * Tablo erişimi ekseni (`solid` M3 + `security` S-2'nin BAĞIMSIZ bulduğu
+ * eksen — bu iddia İLK sürümde `plan` için YANLIŞTI): `insertTenant`'ın
+ * `tenant` üyesi yeni bir şey AÇMAZ — `apps/api`'nin `AppPrismaDatabase`'i
+ * zaten `tenant`'ı taşır (platform tablosu, RLS'siz INSERT zaten meşru).
+ * `plan` üyesi artık `PlatformTenantWriter`'ın kendi doc'unda yazılı
+ * daraltmayla (`Pick<TransactionClient['plan'], 'findUnique'>`) SALT
+ * OKUNUR — `apps/api`'nin `plan`'a YAZABİLDİĞİ başka hiçbir tip-seviyesi yol
+ * YOK (`AppPrismaDatabase`/`TenantTransactionClient` `plan`'ı hiç TAŞIMAZ),
+ * yani `withNewTenant()` bu eksende de yeni bir YAZMA yeteneği AÇMAZ.
  *
  * `app.tenant_id` jetonu bu dosyanın DIŞINA literal olarak SIZMAZ (K-E12/AC4
  * mekanik taraması — `TENANT_CONTEXT_SETTING` değişkeni burada da

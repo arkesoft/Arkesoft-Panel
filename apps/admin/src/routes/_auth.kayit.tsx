@@ -25,6 +25,7 @@ import { z } from 'zod'
 import { Button, Card, CardContent, cn, FOCUS_RING_CLASS_NAMES, Input } from '@arkesoft/ui'
 
 import { resendVerificationEmail, signUpWithEmail } from '../api/registration-query.js'
+import { resolveShapeErrorMessage } from '../errors/resolve-shape-error-message.js'
 import { MESSAGES, resolvePanelErrorMessage } from '../messages/messages.js'
 import {
   INITIAL_SIGN_UP_STATE,
@@ -46,43 +47,11 @@ const signUpFormSchema = z
 
 type SignUpFormValues = z.infer<typeof signUpFormSchema>
 
-function resolveEmailFieldErrorMessage(errorType: string | undefined): string | undefined {
-  if (errorType === undefined) {
-    return undefined
-  }
-  if (errorType === 'too_small') {
-    return MESSAGES.auth.signUp.emailRequired
-  }
-  if (errorType === 'invalid_format') {
-    return MESSAGES.auth.signUp.emailInvalid
-  }
-  return MESSAGES.auth.signUp.fieldGenericError
-}
-
-function resolvePasswordFieldErrorMessage(errorType: string | undefined): string | undefined {
-  if (errorType === undefined) {
-    return undefined
-  }
-  if (errorType === 'too_small') {
-    return MESSAGES.auth.signUp.passwordRequired
-  }
-  return MESSAGES.auth.signUp.fieldGenericError
-}
-
-function resolvePasswordConfirmFieldErrorMessage(
-  errorType: string | undefined,
-): string | undefined {
-  if (errorType === undefined) {
-    return undefined
-  }
-  if (errorType === 'too_small') {
-    return MESSAGES.auth.signUp.passwordConfirmRequired
-  }
-  if (errorType === 'custom') {
-    return MESSAGES.auth.signUp.passwordMismatch
-  }
-  return MESSAGES.auth.signUp.fieldGenericError
-}
+// GATE TUR 1 DÜZELTMESİ (`solid`, docs/gates/T-019-solid-tur1.md): alan
+// hatası eşlemesi `_auth.sign-in.tsx`'in BİREBİR aynı dallanma şeklini
+// (export'suz, testsiz) tekrar tanımlıyordu — artık
+// `../errors/resolve-shape-error-message.js`'teki tek evde, bkz. o dosyanın
+// başı.
 
 export const Route = createFileRoute('/_auth/kayit')({
   component: SignUpPage,
@@ -117,11 +86,20 @@ function SignUpPage(): JSX.Element {
     defaultValues: { email: '', password: '', passwordConfirm: '' },
   })
 
-  const emailErrorMessage = resolveEmailFieldErrorMessage(errors.email?.type)
-  const passwordErrorMessage = resolvePasswordFieldErrorMessage(errors.password?.type)
-  const passwordConfirmErrorMessage = resolvePasswordConfirmFieldErrorMessage(
-    errors.passwordConfirm?.type,
-  )
+  const emailErrorMessage = resolveShapeErrorMessage(errors.email?.type, {
+    required: MESSAGES.auth.signUp.emailRequired,
+    invalidFormat: MESSAGES.auth.signUp.emailInvalid,
+    genericError: MESSAGES.auth.signUp.fieldGenericError,
+  })
+  const passwordErrorMessage = resolveShapeErrorMessage(errors.password?.type, {
+    required: MESSAGES.auth.signUp.passwordRequired,
+    genericError: MESSAGES.auth.signUp.fieldGenericError,
+  })
+  const passwordConfirmErrorMessage = resolveShapeErrorMessage(errors.passwordConfirm?.type, {
+    required: MESSAGES.auth.signUp.passwordConfirmRequired,
+    custom: MESSAGES.auth.signUp.passwordMismatch,
+    genericError: MESSAGES.auth.signUp.fieldGenericError,
+  })
 
   const onSubmit = handleSubmit(async (values) => {
     await controller.submitSignUp(values.email, values.password)

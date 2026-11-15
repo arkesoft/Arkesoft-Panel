@@ -1,6 +1,6 @@
 {
   "name": "@arkesoft/api",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
   "type": "module",
   "description": "NestJS API — iş mantığı, tRPC router implementasyonu, kuyruk worker’ı",

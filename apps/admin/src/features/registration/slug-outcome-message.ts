@@ -24,11 +24,11 @@ const LIVE_STATUS_MESSAGES = {
 export const SLUG_LIVE_STATUS_MESSAGE_KEY_COUNT = Object.keys(LIVE_STATUS_MESSAGES).length
 
 /**
- * `outcome`'un görünür canlı bölge metni. `status === 'idle'` için `null`
- * döner — kullanıcı henüz hiçbir kontrol tetiklemedi (ör. sayfa yeni açıldı,
- * debounce penceresi içinde bekliyor); bu durumda canlı bölgede GÖSTERİLECEK
- * bir metin yok (ux'in tablosu bu durumu TANIMLAMIYOR, `StoreWizard.tsx` bu
- * `null`'ı "hiçbir şey render etme" olarak okur).
+ * `outcome`'un görünür metni (canlı bölge VEYA görsel-salt gösterge —
+ * çağırana bağlı, bkz. `resolveSlugCheckDisplayMessages`). `status ===
+ * 'idle'` için `null` döner — kullanıcı henüz hiçbir kontrol tetiklemedi
+ * (ör. sayfa yeni açıldı, debounce penceresi içinde bekliyor); bu durumda
+ * GÖSTERİLECEK bir metin yok (ux'in tablosu bu durumu TANIMLAMIYOR).
  */
 export function resolveSlugLiveStatusMessage(
   status: 'idle' | 'checking' | SlugAvailabilityOutcome,
@@ -40,6 +40,43 @@ export function resolveSlugLiveStatusMessage(
     return MESSAGES.registration.slug.checking
   }
   return LIVE_STATUS_MESSAGES[status]
+}
+
+/**
+ * `.tsx`'in İKİ AYRI öğede göstereceği metinler (wcag tur 2 `W-1` düzeltmesi
+ * — ROADMAP v0.1.0, T-019/S10): `'checking'` ARTIK canlı bölgeye düşmez,
+ * yalnızca GÖRSEL göstergede görünür. Sonuç (`available`/`taken`/`reserved`/
+ * `invalidFormat`/`unreachable`) ve taşıma (transport) hatası HER ZAMAN
+ * canlı bölgede kalır — AT kullanıcısının ihtiyacı olan tek anons budur.
+ *
+ * Kök neden (wcag tur 1 `W-1`, ÖLÇÜLDÜ): `setSlug()` her tuş vuruşunda
+ * `slugCheckStatus: 'checking'`'i SENKRON yazıyordu ve tek bir `aria-live`
+ * öğesi BU durumu da taşıyordu ⇒ yavaş/karakter-karakter yazan AT
+ * kullanıcısında HER HARFTE "Kontrol ediliyor…" + ~400ms sonra sonuç ÇİFT
+ * anonsu. Görsel "Kontrol ediliyor…" geri bildirimi (gerçek bir sinyal —
+ * 400ms'lik bekleme için) KALDIRILMADI, SADECE `aria-live` dışına taşındı.
+ */
+export interface SlugCheckDisplayMessages {
+  /** Görsel-salt gösterge metni — `aria-live` TAŞIMAYAN bir öğede render edilir. */
+  readonly visualCheckingMessage: string | null
+  /** Canlı bölge metni — `role="status"`/`aria-live="polite"` öğesinde render edilir. */
+  readonly liveStatusMessage: string | null
+}
+
+export function resolveSlugCheckDisplayMessages(
+  status: 'idle' | 'checking' | SlugAvailabilityOutcome,
+  transportErrorMessage: string | null,
+): SlugCheckDisplayMessages {
+  if (transportErrorMessage !== null) {
+    return { visualCheckingMessage: null, liveStatusMessage: transportErrorMessage }
+  }
+  if (status === 'checking') {
+    return {
+      visualCheckingMessage: resolveSlugLiveStatusMessage('checking'),
+      liveStatusMessage: null,
+    }
+  }
+  return { visualCheckingMessage: null, liveStatusMessage: resolveSlugLiveStatusMessage(status) }
 }
 
 /**

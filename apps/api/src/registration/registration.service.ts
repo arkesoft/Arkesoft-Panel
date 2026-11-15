@@ -39,7 +39,6 @@
 
 import { Inject, Injectable } from '@nestjs/common'
 import { isUniqueConstraintError, TenantRole, TenantStatus } from '@arkesoft/db'
-import type { Prisma } from '@arkesoft/db'
 import { validateTenantSlug } from '@arkesoft/tenancy'
 import type {
   CreateTenantInput,
@@ -51,6 +50,7 @@ import type {
   SlugAvailability,
   SlugAvailabilityOutcome,
 } from '@arkesoft/trpc'
+import { z } from 'zod'
 
 import { assertNever } from '../errors/assert-never.js'
 import { TenantNotFoundError } from '../errors/domain/tenant-not-found.error.js'
@@ -67,6 +67,33 @@ import { TenantResolverService } from '../tenancy/tenant-resolver.service.js'
  * ikinci bir kaynak İCAT EDİLMEDİ).
  */
 const TRIAL_PLAN_ID = 'trial'
+
+/**
+ * `Plan.limits` JSONB kolonunun şeması (T-019 gate tur1 düzeltmesi, security
+ * `low` + architect VERİ MODELİ'nin KENDİ şartı: "`limits Json` NOT NULL
+ * [şablon], Zod ile parse, dört anahtar"). CLAUDE.md §4: "JSONB kolonları …
+ * Zod ile parse edilir". ⚠ BİLEREK AYRI bir dosyada DEĞİL, BURADA: AC-13'ün
+ * negatif kapsam testi (aşağıda `resolveSlugOutcome`'un yanındaki `createTenant`
+ * metoduna bkz) `.limits` jetonunun ÜRETİM kodunda YALNIZCA bu dosyada
+ * geçtiğini mekanik olarak doğrular (`registration.test.ts` AC-13) — ayrı bir
+ * `plan-limits.schema.ts` dosyası o negatif kapsam invaryantını İHLAL ederdi
+ * (ikinci bir "limits okuyan" dosya, testin ÖLÇTÜĞÜ TAM ŞEYDİR).
+ *
+ * DÖRT ANAHTAR — `packages/db/src/seed-data.ts`'in `TRIAL_PLAN.limits`
+ * fixture'ından ÖLÇÜLDÜ (uydurulmadı): `maxProducts`, `maxOrdersPerMonth`,
+ * `maxStorageBytes`, `maxUsers`. Tümü tamsayı ve negatif OLAMAZ (`0` GEÇERLİ —
+ * v0.17.0'ın enforcement'ının yorumlayacağı değer, bu sürümde ZORLANMAZ).
+ * `z.object` varsayılan olarak TANINMAYAN anahtarları DÜŞÜRÜR (strip).
+ */
+export const planLimitsSchema = z.object({
+  maxProducts: z.number().int().nonnegative(),
+  maxOrdersPerMonth: z.number().int().nonnegative(),
+  maxStorageBytes: z.number().int().nonnegative(),
+  maxUsers: z.number().int().nonnegative(),
+})
+
+/** {@link planLimitsSchema}'nın çıkarılan tip karşılığı. */
+export type PlanLimits = z.infer<typeof planLimitsSchema>
 
 /**
  * {@link SlugAvailabilityOutcome}'ın `'available'` DIŞINDAKİ dört değerini
@@ -149,7 +176,7 @@ export class RegistrationService {
     // (`tenant`+`plan`) VE `TenantTransactionClient` (`subscription` dahil,
     // `plan` HARİÇ) birbirinin TAM TERSİ allowlist'tir (ADR-0021 VERİ
     // MODELİ) — `plan` İKİ fazda birden OKUNAMAZ, tek okuma yeri burasıdır.
-    let trialPlanLimits: Prisma.JsonValue | undefined
+    let trialPlanLimits: PlanLimits | undefined
 
     await this.prisma.withNewTenant(
       async (tx) => {
@@ -167,7 +194,34 @@ export class RegistrationService {
           )
         }
 
-        trialPlanLimits = plan.limits
+        // T-019 gate tur1 düzeltmesi (security `low` → architect VERİ
+        // MODELİ'nin KENDİ şartı: "`limits Json` … Zod ile parse, dört
+        // anahtar") — CLAUDE.md §4: JSONB okuması Zod'dan GEÇMEDEN tip
+        // VERİLMEZ. `planLimitsSchema` (yukarıda, bu dosyanın başında tanımlı)
+        // AYRI bir `plan-limits.schema.ts` dosyasında YAŞAMAZ, BİLEREK burada
+        // yaşar: bu şekil hiçbir tRPC çıktısına ÇIKMAZ (şema `packages/trpc`'de
+        // DEĞİL) ve AC-13'ün negatif kapsam testi `.limits` jetonunun üretim
+        // kodunda YALNIZCA bu dosyada geçtiğini mekanik olarak doğruluyor —
+        // ayrı bir dosya bu invaryantı İHLAL ederdi (`jobPayloadBaseSchema`
+        // emsali).
+        //
+        // Parse BAŞARISIZLIĞI — yukarıdaki "plan satırı bulunamadı" İLE AYNI
+        // SINIFTAN bir arıza: İŞ KURALI İHLALİ DEĞİL, seed/migration'ın
+        // yazdığı şablonun BOZULMASI. Bu yüzden YENİ bir `AppError` alt
+        // sınıfı İCAT EDİLMEDİ (architect F3 çürütmesinin bu dosyada
+        // kurduğu disiplinin RUHU — kullanıcı girdisi hatası DEĞİLDİR,
+        // kullanıcıya gösterilecek bir `userMessageKey` YOKTUR); yukarıdaki
+        // `throw new Error(...)` İLE BİREBİR AYNI, sarmalanmamış, LOUD
+        // hata biçimi kullanılır — hata YUTULMAZ, yukarı iletilir.
+        const limitsParseResult = planLimitsSchema.safeParse(plan.limits)
+
+        if (!limitsParseResult.success) {
+          throw new Error(
+            `registration.service.ts: '${TRIAL_PLAN_ID}' planının 'limits' kolonu beklenen şekille (dört anahtar — maxProducts/maxOrdersPerMonth/maxStorageBytes/maxUsers) EŞLEŞMİYOR — seed/migration bozulmuş olabilir: ${limitsParseResult.error.message}`,
+          )
+        }
+
+        trialPlanLimits = limitsParseResult.data
 
         try {
           return await tx.tenant.create({
