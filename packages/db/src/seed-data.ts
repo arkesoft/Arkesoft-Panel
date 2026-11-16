@@ -36,7 +36,15 @@
 // değiştirilecektir.
 export const TRIAL_PLAN = {
   id: 'trial',
-  /** Operatöre dönük — TELE ÇIKMAZ, panelde render EDİLMEZ (bkz. `Plan` model doc'u). */
+  /**
+   * Operatöre dönük — KİRACI PANELİNE tele çıkmaz, kiracı panelinde render
+   * edilmez (bkz. `Plan` model doc'u). GÜNCELLEME (ROADMAP v0.0.20, T-021/S3
+   * — R-PO2 doc drift düzeltmesi): süper admin yüzeyi
+   * (`platform.tenantList`) bu değeri `planName` olarak taşır — operatörün
+   * KENDİ paneli olduğu ve taşınan değerin veri (sabit metin değil) olduğu
+   * için ruh ihlal edilmez; tam gerekçe `Plan` model doc'undaki güncelleme
+   * notunda.
+   */
   name: 'Deneme',
   limits: {
     maxProducts: 50,

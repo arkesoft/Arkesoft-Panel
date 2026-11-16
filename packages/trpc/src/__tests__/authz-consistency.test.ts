@@ -121,6 +121,10 @@ describe('A-A2 — envanter kaynağının kendisi (ölçüm, varsayım değil)',
       ['member.invite', 'mutation'],
       ['member.remove', 'mutation'],
       ['member.updateRole', 'mutation'],
+      // ROADMAP v0.0.20, T-021/S5 — ÜÇ yeni kayıt (ADR-0023 Karar 1/2).
+      ['platform.auditLog', 'query'],
+      ['platform.session', 'query'],
+      ['platform.tenantList', 'query'],
       ['registration.checkSlugAvailability', 'query'],
       ['registration.createTenant', 'mutation'],
       ['registration.onboardingChecklist', 'query'],
@@ -178,10 +182,10 @@ describe('AC3 ayak (c) — KAPALI DÜNYA: beyan edilen yüzey = gerçek yüzey',
     expect([...inventory.keys()].sort()).toEqual(Object.keys(PROCEDURE_SURFACE).sort())
   })
 
-  it('kayıt sayıları eşit ve ON DÖRT (tablonun boş olmadığının kanıtı; ROADMAP v0.1.0, T-019/S3)', () => {
+  it('kayıt sayıları eşit ve ON YEDİ (tablonun boş olmadığının kanıtı; ROADMAP v0.0.20, T-021/S5 — 14ten 17ye çıktı)', () => {
     const inventory = readRouterInventory()
 
-    expect(Object.keys(PROCEDURE_SURFACE).length).toBe(14)
+    expect(Object.keys(PROCEDURE_SURFACE).length).toBe(17)
     expect(inventory.size).toBe(Object.keys(PROCEDURE_SURFACE).length)
   })
 
@@ -206,7 +210,7 @@ describe('AC3 ayak (c) — KAPALI DÜNYA: beyan edilen yüzey = gerçek yüzey',
     expect(listRecordedPermissionUsages().length).toBe(6)
   })
 
-  it('izinsiz beyan edilen yollar TAM OLARAK bilinen SEKİZ istisnadır (builder beyanı inceleme görünürlüğü; ROADMAP v0.1.0, T-019/S3 — üç registration.* prosedürü EKLENDİ)', () => {
+  it('izinsiz beyan edilen yollar TAM OLARAK bilinen ON BİR istisnadır (builder beyanı inceleme görünürlüğü; ROADMAP v0.0.20, T-021/S5 — üç platform.* prosedürü EKLENDİ)', () => {
     // ⚠ TABLONUN KAPATAMADIĞI DELİK BURADA GÖRÜNÜR OLUR: bir prosedürü
     // `builder: 'tenant'` diye BİLEREK beyan etmek mekanik olarak
     // yakalanamaz. Bu assert o beyanı bir KARDİNALİTE + AD listesine bağlar:
@@ -219,6 +223,9 @@ describe('AC3 ayak (c) — KAPALI DÜNYA: beyan edilen yüzey = gerçek yüzey',
 
     expect(ungated.sort()).toEqual([
       ['member.acceptInvitation', 'protected'],
+      ['platform.auditLog', 'platformAdmin'],
+      ['platform.session', 'protected'],
+      ['platform.tenantList', 'platformAdmin'],
       ['registration.checkSlugAvailability', 'protected'],
       ['registration.createTenant', 'protected'],
       ['registration.onboardingChecklist', 'protected'],
@@ -227,5 +234,21 @@ describe('AC3 ayak (c) — KAPALI DÜNYA: beyan edilen yüzey = gerçek yüzey',
       ['storefront.currentTenant', 'publicTenant'],
       ['tenant.current', 'tenant'],
     ])
+  })
+
+  it('AC-6 ayak (i) — `platformAdmin` builder KÜMESİ BOŞ DEĞİL (anti-vacuity, ROADMAP v0.0.20, T-021/S5)', () => {
+    // ⚠⚠ Bu assert T-021/S5'in AC-6 kanıtının BİRİNCİ ayağıdır: küme filtresi
+    // `PLATFORM_ADMIN_PATHS` boş kümeye düşerse (ör. bir refactor yanlışlıkla
+    // tüm `platformAdmin` kayıtlarını silerse) bu test KIRMIZI olmak
+    // ZORUNDADIR — `@RequirePermission()`'ın ROADMAP:3075'te reddedildiği
+    // "boş küme üzerinde doğrulama" tuzağına DÜŞÜLMEZ (handoff raporunun
+    // mutasyon kanıtı bu assert'in `['yok']`'a düşürülmüş HALİNİ ayrı
+    // ÖLÇTÜ).
+    const platformAdminPaths = Object.entries(PROCEDURE_SURFACE)
+      .filter(([, entry]) => entry.builder === 'platformAdmin')
+      .map(([path]) => path)
+
+    expect(platformAdminPaths.length).not.toBe(0)
+    expect(platformAdminPaths.sort()).toEqual(['platform.auditLog', 'platform.tenantList'])
   })
 })

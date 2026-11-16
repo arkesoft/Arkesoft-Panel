@@ -1009,6 +1009,66 @@ hiçbir şey çalıştırmadan** iki ardışık `pnpm --filter @arkesoft/admin t
 
 ---
 
+## Süper admin (`apps/superadmin`) Geliştirme (v0.0.20+)
+
+### ⚠⚠ `SUPERADMIN_IP_ALLOWLIST` boşken panel TAMAMEN KAPALIDIR — bu VARSAYILAN ve BİLİNÇLİDİR
+
+`SUPERADMIN_IP_ALLOWLIST` **varsayılanı boş dizedir** (`api-env.ts`:
+`z.string().default('')`) ve boş liste, `platform.*` tRPC yüzeyinin **tamamını**
+fail-closed reddeder — `PlatformAdminIpGuard` üç dalının ilki tam bu durum için var:
+liste boşsa istek **403 `PLATFORM_NETWORK_NOT_ALLOWED`** alır, IP'nin kendisi hiç
+karşılaştırılmaz.
+
+**Bu bir hata değil, tasarımın varsayılan davranışıdır** (ADR-0023 §5): yeni bir ortam
+kurulumunda operatör allowlist'i **elle** doldurmadan süper admin paneli kimseye
+açılmaz. ⚠ Ama teşhis edilmediğinde bu, ADR-0011'in (madde 37) _"en pahalı teşhis
+sınıfı"_ dediği **sessiz 403** ile aynı yere düşer: panel yüklenir, giriş bile
+**çalışabilir** (kimlik + 2FA katmanı IP kapısından **önce** koşar — ADR-0023 §5,
+_"üçüncü katman, birincil yetkilendirme değil"_), ama kiracı listesi/denetim kaydı
+ekranları hep boş/hatalı kalır ve belirti _"veri gelmiyor"_ olur, _"yapılandırma eksik"_
+değil.
+
+**Teşhis:** yanıt gövdesindeki hata kodu `PLATFORM_NETWORK_NOT_ALLOWED` ise (`401`
+`UNAUTHENTICATED` veya `403` `PLATFORM_ADMIN_REQUIRED` **değil**) kök neden budur.
+Bu üç kod birbirinden **kesin** ayrılır: `UNAUTHENTICATED` oturum yok demektir,
+`PLATFORM_ADMIN_REQUIRED` oturum var ama `platform_admin` kaydı/2FA yok demektir,
+`PLATFORM_NETWORK_NOT_ALLOWED` ise kimlik+yetki **doğru** ama ağ IP'si allowlist'te
+**yok** demektir — üçü de 401/403 olduğu için gövdeyi okumadan ayırt edilemez.
+
+**Çözüm (yerel geliştirme):**
+
+```bash
+# .env — geliştiricinin kendi makinesi loopback'ten bağlanır
+SUPERADMIN_IP_ALLOWLIST=127.0.0.1
+```
+
+Üretimde/CI'da gerçek operatör IP'lerinin (veya VPN çıkış IP'lerinin) virgülle ayrılmış
+listesi beklenir. `AUTH_TRUSTED_PROXY_COUNT` **0** iken (varsayılan) `X-Forwarded-For`
+hiç okunmaz; bir ters vekilin arkasındaysanız bu değeri doğru vekil sayısına ayarlamadan
+allowlist'in IP'leri **hiçbir zaman eşleşmez** (bkz. `ROADMAP.md` → Teknik Borç →
+`security` L5, ham IP'nin güvenilmemesi gerektiği ayrı bir kayıtlı borç).
+
+⚠ Bu kapı **birincil yetkilendirme değildir** — izinsiz bir ağdan biri yine de giriş
+yapabilir (kimlik + TOTP gerekir), yalnızca **hiçbir veri ucunu okuyamaz**. IP kapısının
+amacı veri erişimini ağ seviyesinde daraltmaktır, kimlik doğrulamanın yerine geçmez.
+
+### Dev akışı
+
+```bash
+pnpm infra:up
+pnpm db:migrate
+pnpm db:seed
+pnpm --filter @arkesoft/api dev                     # API
+SUPERADMIN_IP_ALLOWLIST=127.0.0.1 pnpm --filter @arkesoft/superadmin dev   # Vite, :5174
+```
+
+`SUPERADMIN_BASE_URL` panelin tarayıcıda gördüğü orijindir (ADR-0011 gözden geçirme
+koşulu 2'nin cevabı — `AUTH_BASE_URL`'in **anlamı değişmez**, güvenilir orijin **tek
+değerden listeye** geçer, `trusted-origins.ts`). Dev portu **5174**, sabit; e2e override
+`ARKESOFT_SUPERADMIN_E2E_PORT` (bkz. `docs/testing.md` port haritası).
+
+---
+
 ## Vitrin (`apps/storefront`) Geliştirme (v0.0.8+)
 
 ### `CLAUDECODE` tuzağı — `astro dev` arka plana düşer

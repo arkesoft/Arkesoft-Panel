@@ -45,6 +45,12 @@
 // `toContain`'e düşürüldü — küme eşitliği yine ELLE güncellendi.
 // `AUTH_EXEMPT_PATHS` BU satırla DEĞİŞMEDİ (12'de kalır, `git diff --exit-code
 // auth/auth-exempt-paths.ts` ile doğrulanır).
+//
+// GÜNCELLEME (ROADMAP v0.0.20, T-021/S7, ADR-0023 Karar 2): 24 → 27,
+// DOKUZUNCU grup — üç `/trpc/platform.*` ucu (gerekçe `tenant-exempt-
+// paths.ts` dosya başı yorumunda). ⚠ Kardinalite assertion'ı KORUNDU:
+// `.size` kontrolü ne kaldırıldı ne `toContain`'e düşürüldü. `AUTH_EXEMPT_PATHS`
+// BU satırla DEĞİŞMEDİ (12'de kalır).
 
 import { describe, expect, it } from 'vitest'
 
@@ -75,14 +81,17 @@ const EXPECTED_EXEMPT_PATHS = [
   '/trpc/registration.checkSlugAvailability',
   '/trpc/registration.createTenant',
   '/trpc/registration.onboardingChecklist',
+  '/trpc/platform.session',
+  '/trpc/platform.tenantList',
+  '/trpc/platform.auditLog',
 ] as const
 
 describe('TENANT_EXEMPT_PATHS', () => {
-  it('tam olarak yirmi dört eleman taşır', () => {
-    expect(TENANT_EXEMPT_PATHS.size).toBe(24)
+  it('tam olarak yirmi yedi eleman taşır', () => {
+    expect(TENANT_EXEMPT_PATHS.size).toBe(27)
   })
 
-  it('küme TAM OLARAK beklenen yirmi dört elemandır', () => {
+  it('küme TAM OLARAK beklenen yirmi yedi elemandır', () => {
     expect(new Set(TENANT_EXEMPT_PATHS)).toEqual(new Set(EXPECTED_EXEMPT_PATHS))
   })
 

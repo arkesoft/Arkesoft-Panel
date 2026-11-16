@@ -1,5 +1,15 @@
 # @arkesoft/admin
 
+## 0.10.0
+
+### Patch Changes
+
+- Updated dependencies
+  - @arkesoft/trpc@0.8.0
+  - @arkesoft/errors@0.10.0
+  - @arkesoft/tenancy@0.10.0
+  - @arkesoft/ui@0.10.0
+
 ## 0.9.0
 
 ### Minor Changes

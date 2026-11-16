@@ -236,7 +236,16 @@ pnpm --filter @arkesoft/<app> test:e2e   # Playwright — PAKET BAZINDA (v0.0.7'
                      # yalnızca apps/admin'de var" diyordu — BAYATTI. `test:e2e`
                      # v0.0.7'den beri İKİ uygulamada da var (apps/admin/package.json:12
                      # VE apps/storefront/package.json:12); kök toplayıcı artık da var
-                     # (yukarıdaki satır).
+                     # (yukarıdaki satır). v0.0.20'den itibaren ÜÇ (apps/superadmin).
+#
+# ⚠⚠ ÖLÇÜLMÜŞ TUZAK (T-021; `backend`/S1 vitest için, `qa` tur 1 Playwright için
+# BAĞIMSIZ olarak ölçtü): `pnpm --filter <paket> <script> -- <desen>` bu depoda
+# FİLTRE UYGULAMIYOR. S1'in ölçümü: `pnpm --filter @arkesoft/api test -- two-factor-…`
+# iki bağımsız denemede paketin TÜM süitini koşturdu (93 dosya / 727 test, ~140 sn),
+# hedef dosyayı değil. ⇒ Ajan "testim koştu" sanır, aslında her şeyi koşturur; daha
+# kötüsü, "yalnızca kendi paketini koştur" kısıtını FARKINDA OLMADAN aşabilir.
+# ⭐ DOĞRU KULLANIM — paket dizininden: `npx vitest run <desen>` (1 dosya, 1.46 sn)
+# veya Playwright için `npx playwright test <dosya>`.
 pnpm test:visual     # Görsel regresyon — KÖK TOPLAYICI (v0.0.19'dan itibaren, T-020/S6;
                      # pinli Playwright Docker imajı İÇİNDE koşar, bkz. docs/testing.md §3).
 pnpm test:visual:update   # Referans görüntüleri günceller (v0.0.19'dan itibaren, T-020/S6).

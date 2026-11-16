@@ -305,11 +305,16 @@ jobs:
             fi
             # ROADMAP v0.0.19, T-020/S8 — "e2e" job'u api/admin/storefront'un
             # e2e spec'lerini VE (storefront'un "modern" teması üzerinden
-            # render ettiği) paylaşılan paketleri kapsıyor; "superadmin" ve
-            # "theme_sdk" BİLEREK kümede YOK (superadmin'in Playwright
-            # projesi v0.0.20'ye bırakıldı, kullanıcı kararı — T-020 brief;
-            # theme-sdk'ya workspace:* ile bağımlı hiçbir e2e akışı yok).
-            if [ "$api" = true ] || [ "$admin" = true ] || [ "$storefront" = true ] || [ "$shared" = true ]; then
+            # render ettiği) paylaşılan paketleri kapsıyor.
+            # GÜNCELLEME (ROADMAP v0.0.20, T-021/S10) — "superadmin" KÜMEYE
+            # EKLENDİ: `apps/superadmin/e2e/**` (bu alt görev) bir Playwright
+            # projesi kazandı (kullanıcı kararının T-020'de bıraktığı iş,
+            # v0.0.20'de teslim edildi) ⇒ `@arkesoft/superadmin`'i etkileyen
+            # bir değişiklik artık "e2e" job'unu da tetiklemek ZORUNDA
+            # (aksi hâlde `apps/superadmin/src/**`'e dokunan bir PR kendi
+            # e2e'sini SESSİZCE atlardı). "theme_sdk" BİLEREK kümede YOK
+            # (theme-sdk'ya workspace:* ile bağımlı hiçbir e2e akışı yok).
+            if [ "$api" = true ] || [ "$admin" = true ] || [ "$superadmin" = true ] || [ "$storefront" = true ] || [ "$shared" = true ]; then
               e2e=true
             fi
           fi
@@ -1238,6 +1243,22 @@ jobs:
 
       - name: apps/api'yi arka planda başlat ve /health/ready'yi probla
         shell: bash
+        # GÜNCELLEME (ROADMAP v0.0.20, T-021/S10) — İKİ env AÇIKÇA EKLENDİ.
+        # Olmadan `SUPERADMIN_IP_ALLOWLIST` varsayılanı (`''`, `api-env.ts`)
+        # `PlatformAdminIpGuard`'ı fail-closed TETİKLER (ADR-0023 §5 —
+        # "boş allowlist = kapalı") ve `superadmin-flow.spec.ts`/
+        # `superadmin-authz.spec.ts`'in TÜM `platform.*` çağrıları 403
+        # `PLATFORM_NETWORK_NOT_ALLOWED` alırdı; `SUPERADMIN_BASE_URL`
+        # olmadan `trusted-origins.ts` listesi TEK elemanlı kalır ve
+        # fixture'ın `Origin: http://superadmin.arkesoft.localhost:5174`
+        # başlığı (platform-admin.ts, OKUNDU) `origin_mismatch` ile
+        # REDDEDİLİRDİ. İKİ DEĞER DE ADR-0023 §4/§5'in `.env.example`'daki
+        # (yorum satırı) VARSAYILANIYLA BİREBİR AYNI — bu job GH Actions
+        # runner'ının loopback'ten (`127.0.0.1`) kendi kendine bağlandığı
+        # BİLİNEN bir ortam (api/admin/storefront job'larının AYNI varsayımı).
+        env:
+          SUPERADMIN_BASE_URL: http://superadmin.arkesoft.localhost:5174
+          SUPERADMIN_IP_ALLOWLIST: 127.0.0.1
         run: |
           set -euo pipefail
           # storefront'un "e2e/global-setup.ts:17-30"u apps/api'nin ÇALIŞIYOR

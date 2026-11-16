@@ -79,6 +79,37 @@ yasaklanır — fabrika üretim koduna sızamaz.
 > `docker run` ile kaldırmak (⚠ `api` job'u da `services: postgres` kullanıyor ⇒
 > **gereksiz patlama yarıçapı**).
 
+> ⭐ **GÜNCELLEME (`architect`, T-021/v0.0.20, 2026-11-15) — KARAR 1'İN UYGULAMASI
+> TEK MODÜLDE BİRLEŞTİRİLDİ; KARAR 3 AÇILMADI.**
+>
+> Gözden geçirme koşulu *"`apps/superadmin` veya üçüncü bir uygulama e2e kazanır **ve
+> dizin sözleşmesi yetersiz kalırsa**"* diyor — **iki şartlı**. v0.0.20 birinciyi
+> gerçekleştiriyor, ikincisini **gerçekleştirmiyor**: `superadmin` projesi yalnızca
+> `e2e/*.spec.ts` (masaüstü) taşıyor; `responsive/` ve `visual/` dizinleri **yok**
+> (görsel regresyon bu sürümün kapsamı dışında, `A-T21-5`). ⇒ **Karar 3 (dizin tabanlı
+> proje ayrımı) AYNEN GEÇERLİ.**
+>
+> ⚠ Ayrı ve **gerçekten** tetiklenen koşul `ROADMAP:3267`'nin borcudur: iki fabrikanın
+> `runSql`/`querySqlRows` gövdeleri `solid` tur2'de **~117 satır / +%41** sapma ölçüldü
+> ve üçüncü fabrika kopyayı **üçe** çıkaracaktı. ⇒ `docker exec … psql` alt süreç
+> yardımcısı ve dört korumanın ((a)-(d)) **gövdeleri** tek bir modüle çıkarıldı:
+> **`scripts/playwright/sql.ts`**. Üç fabrika (`admin`, `storefront`, `superadmin`) onu
+> göreli yolla import eder; her fabrika yalnızca kendi `e2e-` önek desenini ve kendi
+> temizlik mantığını taşır.
+>
+> **Karar 1'in yasakları DEĞİŞMEDİ:** yol hâlâ `docker exec … psql` alt sürecidir,
+> e2e katmanında Prisma/`@arkesoft/db`/Node Postgres sürücüsü **yoktur**. Yer seçimi
+> Karar 6'nın **zaten kurduğu** alandır (`scripts/playwright/`, `scripts/tsconfig.json`
+> `include` onu kapsıyor) ve göreli import'un çalıştığı ölçülmüştür
+> (`apps/admin/playwright.config.ts` bugün `../../scripts/playwright/base.js`'i import
+> ediyor).
+>
+> ⚠ **Kapının güncellenmesi bu güncellemenin ayrılmaz parçasıdır** (Karar 6'nın
+> `include` düzeltmesiyle birebir aynı ders): `guards.sh`'in K1(d) taraması artık
+> *"`docker exec`+`psql` kullanan dosya kümesi = tam olarak **bu bir** modül"* der.
+> Kapı **güçlenir**: sapmanın metinsel eşitlikle denetlenmesine gerek kalmaz, çünkü
+> **tek gövde** vardır.
+
 **Karar 2 — İkinci test-only bağlantı profili AÇILMAYACAK.** T-019'un tetikleyicisi
 **ateşlenmiyor**: Karar 1'in yolu bir alt süreçtir; bağlantı havuzu, `commandTimeout`
 veya `connectTimeout` gibi ayarlanacak **hiçbir profil yüzeyi yoktur**. Dolayısıyla

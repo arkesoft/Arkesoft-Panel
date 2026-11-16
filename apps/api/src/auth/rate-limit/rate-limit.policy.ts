@@ -335,12 +335,49 @@ const RATE_LIMITED_ROUTES: ReadonlyMap<string, RateLimitPolicy> = new Map([
  * `isAuthDelegatedPath`'iyle BİREBİR aynı (sondaki `/` soyulur, sorgu
  * dizesi/fragman karışmaz, büyük/küçük harf DUYARLI, metot büyük/küçük harf
  * DUYARSIZ).
+ *
+ * GÜNCELLEME (T-021 FIX turu 3, security tur2 F2-TUR2, `medium`): doğrudan
+ * eşleşme büyük/küçük harf DUYARLI kalır (yukarıdaki satır DOĞRU — `/trpc`
+ * MOUNT öneki `normalizeRequestPath`'te ZATEN kanonikleştirildi,
+ * `http/normalize-request-path.ts`'in dosya başı GÜNCELLEME yorumuna bkz.).
+ * AMA `AUTH_OWN_PATHS`'in (`sessions.controller.ts`'in TAMAMEN STATİK üç
+ * yolu — kullanıcı/kiracı girdisi TAŞIMAZ, `/trpc`'nin prosedür adı gibi
+ * ANLAMLI bir büyük/küçük harf ekseni YOK) kendi, AYRI bir boşluğu VARDI:
+ * Express'in `@Post('auth/sessions/revoke')` gibi TAMAMEN statik rota
+ * dekoratörleri `trpc/*path` joker rotasının AKSİNE SADECE mount önekini
+ * DEĞİL, TÜM statik segmentleri (`sessions`/`revoke`) büyük/küçük harf
+ * DUYARSIZ eşleştirir — `/AUTH/sessions/revoke` VE `/Auth/Sessions/Revoke`
+ * İKİSİ DE AYNI handler'a ULAŞIR (CANLI kanıt, security tur2 §2(b)) ama
+ * doğrudan `Map.get` İKİSİNİ DE KAÇIRIRDI. Bu üç yol TAMAMEN STATİK
+ * OLDUĞU İÇİN (`/trpc`'nin prosedür segmentinin AKSİNE) tam küçük harfe
+ * ÇEVİRİP karşılaştırmak YENİ bir eksen AÇMAZ — `AUTH_DELEGATED_PATHS`'E
+ * (Better Auth'un delege yüzeyi, security tur2 §2(c)'nin ZATEN SAĞLAM
+ * bulduğu) BİLEREK DOKUNULMADI, bu fallback YALNIZCA `AUTH_OWN_PATHS`
+ * üyeliğini kontrol eder.
  */
 export function resolveRateLimitPolicy(
   method: string,
   rawUrl: string,
 ): RateLimitPolicy | undefined {
+  const methodUpper = method.toUpperCase()
   const normalizedPathname = normalizeRequestPath(rawUrl)
 
-  return RATE_LIMITED_ROUTES.get(`${method.toUpperCase()} ${normalizedPathname}`)
+  const direct = RATE_LIMITED_ROUTES.get(`${methodUpper} ${normalizedPathname}`)
+
+  if (direct !== undefined) {
+    return direct
+  }
+
+  // Dar, KAPALI küme fallback'i — dosya başı GÜNCELLEME yorumuna bkz.
+  // `AUTH_OWN_PATHS`'in ÜÇ literalinin TAMAMI zaten küçük harf; bu yüzden
+  // `foldedOwnPath === normalizedPathname.toLowerCase()` eşitliği hem
+  // `/AUTH/sessions/revoke` (mount öneki büyük) hem `/Auth/Sessions/Revoke`
+  // (TÜM segmentler karışık) varyantlarını AYNI kanonik anahtara indirger.
+  const foldedOwnPath = normalizedPathname.toLowerCase()
+
+  if (AUTH_OWN_PATHS.has(foldedOwnPath)) {
+    return RATE_LIMITED_ROUTES.get(`${methodUpper} ${foldedOwnPath}`)
+  }
+
+  return undefined
 }

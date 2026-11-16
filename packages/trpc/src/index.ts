@@ -130,6 +130,34 @@ export type {
   SlugAvailabilityOutcome,
 } from './schemas/registration.schema.js'
 
+// ROADMAP v0.0.20, T-021/S5 — `apps/superadmin`'in (S8) tüketeceği tel
+// sözleşmesi, `member.schema.ts`/`registration.schema.ts` ile AYNI yoldan
+// (ADR-0023 Karar 1/2/3).
+export {
+  PLATFORM_AUDIT_LOG_DEFAULT_LIMIT,
+  PLATFORM_AUDIT_LOG_MAX_LIMIT,
+  PLATFORM_TENANT_LIST_DEFAULT_LIMIT,
+  PLATFORM_TENANT_LIST_MAX_LIMIT,
+  platformAuditActionSchema,
+  platformAuditEntrySchema,
+  platformAuditLogInputSchema,
+  platformAuditLogOutputSchema,
+  platformSessionSchema,
+  platformTenantListInputSchema,
+  platformTenantListOutputSchema,
+  platformTenantSummarySchema,
+} from './schemas/platform.schema.js'
+export type {
+  PlatformAuditActionWire,
+  PlatformAuditEntry,
+  PlatformAuditLogInput,
+  PlatformAuditLogOutput,
+  PlatformSession,
+  PlatformTenantListInput,
+  PlatformTenantListOutput,
+  PlatformTenantSummary,
+} from './schemas/platform.schema.js'
+
 export { PERMISSIONS, ROLE_PERMISSIONS } from './authz/permissions.js'
 export type { Permission } from './authz/permissions.js'
 

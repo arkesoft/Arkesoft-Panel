@@ -79,6 +79,9 @@ import type { ApiEnv } from '../config/api-env.js'
 import { API_ENV } from '../config/config.tokens.js'
 import type { HttpRequestLike, HttpResponseLike } from '../http/http-request.types.js'
 import { toWebHeaders } from '../http/to-web-headers.js'
+import { PlatformAdminIpGuard } from '../platform/platform-admin-ip.guard.js'
+import { PlatformAdminReadPortAdapter } from '../platform/platform-admin-read.port.adapter.js'
+import { PlatformReadPortAdapter } from '../platform/platform-read.port.adapter.js'
 import { JobReadPortAdapter } from './ports/job-read.port.adapter.js'
 import { MemberWritePortAdapter } from './ports/member-write.port.adapter.js'
 import { MembershipReadPortAdapter } from './ports/membership-read.port.adapter.js'
@@ -189,18 +192,26 @@ export class TrpcController {
     private readonly registrationRead: RegistrationReadPortAdapter,
     @Inject(RegistrationWritePortAdapter)
     private readonly registrationWrite: RegistrationWritePortAdapter,
+    @Inject(PlatformAdminReadPortAdapter)
+    private readonly platformAdminRead: PlatformAdminReadPortAdapter,
+    @Inject(PlatformReadPortAdapter) private readonly platformRead: PlatformReadPortAdapter,
     @Inject(TrpcErrorsPortAdapter) private readonly errorsPort: TrpcErrorsPortAdapter,
   ) {}
 
-  @UseGuards(SameOriginGuard)
+  // ⚠⚠ ROADMAP v0.0.20, T-021/S7, ADR-0023 §5 — `PlatformAdminIpGuard`
+  // EKLENDİ. Guard KENDİSİ `platform.*` DIŞI her yolda anında `true` döner
+  // (dosya başı yorumu, `RateLimitGuard`'ın AYNI deseni) — `/trpc`'nin
+  // GERİ KALANI bu eklemeden ETKİLENMEZ.
+  @UseGuards(SameOriginGuard, PlatformAdminIpGuard)
   @All('trpc/*path')
   async handle(@Req() req: TrpcHttpRequest, @Res() res: HttpResponseLike): Promise<void> {
     const request = buildTrpcWebRequest(req, this.env.AUTH_BASE_URL)
     // ⚠ `TrpcPorts` burada ELLE kurulur (üretimdeki TEK yer). `jobRead`
     // v0.0.11'den, `membershipRead`/`memberWrite` v0.0.14'ten, `tenantSecurityWrite`
     // v0.0.15'ten, `sessionSecurityRead` v0.0.15 FIX turu 2'den, `sessionListRead`
-    // v0.0.15.1'den, `registrationRead`/`registrationWrite` v0.1.0'dan itibaren
-    // ZORUNLU üyedir — herhangi biri atlanırsa typecheck kırılır
+    // v0.0.15.1'den, `registrationRead`/`registrationWrite` v0.1.0'dan,
+    // `platformAdminRead`/`platformRead` v0.0.20'den itibaren ZORUNLU
+    // üyedir — herhangi biri atlanırsa typecheck kırılır
     // (`context/trpc-context.types.ts`'in gerekçesi, po R-P2/R-PM5).
     // ⚠ Üyeleri OPSİYONEL yaparak typecheck hatasını susturmak o dosyanın
     // YAZILI yasağıdır; doğru çözüm portu DOLDURMAKTIR — bu satırlar o
@@ -217,6 +228,8 @@ export class TrpcController {
         sessionListRead: this.sessionListRead,
         registrationRead: this.registrationRead,
         registrationWrite: this.registrationWrite,
+        platformAdminRead: this.platformAdminRead,
+        platformRead: this.platformRead,
       },
       this.errorsPort,
     )

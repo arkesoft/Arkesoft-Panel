@@ -46,6 +46,11 @@ export type { SessionListReadPort } from './ports/session-list-read.port.js'
 // (S9) bu iki tipi `@arkesoft/trpc/server`'dan ithal edecek.
 export type { RegistrationReadPort } from './ports/registration-read.port.js'
 export type { RegistrationWritePort } from './ports/registration-write.port.js'
+// ROADMAP v0.0.20, T-021/S5 — her port AYNI yoldan export edilir
+// (`RegistrationWritePort` satırının BİREBİR tekrarı). `apps/api`'nin
+// adaptörü (S7) bu iki tipi `@arkesoft/trpc/server`'dan ithal edecek.
+export type { PlatformAdminReadPort } from './ports/platform-admin-read.port.js'
+export type { PlatformReadPort } from './ports/platform-read.port.js'
 export type { TenantReadPort } from './ports/tenant-read.port.js'
 export type { TenantSecurityWritePort } from './ports/tenant-security-write.port.js'
 export type { StorefrontTenantReadPort } from './ports/storefront-tenant-read.port.js'
@@ -65,3 +70,9 @@ export {
 // grafiği) çeker ve tarayıcı girişinin yazılı sözleşmesini kırardı.
 export { permissionProcedure } from './authz/permission-procedure.js'
 export type { PermissionGatedProcedureBuilder } from './authz/permission-procedure.js'
+
+// Merdivenin ALTINCI basamağı (ROADMAP v0.0.20, T-021/S5, ADR-0023 Karar 1/2)
+// — SUNUCU tarafı yüzeyinde, BEŞİNCİ basamağın AYNI gerekçesiyle: bu dosya
+// `../trpc.js`'i (sunucu tarafı modül grafiği) çeker, `index.ts`'e TAŞINAMAZ.
+export { platformAdminProcedure } from './authz/platform-admin-procedure.js'
+export type { PlatformAdminProcedureBuilder } from './authz/platform-admin-procedure.js'

@@ -1,5 +1,20 @@
 # @arkesoft/trpc
 
+## 0.8.0
+
+### Minor Changes
+
+- Arkesoft ekibi için ayrı bir süper admin paneli eklendi. Platform yöneticileri artık
+  kendi girişleriyle (iki faktörlü doğrulama zorunlu) bu panelden tüm mağazaların
+  listesini (alan adı, plan, durum, oluşturulma tarihi) ve platform erişim denetim
+  kaydını görebiliyor. Bir mağazanın verisine erişim artık görünmez bir arka kapı
+  üzerinden değil, her erişimde iz bırakan açık bir kayıt mekanizmasıyla yapılıyor.
+  Mağaza sahiplerinin kendi panelleri bu değişiklikten etkilenmiyor. [v0.0.20]
+
+### Patch Changes
+
+- @arkesoft/errors@0.10.0
+
 ## 0.7.0
 
 ### Minor Changes

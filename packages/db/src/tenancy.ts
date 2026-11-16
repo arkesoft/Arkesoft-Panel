@@ -111,6 +111,23 @@
 // ⚠ `arkesoft_app`'in `plan`'da taşıdığı blanket DML yetkisi bu sürümde
 // DARALTILMADI (`theme`/`theme_release`/`platform_release`'in BİREBİR aynı
 // ertelemesi, ADR-0021 Sonuçlar) — `security` gate'ine bırakıldı.
+//
+// GENİŞLETME (ROADMAP v0.0.20, T-021/S3, architect VERİ MODELİ + ADR-0023
+// Karar 1/3): `platform_admin` (ON BİRİNCİ üye) ve `platform_audit_log`
+// (ON İKİNCİ üye) EKLENDİ → dizi ONDAN ON İKİYE çıktı. Platform yetkisi
+// kaydı ve platform yöneticisi eylem denetimi PLATFORMUN KENDİSİNE aittir,
+// kiracıya değil — `theme`/`plan`'ın BİREBİR aynı sınıflandırma ekseni
+// ("olgu KİME aittir"). ⭐ `TENANT_SCOPED_TABLES` (aşağıda) BU GENİŞLEMEYLE
+// DEĞİŞMEDİ — yeni bir kiracı tablosu YOK, prob tamlığı kapısı
+// (`tenant-isolation-suite.ts`) KIRMIZIYA DÖNMEDİ (v0.0.21/v0.1.0'ın BİREBİR
+// TERSİ). İki tablo da RLS politikası TAŞIMAZ (migration linter'ının
+// `TENANT_ID_ON_PLATFORM_TABLE` kuralı). ⚠ `arkesoft_app`'in bu iki tabloda
+// taşıdığı blanket DML yetkisi (`ALTER DEFAULT PRIVILEGES`) `theme`/`plan`
+// ile BİREBİR aynı ertelemeyle DARALTILMADI — kayıtlı borç (ROADMAP:3106),
+// bu sürümde BÜYÜTÜLDÜ (vade v0.0.20.1, kullanıcı kararı). ⚠⚠ CLAUDE.md §7
+// "dört liste" (`AUTH_SECRET_BEARING_TABLES` vb.) BU İKİSİNE DOKUNMAZ — ikisi
+// de parola özeti/token/TOTP sırrı/kurtarma kodu TAŞIMAZ (ölçülmüş karar,
+// architect T-021).
 export const PLATFORM_LEVEL_TABLES = [
   'tenant',
   'app_user',
@@ -122,6 +139,8 @@ export const PLATFORM_LEVEL_TABLES = [
   'theme',
   'theme_release',
   'plan',
+  'platform_admin',
+  'platform_audit_log',
 ] as const
 
 // GENİŞLETME (ROADMAP v0.0.14, T-014/S1, architect K-A0/K-A1): `audit_log`

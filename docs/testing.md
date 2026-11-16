@@ -10,6 +10,14 @@ mimari kararlar için [`ADR-0022`](./adr/0022-e2e-test-altyapisi-veri-fabrikasi-
 > gerçekten var** — belge ile gerçek bu sürümde ilk kez hizalandı (önceki sürümlerde
 > `CLAUDE.md` bir özlem belgesiydi, bkz. ROADMAP T-012/T-019 ölçümleri).
 
+> **Kazanım (v0.0.20, T-021):** `apps/superadmin` **üçüncü** Playwright projesi olarak
+> kök `pnpm test:e2e`'ye katıldı (dev portu **5174**, override
+> `ARKESOFT_SUPERADMIN_E2E_PORT`) — kök toplayıcı artık **admin + superadmin +
+> storefront**'u tek komutla yeşil koşturuyor (`qa` tur 2: 44/44 test, 36.4s).
+> `pnpm guards` **18 → 19** mekanik adıma çıktı (`scripts/e2e-env-passthrough-check.ts`'in
+> `turbo.json`'daki `passThroughEnv` listesini her e2e görevi için elle değil **ölçerek**
+> doğrulayan 19. adımı, T-021/S9-S10).
+
 ---
 
 ## 1. Flaky test politikası
@@ -124,17 +132,37 @@ tasarım gereği `@arkesoft/db`'ye bağımlı olmamasının yapısal sonucudur).
    `check_adr22_k1d_shellout_boundary` taramasıyla yasaklanır — fabrika üretim koduna
    sızamaz.
 
-**Fabrika çekirdeği iki kopyadır, ortak modül değil** (`po`'nun T-020 kararı,
-bağlayıcı): `apps/storefront/e2e/fixtures/custom-domain-tenant.ts` ve
-`apps/admin/e2e/fixtures/tenant-cleanup.ts`. `packages/*`'e çıkarılması **yasaktır** —
-bir `e2e/*.spec.ts`'in `scripts/`'ten veya `packages/`'ten import etmesi uygulama test
-kodunu paket dışı bir yola bağlar. Üçüncü bir kopyanın **sessizce doğmasını** `guards.sh`
-engeller: K1(d) taraması `docker exec`+`psql` kullanan dosya kümesinin **tam olarak bu
-ikisi** olduğunu doğrular.
+**Fabrika çekirdeği ARTIK tek bir paylaşılan modüldür** (`po`'nun T-020 kararının
+**gözden geçirilmiş hâli**, `architect`/T-021, ADR-0022 GÜNCELLEME bloğu —
+⚠ aşağıdaki paragraf önce "iki kopya, ortak modül değil" diyordu, bu **bayattı**):
+`scripts/playwright/sql.ts` (`runSql`/`querySqlRows` gövdeleri + dört koruma).
+`apps/storefront/e2e/fixtures/custom-domain-tenant.ts`,
+`apps/admin/e2e/fixtures/tenant-cleanup.ts` **ve** `apps/superadmin/e2e/fixtures/platform-admin.ts`
+onu **göreli yolla** import eder; her fabrika yalnızca kendi `e2e-` önek desenini ve
+kendi temizlik mantığını taşır. Gözden geçirme koşulu (_"üçüncü uygulama e2e kazanırsa
+karar yeniden açılır"_) T-021'de **tetiklendi**: `apps/superadmin` üçüncü uygulama oldu
+ve dizin sözleşmesi (`responsive/`/`visual/` eksikliği) **yeterli kaldığı** için Karar 3
+(proje bazlı ayrım) değişmedi, ama Karar 1'in **uygulaması** tek modülde birleştirildi.
+`packages/*`'e çıkarılması **hâlâ yasaktır** (bir `e2e/*.spec.ts`'in `packages/`'ten
+import etmesi uygulama test kodunu paket dışı bir yola bağlar) — `scripts/playwright/`
+Karar 6'nın zaten kurduğu, paket **olmayan** bir alandır.
 
-⚠ **Dürüst sınır:** iki `runSql` gövdesinin kendi aralarındaki **metinsel sapması**
-bu kontrolle yakalanmaz — bu, deponun bu sınıfta bilerek kabul ettiği bir borçtur
-(gözden geçirme koşulu: üçüncü bir uygulama e2e fixture kazanırsa karar yeniden açılır).
+`guards.sh`'in K1(d) taraması artık _"`docker exec`+`psql` kullanan dosya kümesi = tam
+olarak **bu bir** modül"_ der (eskiden "tam olarak bu iki dosya" diyordu) — kapı
+**güçlendi**: metinsel eşitlik denetimine gerek kalmadı, çünkü artık tek gövde var.
+Mailpit doğrulama yardımcısı da aynı eve taşındı: `scripts/playwright/mailpit.ts`
+(`findVerificationToken`), dört çağıran (`apps/admin`'in üç dosyası + `apps/superadmin`)
+onu import eder — önceki dört bağımsız kopya **tek tanıma** indirildi.
+
+⚠ **Dürüst sınır (hâlâ geçerli, eksen değişti):** paylaşılan `sql.ts` gövdesinin kendi
+içindeki davranışı tek yerde değiştiğinde üç fabrikanın **hepsi** etkilenir — bu artık
+bir "sapma" riski değil, bir "tek noktadan kırılma" riski; `scripts/tsconfig.json`'ın
+`playwright/*.ts` kapsamı (tip kontrolü) ve e2e koşumlarının kendisi (davranışsal
+kırmızı) bunun tek savunması, mekanik bir "üç fabrika aynı sürümü mü kullanıyor" kapısı
+yok. `scripts/playwright/totp.ts` (RFC 6238, test-only TOTP üreticisi, `apps/superadmin/e2e`
+için — `apps/api`'den import edilemediği için yazıldı) **bağımsız bir implementasyon**
+taşır; üretim portundan (`totp-code-generator.port.ts`) sapması da mekanik yakalanmaz,
+sapma e2e'nin kırmızı olmasıyla fark edilir.
 
 ### ⭐ `S9a`'nın dersi — konteyner adını sabit yazma
 
@@ -193,12 +221,13 @@ yorumlarına bkz.).
 
 ### Port haritası
 
-| Servis              | Port                                          | Not                                                                                                                                       |
-| ------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| API (yerel)         | **3100**                                      | Kabuk değişkeni ile verilir — **`.env`'e yazılmaz**.                                                                                      |
-| Panel (admin)       | **5173**, sabit                               | `AUTH_BASE_URL` origin tutarlılığı için değişmez.                                                                                         |
-| Görsel (storefront) | **4322**                                      | `ARKESOFT_STOREFRONT_VISUAL_PORT` ile override edilebilir.                                                                                |
-| ⚠ **3000**          | geliştiricinin **başka** bir projesi olabilir | Bu makinede `demo-site` (Next.js) — admin/kök e2e script'leri varsayılan olarak yanlışlıkla buraya düşebilir (yukarıdaki iki tuzağa bkz). |
+| Servis                   | Port                                          | Not                                                                                                                                       |
+| ------------------------ | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| API (yerel)              | **3100**                                      | Kabuk değişkeni ile verilir — **`.env`'e yazılmaz**.                                                                                      |
+| Panel (admin)            | **5173**, sabit                               | `AUTH_BASE_URL` origin tutarlılığı için değişmez.                                                                                         |
+| Süper admin (superadmin) | **5174**, sabit                               | `SUPERADMIN_BASE_URL` origin tutarlılığı için değişmez (T-021). E2E override: `ARKESOFT_SUPERADMIN_E2E_PORT`.                             |
+| Görsel (storefront)      | **4322**                                      | `ARKESOFT_STOREFRONT_VISUAL_PORT` ile override edilebilir.                                                                                |
+| ⚠ **3000**               | geliştiricinin **başka** bir projesi olabilir | Bu makinede `demo-site` (Next.js) — admin/kök e2e script'leri varsayılan olarak yanlışlıkla buraya düşebilir (yukarıdaki iki tuzağa bkz). |
 
 ⚠ Kök `.env`'deki `STOREFRONT_API_BASE_URL` **3000** der; gerçek yerel API **3100**'de
 koşar. Uyuşmazsa Astro SSR `503` döner ve Playwright'ın `webServer` probu `timeout`

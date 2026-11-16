@@ -178,4 +178,66 @@ describe('resolveRateLimitPolicy — K3 eşikleri (MODÜL SABİTİ, env OKUNMAZ)
   it('yol büyük/küçük harf DUYARLIDIR (fail-closed)', () => {
     expect(resolveRateLimitPolicy('POST', '/Auth/Sign-In/Email')).toBeUndefined()
   })
+
+  // T-021 FIX turu 1, madde F2 (security tur1, `high`'ın AYNI kök nedeni) —
+  // NEGATİF REGRESYON: `/trpc/registration%2EcreateTenant` ÖNCEDEN HİÇBİR
+  // politikaya eşleşmiyordu (`undefined` — sınırsız deneme) çünkü
+  // `normalizeRequestPath` yüzde-kodlamayı ÇÖZMÜYORDU; tRPC AYNI isteği
+  // `registration.createTenant` olarak ÇÖZÜP ÇALIŞTIRIYORDU. Düzeltmeden
+  // SONRA `%2E`/`%2e` ARTIK aynı politikaya (ortak normalizer'ın decode'u
+  // SAYESİNDE) eşleşmelidir.
+  it.each([
+    ['POST', '/trpc/registration%2EcreateTenant'],
+    ['POST', '/trpc/registration%2ecreateTenant'],
+    ['GET', '/trpc/registration%2EcheckSlugAvailability'],
+  ])('%s %s → ARTIK tanımlı bir politikaya eşleşir (F2 regresyonu)', (method, path) => {
+    expect(resolveRateLimitPolicy(method, path)).toBeDefined()
+  })
+
+  // T-021 FIX turu 3 (security tur2, F2-TUR2, `medium`) — NEGATİF REGRESYON,
+  // İKİ AYRI ekseni kapsar (dosya başı GÜNCELLEME yorumu):
+  //
+  // (a) `/trpc` MOUNT öneki — `TRPC_RATE_LIMITED_PATHS` rotaları. ÖNCEDEN
+  //     `resolveRateLimitPolicy('POST', '/TRPC/registration.createTenant')`
+  //     → `undefined` dönüyordu (sınırsız deneme) ÇÜNKÜ Express'in
+  //     `@All('trpc/*path')`'i mount önekini büyük/küçük harf DUYARSIZ
+  //     eşleştirip prosedürü GERÇEKTEN çalıştırıyordu — kanıt
+  //     `docs/gates/T-021-security-tur2.md` §2(b).
+  it.each([
+    ['POST', '/TRPC/registration.createTenant'],
+    ['GET', '/Trpc/registration.checkSlugAvailability'],
+    ['GET', '/tRpC/registration.onboardingChecklist'],
+  ])(
+    '%s %s → ARTIK tanımlı bir politikaya eşleşir (F2-TUR2 regresyonu, mount öneki)',
+    (method, path) => {
+      expect(resolveRateLimitPolicy(method, path)).toBeDefined()
+    },
+  )
+
+  // (b) `AUTH_OWN_PATHS` — `sessions.controller.ts`'in TAMAMEN statik üç
+  //     rotası. Express'in `@Post('auth/sessions/revoke')` gibi statik
+  //     dekoratörleri SADECE mount önekini DEĞİL, TÜM segmentleri büyük/
+  //     küçük harf DUYARSIZ eşleştirir — CANLI kanıtlandı (security tur2
+  //     §2(b)): üç birebir aynı POST, biri `/auth/...`, biri `/AUTH/...`,
+  //     biri `/Auth/Sessions/Revoke`, ÜÇÜ DE gerçek işleyiciye ULAŞTI ama
+  //     Redis sayacı 1'de KALDI (ikisi tamamen ÖLÇÜLMEDİ).
+  it.each([
+    ['POST', '/AUTH/sessions/revoke'],
+    ['POST', '/Auth/Sessions/Revoke'],
+    ['POST', '/auth/SESSIONS/revoke-all'],
+  ])(
+    '%s %s → ARTIK tanımlı bir politikaya eşleşir (F2-TUR2 regresyonu, AUTH_OWN_PATHS)',
+    (method, path) => {
+      expect(resolveRateLimitPolicy(method, path)).toBeDefined()
+    },
+  )
+
+  // Vacuous DEĞİL — `AUTH_OWN_PATHS` fallback'i KEYFİ bir büyük/küçük harf
+  // varyantını DEĞİL, yalnızca o ÜÇ KAPALI KÜME literalini tanır. Better
+  // Auth'un delege yüzeyi (`AUTH_DELEGATED_PATHS`) bu fallback'e DAHİL
+  // DEĞİLDİR — `/Auth/Sign-In/Email` hâlâ `undefined` dönmeli (security tur2
+  // §2(c)'nin "SAĞLAM" bulduğu yüzeye BİLEREK dokunulmadı).
+  it('/Auth/Sign-In/Email (AUTH_DELEGATED_PATHS, own-path DEĞİL) hâlâ tanımsız kalır (vacuous değil)', () => {
+    expect(resolveRateLimitPolicy('POST', '/Auth/Sign-In/Email')).toBeUndefined()
+  })
 })

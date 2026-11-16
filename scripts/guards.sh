@@ -781,15 +781,24 @@ check_adr22_k1d_shellout_boundary() {
     violation=true
   fi
 
-  # --- Alt kontrol 2: GERÇEK execFileSync mekanizmasını ('exec'+'psql' dizi
-  #     öğeleri) KULLANAN dosya kümesi TAM OLARAK bu ikisi (po kararı —
-  #     üçüncü kopya sessizce doğmasın); hedef apps+packages+scripts ------
-  local allowed_file_1='apps/storefront/e2e/fixtures/custom-domain-tenant.ts'
-  local allowed_file_2='apps/admin/e2e/fixtures/tenant-cleanup.ts'
+  # --- Alt kontrol 2 (T-021/S9 GÜNCELLEME — ADR-0022 Karar 1'in UYGULAMA
+  #     birleştirmesi, `docs/adr/0022-*.md` ⭐ GÜNCELLEME bloğu): iki
+  #     fabrikanın `runSql`/`querySqlRows` gövdeleri + dört korumanın
+  #     ((a)-(d)) gövdeleri artık BAĞIMSIZ kopya DEĞİL — TEK paylaşılan
+  #     modülde (`scripts/playwright/sql.ts`). GERÇEK kabuk-çağrısı
+  #     mekanizmasını (execFileSync 'exec'+'psql' dizi öğeleri) VEYA
+  #     düzyazı (bitişik "docker exec"/"psql" metni) kalıbını KULLANAN
+  #     dosya kümesi artık TAM OLARAK BİR modül olmak ZORUNDADIR — eski
+  #     "iki fixture arasında gövde eşitliği" denetimine (eski alt kontrol
+  #     3/4) artık GEREK YOK, çünkü sapacak İKİNCİ bir gövde YOK. ---------
+  local allowed_module='scripts/playwright/sql.ts'
+  local consumer_file_1='apps/storefront/e2e/fixtures/custom-domain-tenant.ts'
+  local consumer_file_2='apps/admin/e2e/fixtures/tenant-cleanup.ts'
 
-  # S-7 düzeltmesi (gate fix turu 2): needle'lar BİRLEŞİM — mekanizma
-  # (dizi-öğesi literalleri) ∪ düzyazı (bitişik "docker exec"/"psql" metni)
-  # — tek biçimi arayan bir tarama diğerini yazan bir kopyayı KAÇIRIRDI.
+  # S-7 düzeltmesi (T-020 gate fix turu 2) KORUNDU: needle'lar BİRLEŞİM —
+  # mekanizma (dizi-öğesi literalleri) ∪ düzyazı (bitişik "docker exec"/
+  # "psql" metni) — tek biçimi arayan bir tarama diğerini yazan bir kopyayı
+  # KAÇIRIRDI. T-020'nin dersi: mekanizmaya geçerken düzyazı KALDIRILMAZ.
   local exec_candidate_needle="${exec_array_needle}|${shellout_needle}"
   local psql_candidate_needle="${psql_array_needle}|${psql_needle}"
 
@@ -799,107 +808,50 @@ check_adr22_k1d_shellout_boundary() {
     -- "$exec_candidate_needle" apps packages scripts 2>/dev/null || true)"
   actual_files="$(printf '%s\n' "$exec_array_file_matches" | grep -v '^$' \
     | xargs -r grep -lE -- "$psql_candidate_needle" 2>/dev/null | sort)"
-  expected_files="$(printf '%s\n' "$allowed_file_1" "$allowed_file_2" | sort)"
+  expected_files="$allowed_module"
 
   if [ "$actual_files" != "$expected_files" ]; then
-    echo "ADR-0022 K1(d) allowlist İHLALİ — gerçek kabuk-çağrısı mekanizmasını (execFileSync 'exec'+'psql') VEYA düzyazı (docker exec/psql) kalıbını kullanan dosya kümesi beklenen İKİ fixture'dan SAPTI (üçüncü bir kopya doğmuş olabilir):"
+    echo "ADR-0022 K1(d) allowlist İHLALİ — gerçek kabuk-çağrısı mekanizmasını (execFileSync 'exec'+'psql') VEYA düzyazı (docker exec/psql) kalıbını kullanan dosya kümesi beklenen TEK modülden ($allowed_module) SAPTI (üçüncü/ek bir kopya doğmuş olabilir):"
     echo "Beklenen:"; printf '%s\n' "$expected_files"
     echo "Gerçek:"; printf '%s\n' "$actual_files"
     violation=true
   fi
 
-  # --- Alt kontrol 3 (S-8/İŞ ② düzeltmesi): her allowlist dosyası
-  #     ADR-0022 K1'in (a)+(b) koruma fonksiyonlarını GERÇEKTEN tanımlıyor
-  #     VE ÇAĞIRIYOR olmalı (ad geçişi YETERSİZ) VE iki dosyadaki gövdeler
-  #     (normalize edilmiş) BİREBİR eşit olmalı. --------------------------
-  local guard_fn_names=("assertDockerHostIsLoopback" "assertTestEnvironment")
-  local min_call_sites=2
-
-  # Belirtilen fonksiyonun imzadan (`function <ad>(): void {`) kapanış
-  # `}`'a (sütun 0, dahil) kadar GÖVDESİNİ yazdırır. Yoksa boş çıktı verir.
-  extract_guard_function_body() {
-    local body_file="$1" body_fn="$2"
-    awk -v sig="function ${body_fn}(): void {" '
-      $0 == sig { capture = 1 }
-      capture { print }
-      capture && $0 == "}" { exit }
-    ' "$body_file"
-  }
-
-  # Backtick şablon dizgelerinin İÇERİĞİNİ bir yer tutucuyla değiştirir —
-  # tek legitimate fark (dosyaya özgü hata metni öneki) burada ELENİR.
-  normalize_guard_body_text() {
-    sed -E 's/`[^`]*`/<TEMPLATE_LITERAL>/g'
-  }
-
-  local allowed_file
-  for allowed_file in "$allowed_file_1" "$allowed_file_2"; do
-    if [ ! -f "$allowed_file" ]; then
-      echo "ADR-0022 K1(d) İHLALİ — beklenen allowlist dosyası bulunamadı: $allowed_file"
-      violation=true
-      continue
-    fi
-
-    local guard_fn
-    for guard_fn in "${guard_fn_names[@]}"; do
-      if ! grep -qE "^function ${guard_fn}\\(\\): void \\{\$" "$allowed_file"; then
-        echo "ADR-0022 K1(d) İHLALİ — $allowed_file içinde koruma $guard_fn TANIM olarak (imza biçiminde) bulunamadı (ad bir yorumda geçmesi YETERLİ değil)."
-        violation=true
-        continue
-      fi
-      local call_count
-      call_count="$(grep -cE "^[[:space:]]*${guard_fn}\\(\\)\$" "$allowed_file" || true)"
-      if [ "$call_count" -lt "$min_call_sites" ]; then
-        echo "ADR-0022 K1(d) İHLALİ — $allowed_file içinde koruma $guard_fn en az $min_call_sites ÇAĞRI noktası ile beklenirdi, $call_count bulundu (tanım var ama çağrılmıyor olabilir)."
+  # --- Alt kontrol 3 (T-021/S9): paylaşılan modül GERÇEKTEN var, ADR-0022
+  #     K1'in taşınan export'larını TANIMLIYOR; iki mevcut fabrika onu
+  #     GÖRELİ YOLLA import ediyor (kendi kopyalarını başka bir biçimde
+  #     saklamadıklarının ikinci kanıtı). -------------------------------
+  if [ ! -f "$allowed_module" ]; then
+    echo "ADR-0022 K1(d) İHLALİ — beklenen paylaşılan modül bulunamadı: $allowed_module"
+    violation=true
+  else
+    local required_export
+    for required_export in runSql querySqlRows assertDockerHostIsLoopback \
+      assertTestEnvironment resolvePostgresContainerName DOCKER_HOST_ALLOWED_HOSTNAMES; do
+      if ! grep -qE "^export (function|const) ${required_export}\\b" "$allowed_module"; then
+        echo "ADR-0022 K1(d) İHLALİ — $allowed_module beklenen export'u taşımıyor: $required_export"
         violation=true
       fi
     done
-  done
+  fi
 
-  # Gövde eşitliği (iki dosya arasında, normalize edilmiş) — SAPMA ekseni.
-  for guard_fn in "${guard_fn_names[@]}"; do
-    local body_1 body_2
-    body_1="$(extract_guard_function_body "$allowed_file_1" "$guard_fn" | normalize_guard_body_text)"
-    body_2="$(extract_guard_function_body "$allowed_file_2" "$guard_fn" | normalize_guard_body_text)"
-    if [ -z "$body_1" ] || [ -z "$body_2" ]; then
-      # Tanım yoksa yukarıdaki döngü zaten İHLAL bastı — burada tekrar
-      # BASMA, yalnızca anlamsız bir boş-boş "eşit" sonucunu ATLA.
+  local consumer_file
+  for consumer_file in "$consumer_file_1" "$consumer_file_2"; do
+    if [ ! -f "$consumer_file" ]; then
+      echo "ADR-0022 K1(d) İHLALİ — beklenen fabrika dosyası bulunamadı: $consumer_file"
+      violation=true
       continue
     fi
-    if [ "$body_1" != "$body_2" ]; then
-      echo "ADR-0022 K1(d) İHLALİ — $guard_fn gövdesi $allowed_file_1 ile $allowed_file_2 arasında (normalize edilmiş, şablon dizgesi metni hariç) SAPMIŞ:"
-      diff <(printf '%s\n' "$body_1") <(printf '%s\n' "$body_2") || true
+    if ! grep -qE "from '(\\.\\./)+scripts/playwright/sql\\.js'" "$consumer_file"; then
+      echo "ADR-0022 K1(d) İHLALİ — $consumer_file paylaşılan modülü (scripts/playwright/sql.js) göreli yolla import ETMİYOR."
       violation=true
     fi
   done
-
-  # Allowlist Set'inin (DOCKER_HOST_ALLOWED_HOSTNAMES) iki dosya arasında
-  # BİREBİR eşit olduğu doğrulanır — (iii)'ün somut örneği bu Set'e bir
-  # host eklemekti.
-  extract_allowlist_set_block() {
-    local set_file="$1"
-    awk '
-      /^const DOCKER_HOST_ALLOWED_HOSTNAMES/ { capture = 1 }
-      capture { print }
-      capture && $0 == "])" { exit }
-    ' "$set_file"
-  }
-  local allowlist_1 allowlist_2
-  allowlist_1="$(extract_allowlist_set_block "$allowed_file_1")"
-  allowlist_2="$(extract_allowlist_set_block "$allowed_file_2")"
-  if [ -z "$allowlist_1" ] || [ -z "$allowlist_2" ]; then
-    echo "ADR-0022 K1(d) taraması hata verdi: DOCKER_HOST_ALLOWED_HOSTNAMES bloğu $allowed_file_1 veya $allowed_file_2 içinde bulunamadı — fail-closed."
-    violation=true
-  elif [ "$allowlist_1" != "$allowlist_2" ]; then
-    echo "ADR-0022 K1(d) İHLALİ — DOCKER_HOST_ALLOWED_HOSTNAMES allowlist'i $allowed_file_1 ile $allowed_file_2 arasında SAPMIŞ:"
-    diff <(printf '%s\n' "$allowlist_1") <(printf '%s\n' "$allowlist_2") || true
-    violation=true
-  fi
 
   if [ "$violation" = true ]; then
     return 1
   fi
-  echo "ADR-0022 K1(d): apps/*/src/** istisnasız temiz; gerçek kabuk-çağrısı mekanizmasını/düzyazısını kullanan dosya kümesi TAM OLARAK beklenen iki fixture ($allowed_file_1, $allowed_file_2); ikisi de (a)+(b) korumalarını TANIMLIYOR+ÇAĞIRIYOR ve gövdeleri (+allowlist Set'i) birebir eşit."
+  echo "ADR-0022 K1(d): apps/*/src/** istisnasız temiz; gerçek kabuk-çağrısı mekanizmasını/düzyazısını kullanan dosya kümesi TAM OLARAK bir modül ($allowed_module); iki mevcut e2e fabrikası ($consumer_file_1, $consumer_file_2) onu göreli yolla import ediyor."
   return 0
 }
 
@@ -958,6 +910,18 @@ check_playwright_retries_single_source() {
 }
 
 # ---------------------------------------------------------------------------
+# e2e env passthrough kontrolü (ROADMAP v0.0.20, T-021 FIX turu 2, devops —
+# qa tur1 `high` bulgusunun İŞ ③'ü). "scripts/e2e-env-passthrough-check.ts"'in
+# KENDİSİNE bkz. (kapsam, bilinen (B)-sınıfı kör nokta ve ikisinin NEGATİF
+# testle doğrulandığı kanıt dosya başı yorumunda). `node` ile çalışır — Node
+# 20.6+'nın yerel TS tip sıyırması (A4'ün diğer script'leriyle AYNI desen),
+# ayrı bir derleme adımı YOK.
+# ---------------------------------------------------------------------------
+check_e2e_env_passthrough() {
+  node scripts/e2e-env-passthrough-check.ts
+}
+
+# ---------------------------------------------------------------------------
 # actionlint — yalnızca kurulu ise (indirme CI'a özgü, kapsam dışı — bkz.
 # dosya başı not). Yerelde yoksa BLOKLAMADAN uyarı verir.
 # ---------------------------------------------------------------------------
@@ -986,6 +950,7 @@ run_step "AC-1 — kök test:e2e/test:visual/test:visual:update script varlığ�
 run_step "Bütçe pin tazeliği — AUTH_IP_LIMITS ↔ rate-limit.policy.ts" check_auth_budget_pin_freshness
 run_step "ADR-0022 K1(d) — fabrika sızma yasağı + allowlist" check_adr22_k1d_shellout_boundary
 run_step "Playwright retries tek-kaynak taraması (S-11)" check_playwright_retries_single_source
+run_step "e2e env passthrough — process.env ⊆ turbo.json test:e2e (T-021 İŞ ③)" check_e2e_env_passthrough
 run_step "actionlint (yerelde kuruluysa)" check_actionlint_if_available
 
 echo ""

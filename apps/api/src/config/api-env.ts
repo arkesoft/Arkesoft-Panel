@@ -16,6 +16,9 @@
 // **EŞİKLER BURADA YOK** (AC7 "eşik gevşetilemez" — architect, bağlayıcı):
 // `5/20/3/10` gibi oran sınırlama sayıları `rate-limit.policy.ts`'te (S8)
 // MODÜL SABİTİ olarak kalır. Burada yalnızca pencere SÜRELERİ (saniye) taşınır.
+//
+// GÜNCELLEME (ROADMAP v0.0.20, T-021/S6, ADR-0023 §4 ve §5): `SUPERADMIN_*`
+// İKİ alanı EKLENDİ — altta, dosya içi yorumlarıyla.
 
 import { databaseAuthEnvSchema, infraEnvSchema } from '@arkesoft/config/env'
 import { z } from 'zod'
@@ -78,6 +81,27 @@ export const apiEnvSchema = infraEnvSchema.extend({
     .int('tamsayı olmalı')
     .min(0, '0 veya daha büyük olmalı')
     .default(0),
+
+  // --- Süper admin (ROADMAP v0.0.20, T-021/S6, ADR-0023 §4 ve §5) — OPSİYONEL --
+  // İKİSİ DE opsiyonel: hiçbiri verilmezse platformun davranışı BAYT-BİREBİR
+  // bugünküdür (ADR-0023 §4.5) — bu sürüm `minor`'dır, operatör müdahalesi
+  // ZORUNLU DEĞİLDİR.
+  /**
+   * Süper admin SPA'sının tarayıcı orijini (ADR-0023 §4, Karar 4). VERİLİRSE
+   * `trusted-origins.ts`'in TEK türetme fonksiyonu bu orijini güvenilir
+   * listeye EKLER — `SameOriginGuard` VE Better Auth'un `trustedOrigins`'i
+   * AYNI fonksiyonu tüketir. Joker/alt alan adı deseni KABUL ETMEZ, TAM
+   * eşleşmeli bir orijin bekler.
+   */
+  SUPERADMIN_BASE_URL: z.url('geçerli bir URL olmalı').optional(),
+  /**
+   * Süper admin tRPC yollarını kısıtlayan virgülle ayrılmış IP allowlist'i
+   * (ADR-0023 §5). ⚠ **Varsayılan `''` = yüzeyin TAMAMI 403 (fail-closed —
+   * "yapılandırılmamış = kapalı")**; ayrıştırma ve zorlama S7'nin
+   * `platform/` modülündedir, bu şema yalnızca ham değeri taşır. Bu kapı
+   * BİRİNCİL yetkilendirme DEĞİLDİR — ADR-0023 §5'in bağlayıcı sınırı.
+   */
+  SUPERADMIN_IP_ALLOWLIST: z.string().default(''),
 })
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>

@@ -61,6 +61,8 @@ import { z } from 'zod'
 
 import { deleteFixtureUserByEmail } from './fixtures/tenant-cleanup.js'
 
+import { findVerificationToken } from '../../../scripts/playwright/mailpit.js'
+
 /**
  * T-020/S5 — ADR-0022 D-1 (architect ölçtü): bu dosya İKİ kez
  * `createVerifiedFixtureUser` çağırıyor (iki ayrı `app_user` satırı) ve
@@ -70,82 +72,13 @@ import { deleteFixtureUserByEmail } from './fixtures/tenant-cleanup.js'
 const createdFixtureEmails: string[] = []
 
 const FIXTURE_PASSWORD = 'arkesoft-e2e-med2-fixture-password-123'
-const MAILPIT_BASE_URL = 'http://127.0.0.1:8025'
 
-// ---------------------------------------------------------------------------
-// Mailpit yardımcıları — `panel-flow.spec.ts`'in AYNI deseni, o dosyaya
-// DOKUNMAMAK için BİREBİR kopya (fonksiyonlar orada dışa AÇILMIYOR).
-// ---------------------------------------------------------------------------
-interface MailpitAddress {
-  readonly Address: string
-}
-interface MailpitMessageSummary {
-  readonly ID: string
-  readonly To: readonly MailpitAddress[]
-}
-interface MailpitMessagesListResponse {
-  readonly messages: readonly MailpitMessageSummary[]
-}
-interface MailpitMessageDetail {
-  readonly Text: string
-}
-
-function isMailpitMessagesListResponse(value: unknown): value is MailpitMessagesListResponse {
-  if (typeof value !== 'object' || value === null) {
-    return false
-  }
-  return Array.isArray((value as Record<string, unknown>)['messages'])
-}
-
-function isMailpitMessageDetail(value: unknown): value is MailpitMessageDetail {
-  if (typeof value !== 'object' || value === null) {
-    return false
-  }
-  return typeof (value as Record<string, unknown>)['Text'] === 'string'
-}
-
-async function findVerificationToken(email: string): Promise<string> {
-  const target = email.toLowerCase()
-
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    const listResponse = await fetch(`${MAILPIT_BASE_URL}/api/v1/messages?limit=50`)
-    const listRaw: unknown = await listResponse.json()
-
-    if (isMailpitMessagesListResponse(listRaw)) {
-      const match = listRaw.messages.find((message) =>
-        message.To.some((address) => address.Address.toLowerCase() === target),
-      )
-
-      if (match !== undefined) {
-        const detailResponse = await fetch(`${MAILPIT_BASE_URL}/api/v1/message/${match.ID}`)
-        const detailRaw: unknown = await detailResponse.json()
-
-        if (!isMailpitMessageDetail(detailRaw)) {
-          throw new Error('Mailpit mesaj gövdesi beklenen şekilde değil')
-        }
-
-        const urlMatch = /https?:\/\/\S+/.exec(detailRaw.Text)
-        if (urlMatch === null) {
-          throw new Error('Doğrulama e-postasında bağlantı bulunamadı')
-        }
-
-        const token = new URL(urlMatch[0]).searchParams.get('token')
-        if (token === null) {
-          throw new Error("Doğrulama bağlantısında 'token' sorgu parametresi bulunamadı")
-        }
-
-        return token
-      }
-    }
-
-    await new Promise((resolve) => {
-      setTimeout(resolve, 250)
-    })
-  }
-
-  throw new Error(`Mailpit'te ${email} alıcısına gönderilmiş mesaj bulunamadı`)
-}
-
+// Mailpit yardımcısı (`findVerificationToken`) ARTIK bu dosyada DEĞİL —
+// `scripts/playwright/mailpit.ts`'TEN İTHAL EDİLİYOR (T-021/S10 FIX turu 1,
+// dalga 2, `solid` M2 — bağlayıcı): bu, `panel-flow.spec.ts`'in BİREBİR
+// kopyasıydı (önceki not: "o dosyaya DOKUNMAMAK için BİREBİR kopya" —
+// `panel-flow.spec.ts`'e hâlâ DOKUNULMUYOR, yalnızca İKİSİ de ARTIK AYNI
+// paylaşılan modülden okuyor).
 interface FixtureUser {
   readonly email: string
   readonly password: string

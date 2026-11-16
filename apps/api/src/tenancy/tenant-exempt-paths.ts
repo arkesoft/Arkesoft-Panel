@@ -165,9 +165,30 @@
 //       `createTenant` AYRICA oran sınırına bağlıdır
 //       (`auth/rate-limit/trpc-rate-limited-paths.ts`, F15).
 
+//
+// GÜNCELLEME (ROADMAP v0.0.20, T-021/S7, ADR-0023 Karar 2): 24 → 27,
+// DOKUZUNCU grup eklendi:
+//   (9) 3 platform yüzeyi ucu (`/trpc/platform.session`, `/trpc/platform.
+//       tenantList`, `/trpc/platform.auditLog`) — `/trpc/registration.*`
+//       üçlüsünün (grup 8) BİREBİR GEREKÇESİ: süper admin host'u REZERVE
+//       bir alt alan addır (`@arkesoft/tenancy`'nin `reserved-subdomains.
+//       ts`'indeki `superadmin` etiketi), `resolveHost` onu
+//       `reserved_subdomain` ile ÇÖZÜMSÜZ bırakır — tenant bağlamı bu üç
+//       uç için HİÇ geçerli değildir (üçü de `protectedProcedure`
+//       zincirinden gelir, `ctx.tenant` HİÇ DARALMAZ; ADR-0023 Karar 2).
+//       Muafiyet KİMLİK muafiyeti DEĞİLDİR (`AUTH_EXEMPT_PATHS`'e HİÇBİR
+//       satır EKLENMEDİ, 12'de kalır).
+//   ⚠ `platform.router.ts`'in (packages/trpc, bu alt görevin DOKUNAMADIĞI
+//   paket) dosya başı yorumu "AUTH_EXEMPT_PATHS/TENANT_EXEMPT_PATHS'E
+//   EKLENMEZ" diyor — bu BAYAT: o yorum `AuthGuard`'ın üyelik dalını
+//   kastediyordu; `TenantGuard`'ın HTTP seviyesi muhafızı host çözümü
+//   `unresolved` olduğunda (`reserved_subdomain`) BU ALLOWLIST'E GİRMEYEN
+//   her yolu 404 ile REDDEDER — `registration.*` üçlüsünün v0.1.0'da aynı
+//   sebeple bu kümeye EKLENMESİ gibi. Düzeltme `S11`'in devrine not düşüldü.
+
 import { normalizeRequestPath } from '../http/normalize-request-path.js'
 
-/** Tenant çözümü gerektirmeyen, tam eşleşmeli yirmi dört uç. */
+/** Tenant çözümü gerektirmeyen, tam eşleşmeli yirmi yedi uç. */
 export const TENANT_EXEMPT_PATHS: ReadonlySet<string> = new Set([
   '/health',
   '/health/ready',
@@ -201,6 +222,11 @@ export const TENANT_EXEMPT_PATHS: ReadonlySet<string> = new Set([
   '/trpc/registration.checkSlugAvailability',
   '/trpc/registration.createTenant',
   '/trpc/registration.onboardingChecklist',
+  // (9) ROADMAP v0.0.20, T-021/S7 — üç platform yüzeyi ucu, dosya başı
+  // GÜNCELLEME paragrafında gerekçeli (ADR-0023 Karar 2).
+  '/trpc/platform.session',
+  '/trpc/platform.tenantList',
+  '/trpc/platform.auditLog',
 ])
 
 /**

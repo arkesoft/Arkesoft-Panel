@@ -129,10 +129,72 @@
     // `passThroughEnv` (ENV DEĞİL): bu görev de `cache: false`, hash'leme
     // konusuz — `test:visual`'daki aynı gerekçe (yukarı bak) burada da
     // geçerli.
+    // GÜNCELLEME (ROADMAP v0.0.20, T-021/S10, AC-13) — `passThroughEnv`
+    // bugüne kadar TEK değişken taşıyordu. Liste `apps/admin/*.ts`,
+    // `apps/storefront/e2e/e2e-port.ts` ve `apps/superadmin/*.ts`'in
+    // GERÇEKTEN okuduğu `process.env[...]` çağrıları TARANARAK çıkarıldı
+    // (`grep -n "process.env" apps/admin/playwright.config.ts apps/admin/
+    // vite.config.ts apps/admin/src/app/panel-config.ts apps/storefront/
+    // playwright.config.ts apps/storefront/e2e/e2e-port.ts apps/storefront/
+    // astro.config.ts apps/superadmin/playwright.config.ts apps/superadmin/
+    // vite.config.ts apps/superadmin/src/app/superadmin-config.ts` —
+    // T-020/S9c'nin dersi: eksik bildirim CI'da SESSİZCE yanlış porta gider,
+    // varsayma YERİNE tarandı). ÜÇ "E2E_PORT" (`ARKESOFT_PANEL_E2E_PORT`,
+    // `ARKESOFT_STOREFRONT_E2E_PORT`, `ARKESOFT_SUPERADMIN_E2E_PORT`) + İKİ
+    // "DEV_API_TARGET" (`ARKESOFT_PANEL_DEV_API_TARGET`,
+    // `ARKESOFT_SUPERADMIN_DEV_API_TARGET`). `ARKESOFT_STOREFRONT_VISUAL_
+    // RUN` (storefront'un playwright.config.ts'i) BİLEREK YOK — o değişken
+    // `pnpm test:e2e`'in `--project` seçimini ETKİLEMİYOR (`package.json`'ın
+    // `test:e2e` script'i `--project` bayraklarını AÇIKÇA veriyor), yalnızca
+    // `scripts/run-visual.sh`'in (ayrı `test:visual` görevi) kapsamında.
+    //
+    // DÜZELTME (ROADMAP v0.0.20, T-021 FIX turu 2, qa tur1 `high` bulgusu,
+    // devops) — S10'un YUKARIDAKİ taraması `*.config.ts` dosyalarıyla
+    // SINIRLIYDI ve `apps/storefront/src/lib/storefront-env.ts`'i KAÇIRDI:
+    // bu dosya `src/lib/storefront-env-schema.ts` üzerinden MODÜL YÜKLENİRKEN
+    // (import zamanında, K17) `STOREFRONT_API_BASE_URL` (varsayılansız,
+    // ZORUNLU) ve `APP_BASE_DOMAIN`'i okur — storefront'un `astro dev`
+    // webServer'ı bu okumayı HER `test:e2e` koşumunda yapar. Metodoloji
+    // DÜZELTİLDİ: tarama artık `*.config.ts` ile SINIRLI DEĞİL — `src/lib/**`,
+    // `src/app/**`, `e2e/**`, `scripts/playwright/**` dahil (ayrıntı: T-021
+    // FIX turu 2 devops raporu). Kanıt (iki bağımsız doğrulama, qa tur1 +
+    // bu turda TEKRARLANDI): `STOREFRONT_API_BASE_URL=http://127.0.0.1:3100
+    // npx turbo run test:e2e --filter=@arkesoft/storefront` — düzeltme
+    // ÖNCESİ `Error: Timed out waiting 30000ms from config.webServer.`
+    // (strict mod shell override'ı SİLER, eager parse `.env`'in YANLIŞ
+    // varsayılanına — bu oturumda 3000 — düşer), düzeltme SONRASI 15/15
+    // YEŞİL. `APP_BASE_DOMAIN` da AYNI eager parse çağrısının (aynı satır)
+    // ZORUNLU ikinci alanı — bugün `.env`'deki değeri bu ortamda doğru
+    // olduğu için SESSİZCE ÇALIŞIYOR, ama AYNI sınıf kırılganlığı taşıdığı
+    // için (birisi onu da override etmek isteyebilir) BİRLİKTE eklendi.
+    //
+    // GENİŞLETİLMİŞ TARAMA (aynı düzeltme turu) — metodoloji artık
+    // `scripts/e2e-env-passthrough-check.ts`'in (bkz. `pnpm guards`)
+    // taradığı TÜM yüzeyle (apps/*/src/**, apps/*/e2e/**, *.config.ts,
+    // scripts/playwright/**) örtüşüyor. Bu tarama AYRICA `scripts/
+    // playwright/sql.ts`'in `POSTGRES_PORT`/`POSTGRES_USER`/`POSTGRES_DB`
+    // okuduğunu (global-setup/teardown fixture'ları üzerinden ÜÇ uygulamada
+    // da kullanılıyor) ortaya çıkardı — bu üçü de bugüne kadar HİÇBİR
+    // `passThroughEnv`'de YOKTU. Bugün sessiz kalıyor çünkü varsayılanları
+    // (`5432`/`arkesoft`/`arkesoft`, `sql.ts:33-35`) `.env`'in değeriyle
+    // UYUŞUYOR — davranış DEĞİŞMİYOR, ama AYNI "strict mod override'ı siler"
+    // sınıfı (biri Postgres'i varsayılan DIŞI bir portta çalıştırırsa) burada
+    // da pusuda; savunma amaçlı BİRLİKTE eklendi.
     "test:e2e": {
       "dependsOn": ["^build", "generate"],
       "cache": false,
-      "passThroughEnv": ["ARKESOFT_PANEL_DEV_API_TARGET"]
+      "passThroughEnv": [
+        "APP_BASE_DOMAIN",
+        "ARKESOFT_PANEL_DEV_API_TARGET",
+        "ARKESOFT_PANEL_E2E_PORT",
+        "ARKESOFT_STOREFRONT_E2E_PORT",
+        "ARKESOFT_SUPERADMIN_DEV_API_TARGET",
+        "ARKESOFT_SUPERADMIN_E2E_PORT",
+        "POSTGRES_DB",
+        "POSTGRES_PORT",
+        "POSTGRES_USER",
+        "STOREFRONT_API_BASE_URL"
+      ]
     },
     // GEREKÇE (T-020/S6, ADR-0022 Karar 4/5) — `AC-2`'nin ŞART KOŞTUĞU
     // `dependsOn: ["^build", "generate"]` BURADA DA TUTULUYOR (kaldırma

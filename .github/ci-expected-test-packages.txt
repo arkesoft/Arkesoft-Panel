@@ -111,6 +111,22 @@
 #     `themeSdk=true` üretir (ci.yml:291). Sessiz boşluk doğmuyor; 10 → 11
 #     satır.
 #
+# GÜNCELLEME (ROADMAP v0.0.20, T-021/S10 — devops, Orkestratör'ün atama
+# hatasını S8 yakaladı): `@arkesoft/superadmin` (süper admin iskeleti, T-021)
+# bir "test" script'i kazandı ("vitest run --passWithNoTests...", 62 GERÇEK
+# test — S8'in dosya listesi). Hangi CI hattının kapanışında:
+#
+#   - `superadmin` job'u (`filter: '@arkesoft/superadmin...'`, ci.yml:1025) —
+#     bu job "run-test" için açıkça 'false' GEÇMİYOR (yalnızca
+#     `run-isolation: 'false'` geçiyor, ci.yml:1028); `run-gates`
+#     composite'inin varsayılanı `run-test: 'true'`dur
+#     (`.github/actions/run-gates/action.yml:18-25`) → test adımı GERÇEKTEN
+#     koşuyor. Ölçüldü:
+#     `pnpm exec turbo run test --filter='@arkesoft/superadmin...' --dry=json`
+#     çıktısında `@arkesoft/superadmin` paketinin "test" komutu
+#     `"vitest run --passWithNoTests --fsModuleCachePath node_modules/.vitest-cache"`
+#     — `<NONEXISTENT>` DEĞİL. Sessiz boşluk doğmuyor; 11 → 12 satır.
+#
 # Satır başında # olan satırlar ve boş satırlar yorum sayılır, taranmaz.
 
 @arkesoft/admin
@@ -118,6 +134,7 @@
 @arkesoft/db
 @arkesoft/errors
 @arkesoft/storefront
+@arkesoft/superadmin
 @arkesoft/tenancy
 @arkesoft/theme-sdk
 @arkesoft/themes-modern

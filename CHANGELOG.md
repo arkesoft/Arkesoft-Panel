@@ -25,6 +25,15 @@ pnpm changeset
 
 <!-- Changesets bu çizginin altına yazar. Elle girdi eklemeyin. -->
 
+## 0.10.0 — 2026-11-16
+
+- Arkesoft ekibi için ayrı bir süper admin paneli eklendi. Platform yöneticileri artık
+  kendi girişleriyle (iki faktörlü doğrulama zorunlu) bu panelden tüm mağazaların
+  listesini (alan adı, plan, durum, oluşturulma tarihi) ve platform erişim denetim
+  kaydını görebiliyor. Bir mağazanın verisine erişim artık görünmez bir arka kapı
+  üzerinden değil, her erişimde iz bırakan açık bir kayıt mekanizmasıyla yapılıyor.
+  Mağaza sahiplerinin kendi panelleri bu değişiklikten etkilenmiyor. [v0.0.20]
+
 ## 0.9.0 — 2026-11-15
 
 - Artık yeni müşteriler panelde kendi başlarına kayıt olup birkaç adımda (hesap →
