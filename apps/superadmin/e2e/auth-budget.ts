@@ -36,10 +36,17 @@ export const AUTH_IP_LIMITS = { signIn: 20, signUp: 10 } as const
  *     (korunacak mı, admin'in `session-security-dialog-focus.qa.spec.ts`
  *     emsali gibi kalıcı mı olacak, yoksa `devops` tarafından başka bir
  *     spec'e taşınacak mı) qa tur1 raporunda Orkestratöre bırakıldı.
+ *   - `two-factor-setup-reload.spec.ts` (EKLENDİ: T-022/S5, AC-1/AC-2 —
+ *     bu sürümün TEK uçtan uca kapısı): 1 sign-in + 1 sign-up —
+ *     `createVerifiedFixtureUser` TEK çağrıda ikisini de üretir (`superadmin-
+ *     authz.spec.ts`'in AYNI deseni), İKİNCİ bir `sign-in` GEREKMEZ
+ *     (storageState ile context açılır; 2FA'nın kendi `enable`/`get-totp-
+ *     uri`/`verify-totp` çağrıları bu bütçeye GİRMEZ).
  */
 export const SPEC_AUTH_COST: Record<string, { readonly signIn: number; readonly signUp: number }> =
   {
     'superadmin-flow.spec.ts': { signIn: 1, signUp: 1 },
     'superadmin-authz.spec.ts': { signIn: 1, signUp: 1 },
     'sidebar-focus-return.qa.spec.ts': { signIn: 1, signUp: 1 },
+    'two-factor-setup-reload.spec.ts': { signIn: 1, signUp: 1 },
   }

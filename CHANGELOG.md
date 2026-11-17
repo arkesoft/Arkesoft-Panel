@@ -25,6 +25,16 @@ pnpm changeset
 
 <!-- Changesets bu çizginin altına yazar. Elle girdi eklemeyin. -->
 
+## 0.10.1 — 2026-11-17
+
+- İki faktörlü kimlik doğrulama kurulum sihirbazında sayfa yeniden yüklendiğinde
+  QR kodunun ve gizli anahtarın değişmesine yol açan hata düzeltildi — artık devam
+  eden bir kuruluma aynı anahtarla sorunsuzca dönülüyor (yedek kodların bu durumda
+  tekrar gösterilemeyeceği açıkça belirtiliyor). Ayrıca iki iç bakım kalemi
+  kapatıldı: `//` ile başlayan isteklerin sunucuda beklenmeyen hataya (500) yol
+  açması engellendi; sürekli entegrasyon (CI) kontrolleri artık test
+  başarısızlıklarını daha güvenilir şekilde tespit ediyor. [v0.0.20.1]
+
 ## 0.10.0 — 2026-11-16
 
 - Arkesoft ekibi için ayrı bir süper admin paneli eklendi. Platform yöneticileri artık

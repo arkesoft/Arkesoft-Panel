@@ -1,5 +1,11 @@
 # @arkesoft/trpc
 
+## 0.8.1
+
+### Patch Changes
+
+- @arkesoft/errors@0.10.1
+
 ## 0.8.0
 
 ### Minor Changes

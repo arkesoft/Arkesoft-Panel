@@ -2,13 +2,13 @@
 // T-021/S10, ADR-0022 Karar 6 — üçüncü tüketici).
 //
 // ⭐ `scripts/playwright/base.ts`'i TÜKETİR (`createPlaywrightBaseConfig` +
-// `DESKTOP_DEVICE_NAME`) — `apps/admin/playwright.config.ts`'in AYNI deseni,
-// tek farkla: ⚠⚠ Orkestratör kararı (R-PO1, T-021 Task dosyası) `base.ts`'in
-// DÖRT export'undan yalnızca `DESKTOP_DEVICE_NAME`'in BU sürümde gerçek bir
-// tüketicisi olabileceğini tespit etti — `MOBILE_DEVICE_NAME` ve iki
-// `VISUAL_*` sabiti bu uygulamada `responsive/`/`visual/` dizini OLMADIĞI
-// (A-T21-5, bilerek — bu dosya o dizinleri AÇMAZ) için BU sürümde meşru bir
-// tüketici KAZANAMAZ; vadeleri `v0.0.20.1`. Onları yapay olarak import etmek
+// `desktopDevice`) — `apps/admin/playwright.config.ts`'in AYNI deseni, tek
+// farkla: ⚠⚠ DÜZELTME (ROADMAP:3414, pm/architect ölçtü, T-022/AC-6): bu
+// dosya `DESKTOP_DEVICE_NAME`'i DEĞİL `desktopDevice` kısayolunu import eder
+// — ham ad sabitleri `base.ts`'te hiç dışa açılmıyor (modül-içi `const`).
+// `mobileDevice` ve iki `VISUAL_*` kısayolu bu uygulamada `responsive/`/
+// `visual/` dizini OLMADIĞI (A-T21-5, bilerek — bu dosya o dizinleri AÇMAZ)
+// için gerçek bir tüketici KAZANAMAZ. Onları yapay olarak import etmek
 // (örn. kullanılmayan bir `mobileDevice` projesi eklemek) borcu KAPATMAZ,
 // GİZLER — bu dosya bunu BİLEREK yapmaz.
 //
@@ -72,10 +72,9 @@ export default createPlaywrightBaseConfig({
   globalTeardown: './e2e/global-teardown.ts',
   // AC18: oran sınırı bütçesi dar — testler SIRALI koşmak ZORUNDA.
   fullyParallel: false,
-  // ⭐ AC-3: TEK adlandırılmış proje, `DESKTOP_DEVICE_NAME`'in GERÇEK
-  // tüketicisi (`scripts/playwright/base.ts`'in `desktopDevice`'ı).
-  // `responsive/`/`visual/` dizini YOK (A-T21-5) — ikinci bir proje İCAT
-  // EDİLMEZ.
+  // ⭐ AC-3: TEK adlandırılmış proje, `scripts/playwright/base.ts`'in
+  // `desktopDevice` kısayolunun GERÇEK tüketicisi. `responsive/`/`visual/`
+  // dizini YOK (A-T21-5) — ikinci bir proje İCAT EDİLMEZ.
   projects: [
     {
       name: 'superadmin',

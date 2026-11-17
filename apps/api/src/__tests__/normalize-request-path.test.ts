@@ -142,3 +142,175 @@ describe('matchesPrefixOrUnparsablePercentEncoding — ÖNEK testi için TUTUCU 
     ).toBe(false)
   })
 })
+
+// ---------------------------------------------------------------------------
+// T-022/S2 adım⑤ — AC-5: `//` ailesi (architect §1.5, ASIL BULGU). İKİ
+// fonksiyon için AYRI vaka blokları — `normalizeRequestPath` VE
+// `matchesPrefixOrUnparsablePercentEncoding` BAĞIMSIZ varsayılanlara sahip
+// (biri HAM `rawUrl`'e düşer, diğeri TUTUCU `true` döner — dosya başı
+// fonksiyon yorumlarına bkz), bu yüzden tek bir ortak blok YANILTICI olurdu.
+// ---------------------------------------------------------------------------
+
+describe('normalizeRequestPath — "//" ailesi (T-022/S2 adım⑤, AC-5, §1.5 ASIL BULGU)', () => {
+  // ⭐⭐ ASIL BULGU'nun REGRESYON TESTİ: FIX ÖNCESİ `normalizeRequestPath(
+  // '//evil.example/trpc/session.me')` WHATWG'i authority (`//host/...`)
+  // olarak yorumlayıp `/trpc/session.me`'YE İNDİRGERDİ — bu değer
+  // `TENANT_EXEMPT_PATHS`'TE GERÇEKTEN VAR (`tenant-exempt-paths.ts:205`) ⇒
+  // `isTenantExemptPath` fail-OPEN dönerdi (architect ⓵ ASIL BULGU). FIX
+  // SONRASI `//` hiçbir authority'ye ÇÖZÜLMEZ — host `evil.example` YUTULMAZ,
+  // yol LİTERAL kalır ve GERÇEK exempt literaliyle ASLA eşleşmez.
+  it("//evil.example/trpc/session.me → LİTERAL kalır, /trpc/session.me'YE İNDİRGENMEZ (fail-open KAPANDI)", () => {
+    const result = normalizeRequestPath('//evil.example/trpc/session.me')
+    expect(result).toBe('//evil.example/trpc/session.me')
+    expect(result).not.toBe('/trpc/session.me')
+  })
+
+  // `//`'nin KENDİSİ (sonuna hiçbir segment EKLENMEMİŞ) `stripTrailingSlashes`
+  // TARAFINDAN kök `/`'e DARALTILIR (T-021 FIX turu 4'ün BİLEREK korunan
+  // davranışı, dosya başı GÜNCELLEME yorumu — "TAMAMEN eğik çizgiden oluşan
+  // bir dize kök `/`'e iner") — BU, authority YORUMUNDAN (host yutma)
+  // KAYNAKLANMAZ (ölçüldü: FIRLAMAZ, `//` hiçbir HOST'A çözülmedi, sadece
+  // SONDAKİ eğik çizgiler soyuldu); `/` {@link TENANT_EXEMPT_PATHS}'TE
+  // (`tenancy/tenant-exempt-paths.ts`) BİR LİTERAL DEĞİL ⇒ fail-open SINIFINA
+  // GİRMEZ.
+  it('// → host/authority YORUMU YOK, FIRLAMAZ; stripTrailingSlashes kök "/"e DARALTIR (authority KAYNAKLI DEĞİL)', () => {
+    expect(normalizeRequestPath('//')).toBe('/')
+  })
+
+  it('/// → AYNI gerekçeyle kök "/"e DARALIR (authority yorumu YOK, sadece sondaki eğik çizgiler soyuldu)', () => {
+    expect(normalizeRequestPath('///')).toBe('/')
+  })
+
+  // `%2F` → decode SONRASI `/`'ye çözülür; `//%2F` → decode SONRASI `///`'e
+  // çözülür ve `stripTrailingSlashes` kök `/`'e indirger — bu BİLİNÇLİ bir
+  // davranış (decode HER ZAMAN sondaki `/` soyulmadan ÖNCE yapılır, dosya
+  // başı yorumu), authority YORUMU YOK (host yutulmadı) olduğu için fail-open
+  // SINIFINA GİRMEZ.
+  it('//%2F → decode SONRASI "///" olur, kök "/"e DARALIR (authority yorumu YOK)', () => {
+    expect(normalizeRequestPath('//%2F')).toBe('/')
+  })
+
+  // ⭐⭐ NO-OP DEĞİŞMEZİ (architect, bağlayıcı): `//` İLE BAŞLAMAYAN her
+  // girdide çıktı §1.5 FIX'İNDEN ETKİLENMEZ — aşağıdaki beş eksenin (`\`,
+  // nokta-segment, `%`, `?`, `#`) HER BİRİ TEK leading eğik çizgili bir
+  // girdiyle temsil edilir; değerler FIX ÖNCESİ (`new URL(rawUrl, ORIGIN)`,
+  // relatif çözüm) VE FIX SONRASI (`new URL(ORIGIN + rawUrl)`, birleştirme)
+  // arasında BAĞIMSIZ OLARAK ÖLÇÜLDÜ, İKİSİ DE AYNI (rapora bkz) — bir TEK
+  // leading `/` için relatif çözüm İLE birleştirme YAPISAL OLARAK eşdeğerdir
+  // (WHATWG "absolute-path" referansı tabanın YOLUNU TAMAMEN DEĞİŞTİRİR,
+  // authority ASLA YENİDEN YORUMLANMAZ).
+  it.each([
+    // `\` ekseni — WHATWG'in `http` ÖZEL şema tersine eğik çizgi/eğik çizgi
+    // EŞDEĞERLİĞİ (BAĞIMSIZ, bu fix'ten ÖNCE de VARDI).
+    ['/trpc\\platform.tenantList', '/trpc/platform.tenantList'],
+    // nokta-segment ekseni — pm'in R-3 karşı örneği (§1.5 yorumu).
+    ['/trpc/a/../platform.tenantList', '/trpc/platform.tenantList'],
+    // `%` ekseni — mevcut testlerin ÜZERİNE, TEK leading `/` ile (decode HER
+    // ZAMAN yapılır — bu fix'ten BAĞIMSIZ, dosya başındaki "%2E ÇÖZÜLÜR"
+    // testiyle AYNI davranış).
+    ['/trpc/platform%2EtenantList', '/trpc/platform.tenantList'],
+    // `?` ekseni — sorgu dizesi.
+    ['/trpc/platform.session?input=%7B%7D', '/trpc/platform.session'],
+    // `#` ekseni — fragman.
+    ['/trpc/platform.session#frag', '/trpc/platform.session'],
+  ])('%s → "//" İLE BAŞLAMIYOR ⇒ çıktı §1.5 FIX\'İNDEN ETKİLENMEZ: %s', (rawUrl, expected) => {
+    expect(normalizeRequestPath(rawUrl)).toBe(expected)
+  })
+})
+
+describe('matchesPrefixOrUnparsablePercentEncoding — "//" ailesi (T-022/S2 adım⑤, AC-5)', () => {
+  // `normalizeRequestPath`'in TERSİNE bu fonksiyon TUTUCU varsayılana sahip —
+  // ama "//" ailesi `unparsable` ÜRETMEZ (ORIGIN+rawUrl HER ZAMAN
+  // ayrıştırılabilir, dosya başı yorumu), bu yüzden `true`'ya DÜŞMEZ; GERÇEK
+  // (literal) yol üzerinden `startsWith` değerlendirilir.
+  it('//evil.example/trpc/session.me bir /trpc/platform. ÖNEKİYLE eşleşmez (host yutulmadı, literal kaldı)', () => {
+    expect(
+      matchesPrefixOrUnparsablePercentEncoding('//evil.example/trpc/session.me', '/trpc/platform.'),
+    ).toBe(false)
+  })
+
+  it('// bir /trpc/platform. ÖNEKİYLE eşleşmez (unparsable DEĞİL, literal "//" önekle UYUŞMUYOR)', () => {
+    expect(matchesPrefixOrUnparsablePercentEncoding('//', '/trpc/platform.')).toBe(false)
+  })
+
+  it('/// bir /trpc/platform. ÖNEKİYLE eşleşmez', () => {
+    expect(matchesPrefixOrUnparsablePercentEncoding('///', '/trpc/platform.')).toBe(false)
+  })
+
+  it('//%2F bir /trpc/platform. ÖNEKİYLE eşleşmez (decode SONRASI "///" → kök "/"e daralır)', () => {
+    expect(matchesPrefixOrUnparsablePercentEncoding('//%2F', '/trpc/platform.')).toBe(false)
+  })
+
+  // ⭐⭐ NO-OP DEĞİŞMEZİ — `normalizeRequestPath` bloğuyla BİREBİR aynı beş
+  // eksen, AYNI gerekçe (bu fonksiyonun KENDİ öneki `/trpc/platform.` ile).
+  it.each([
+    ['/trpc\\platform.tenantList', true],
+    ['/trpc/a/../platform.tenantList', true],
+    ['/trpc/platform%2EtenantList', true],
+    // `?`/`#` eksenleri — pathname "/trpc/platform.session" olarak çözülür,
+    // bu da "/trpc/platform." ÖNEKİYLE EŞLEŞİR ("platform.session"
+    // "platform." ile BAŞLAR) — `false` BEKLEMEK YANLIŞ olurdu (ölçüldü).
+    ['/trpc/platform.session?input=%7B%7D', true],
+    ['/trpc/platform.session#frag', true],
+  ])('%s → "//" İLE BAŞLAMIYOR ⇒ çıktı §1.5 FIX\'İNDEN ETKİLENMEZ: %s', (rawUrl, expected) => {
+    expect(matchesPrefixOrUnparsablePercentEncoding(rawUrl, '/trpc/platform.')).toBe(expected)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// `qa` tur 1, FIX turu 1 — test kapsamı boşluğu kapatıldı. `backend` FIX turu
+// 1'de ÖLÇTÜ VE SAKLAMADI: "`matchesPrefixOrUnparsablePercentEncoding`'in
+// `unparsable` dalı (gerçek `new URL(...)` constructor FIRLAMASI,
+// `resolveCanonicalPathnameOrUnparsable`'ın `catch` bloğu) HİÇBİR mevcut
+// testle kapsanmıyor — dalı bilerek bozdum (`return true`→`return false`),
+// 47 testin 47'si YEŞİL KALDI". §1.5 fix'i (`/` İLE BAŞLAYAN girdiler için
+// `new URL(ORIGIN + rawUrl)` BİRLEŞTİRMESİ) bu dalı `/`-öneki olan girdiler
+// için pratikte erişilemez kıldı (security'nin 8.377 girdilik taraması —
+// `//` ailesinin hiçbiri FIRLAMIYOR) — AMA fonksiyonun İKİNCİ dalı (`/` İLE
+// BAŞLAMAYAN girdiler, `new URL(rawUrl, ORIGIN)` GERÇEK relatif çözüm) HÂLÂ
+// fırlayabiliyor: `rawUrl` kendi şemasını/authority'sini taşıyan bir
+// absolute-form dizgeyse (`ORIGIN` taban olarak YOK SAYILIR) ve bu
+// authority'nin host'u WHATWG'in host ayrıştırma algoritmasını BAŞARISIZ
+// kılıyorsa (örn. eşleşmeyen `[` ile biten bir IPv6 literal, veya host'suz
+// `http://`) constructor GERÇEKTEN FIRLAR.
+//
+// Bağımsız doğrulama (node, bu fonksiyonun KENDİ mantığıyla, üretim kodu
+// İTHAL EDİLMEDEN — totolojik DEĞİL): `http://[::1`, `http://`,
+// `http://host:abc/` (geçersiz port), `http://example.com:99999999999999999999/`
+// (port taşması) — DÖRDÜ DE "Invalid URL" FIRLATIYOR, Node'un `URL` sınıfının
+// WHATWG spec'e BAĞLI, implementasyondan BAĞIMSIZ bir davranışı (host/port
+// ayrıştırma başarısızlığı spec'in KENDİSİNDE tanımlı bir hata durumu).
+//
+// ⚠ Bu girdi `req.url` için GERÇEKÇİ DEĞİL (Node'un http sunucusu normal bir
+// istekte `req.url`'i her zaman `/` ile BAŞLATIR — absolute-form
+// request-target, yalnızca proxy senaryolarında VEYA elle oluşturulmuş ham
+// bir soket isteğinde görülür). AMA bu fonksiyonun KENDİSİ saf, parametreli
+// ve rastgele dizge kabul eden bir birim — dal birim SEVİYESİNDE GERÇEKTEN
+// erişilebilir (aşağıdaki testler bunu KANITLIYOR), bu yüzden "ölü kod"
+// İLAN EDİLEMEZDİ; kapatılması gereken GERÇEK bir boşluktu.
+// ---------------------------------------------------------------------------
+
+describe('normalizeRequestPath — "unparsable" dalı (gerçek new URL(...) FIRLAMASI — qa FIX turu 1)', () => {
+  it('absolute-form, bozuk IPv6 host ("http://[::1") → new URL(...) GERÇEKTEN fırlar, HAM rawUrl AYNEN döner', () => {
+    const rawUrl = 'http://[::1'
+    expect(normalizeRequestPath(rawUrl)).toBe(rawUrl)
+  })
+
+  it('"http://" (host YOK) → AYNI "unparsable" dalı, HAM rawUrl AYNEN döner', () => {
+    const rawUrl = 'http://'
+    expect(normalizeRequestPath(rawUrl)).toBe(rawUrl)
+  })
+})
+
+describe('matchesPrefixOrUnparsablePercentEncoding — "unparsable" dalı (gerçek new URL(...) FIRLAMASI — qa FIX turu 1)', () => {
+  // `normalizeRequestPath`'in TERSİNE bu fonksiyon TUTUCU varsayılana sahip —
+  // `unparsable`'da "kapsamda SAY" döner (security F1'in şartı, dosya başı
+  // fonksiyon yorumuna bkz), HAM dizgeye değil.
+  it('absolute-form, bozuk IPv6 host ("http://[::1") → new URL(...) GERÇEKTEN fırlar, TUTUCU true döner', () => {
+    expect(matchesPrefixOrUnparsablePercentEncoding('http://[::1', '/trpc/platform.')).toBe(true)
+  })
+
+  it('"http://" (host YOK) → AYNI "unparsable" dalı, TUTUCU true döner', () => {
+    expect(matchesPrefixOrUnparsablePercentEncoding('http://', '/trpc/platform.')).toBe(true)
+  })
+})

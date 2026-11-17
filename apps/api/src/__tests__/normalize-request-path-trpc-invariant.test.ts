@@ -98,39 +98,81 @@ function trimSlashesOnce(path: string): string {
 }
 
 /**
+ * Express'in ROTA KATMANI (`router/index.js`'in `parseurl`/legacy
+ * `url.parse` tabanlı eşleşmesi — M-2/M-3, architect ⓵) GERÇEKTE ne
+ * görüyorsa AYNEN onu üretir: `req.url`'İN KENDİSİ, sorgu dizesi/fragman
+ * SOYULMUŞ (`url.parse`'ın yaptığı TEK normalizasyon), WHATWG `..` ÇÖZÜMÜ
+ * YOK, host/authority YORUMU YOK (`slashesDenoteHost` varsayılan KAPALI —
+ * ölçüldü, `node -e "require('url').parse('//evil.example/x')"` → `host:
+ * null`, `pathname: '//evil.example/x'` DEĞİŞMEDEN). T-022/S2 adım①
+ * (⚠⚠ MODELLEME DÜZELTMESİ): bu fonksiyon ÖNCEDEN `new URL(rawUrl, base)
+ * .pathname` (WHATWG) ALIYORDU — bugünkü jeton kümesinde (mount büyük/
+ * küçük harf, nokta kodlaması, sondaki eğik çizgi — HİÇBİRİ `//`/`..`
+ * TAŞIMIYOR) WHATWG `pathname` ile ham request-target TESADÜFEN AYNI
+ * olduğu için test YANLIŞ MODELLEMEYLE DE yeşil geliyordu. `//` ekseni
+ * eklendiğinde (adım③) bu ikisi AYRIŞIR — Express ROTA eşleşmesi HAM
+ * request-target üzerinden, tRPC'nin KENDİ prosedür çözümü (aşağıdaki
+ * `resolveRealTrpcProcedureName`'in WHATWG adımı) ayrı bir aşamadır.
+ */
+function rawRequestTargetPath(rawUrl: string): string {
+  const queryOrFragmentIndex = rawUrl.search(/[?#]/)
+  return queryOrFragmentIndex === -1 ? rawUrl : rawUrl.slice(0, queryOrFragmentIndex)
+}
+
+/**
  * Express'in `@All('trpc/*path')` rotasının ÖLÇÜLMÜŞ (security tur2 §2,
  * tur3 §2) gerçek davranışını modeller: `case sensitive routing` KAPALI,
  * `/trpc` segmenti büyük/küçük harf DUYARSIZ, segment SINIRINDA (`''` veya
  * `'/'`) eşleşir. BAĞIMSIZ yazılmıştır — `foldTrpcMountPrefix` BURADAN
- * ÇAĞRILMAZ.
+ * ÇAĞRILMAZ. ⚠ Girdi {@link rawRequestTargetPath}'in ÜRETTİĞİ HAM yoldur
+ * (WHATWG `pathname` DEĞİL — yukarıdaki fonksiyon başı yorumuna bkz).
  */
-function expressRoutesToTrpcMount(pathname: string): boolean {
-  if (pathname.length < TRPC_ENDPOINT.length) {
+function expressRoutesToTrpcMount(rawPath: string): boolean {
+  if (rawPath.length < TRPC_ENDPOINT.length) {
     return false
   }
 
-  const candidate = pathname.slice(0, TRPC_ENDPOINT.length).toLowerCase()
+  const candidate = rawPath.slice(0, TRPC_ENDPOINT.length).toLowerCase()
 
   if (candidate !== TRPC_ENDPOINT) {
     return false
   }
 
-  const boundary = pathname.charAt(TRPC_ENDPOINT.length)
+  const boundary = rawPath.charAt(TRPC_ENDPOINT.length)
   return boundary === '' || boundary === '/'
 }
 
 /**
  * `rawUrl`'in GERÇEK Express+tRPC zincirinde ÇALIŞTIRACAĞI prosedür adını
- * döner; mount eşleşmediyse, decode FIRLADIYSA veya sonuç `knownProcedurePaths`'TE
- * KAYITLI değilse `null` döner.
+ * döner; mount eşleşmediyse, WHATWG ayrıştırması FIRLADIYSA, decode
+ * FIRLADIYSA veya sonuç `knownProcedurePaths`'TE KAYITLI değilse `null`
+ * döner.
+ *
+ * ⚠⚠ İKİ AYRI AŞAMA, İKİ AYRI PARÇALAYICI (T-022/S2 adım① düzeltmesi):
+ * (1) ROTA eşleşmesi — Express'in GERÇEKTEN gördüğü HAM request-target
+ *     ({@link rawRequestTargetPath}), WHATWG YORUMU YOK.
+ * (2) tRPC'nin KENDİ prosedür çözümü — `trpc.controller.ts:114`'ün BİREBİR
+ *     aynısı, WHATWG `new URL(rawUrl, baseUrl).pathname` ÜZERİNDEN (dosya
+ *     başı GÜNCELLEME yorumu, §1.5). Bu adım FIRLARSA (`new URL('//', …)`
+ *     gibi) SADIK davranış `null`'dır — `trpc.controller.ts`'in kendisi de
+ *     bu durumda isteği ÇALIŞTIRAMAZ; normalizer'a UYDURULMAZ (totoloji
+ *     yasak, architect ⓵ dosya başı notu).
  */
 function resolveRealTrpcProcedureName(
   rawUrl: string,
   knownProcedurePaths: ReadonlySet<string>,
 ): string | null {
-  const { pathname } = new URL(rawUrl, INVARIANT_HARNESS_BASE)
+  const rawPath = rawRequestTargetPath(rawUrl)
 
-  if (!expressRoutesToTrpcMount(pathname)) {
+  if (!expressRoutesToTrpcMount(rawPath)) {
+    return null
+  }
+
+  let pathname: string
+
+  try {
+    ;({ pathname } = new URL(rawUrl, INVARIANT_HARNESS_BASE))
+  } catch {
     return null
   }
 
@@ -157,9 +199,45 @@ function resolveRealTrpcProcedureName(
 // Mutasyon jetonu üretimi — dosya başı "JETON KÜMESİ SEÇİMİ" gerekçesi.
 // ---------------------------------------------------------------------------
 
-const MOUNT_VARIANTS = ['/trpc', '/TRPC', '/Trpc', '/tRpC'] as const
+// T-022/S2 adım③ (R-3, `//` ekseni) — `MOUNT_VARIANTS` ÖNCEDEN TEK öncü eğik
+// çizgiyi (`/trpc`) SABİT varsayıyordu. `MOUNT_SLASH_PREFIXES` bunu AYRI bir
+// eksene çıkarır: `''` (hiç öncü eğik çizgi YOK — `new URL(rawUrl, base)`'in
+// RELATİF bir yol olarak çözdüğü, M-5'in İLGİLENMEDİĞİ dejenere uç),
+// `'/'` (BUGÜNKÜ, tek öncü — mevcut dört varyantla BİREBİR aynı davranış,
+// regresyon YOK), `'//'` (M-5'in ÖLÇTÜĞÜ ASIL eksen: `expressRoutesToTrpcMount`
+// ÖNCEKİ harness'in `rawRequestTargetPath` modeliyle — adım① — VE GERÇEK
+// `path-to-regexp@8.4.2`'nin `match('/trpc/*path')`'i İLE BAĞIMSIZ OLARAK
+// ÖLÇÜLDÜ: `//trpc/...` HİÇBİRİYLE EŞLEŞMEZ, `false` döner — TrpcController'ın
+// KENDİ, İÇ rotası çift eğik çizgili bir mount'u asla GÖRMEZ; `'//'`'nin
+// middleware zincirine girişi — M-5 — AYRI, GLOBAL `'*path'` rotasına
+// özgüdür, BU rotaya DEĞİL). Üç öncü × dört harf varyantı = 12 mount
+// varyantı (önceki 4'ün YERİNE DEĞİL, ÜZERİNE — `'/'` alt kümesi BUGÜNKÜ 4
+// varyantla TAM ÖRTÜŞÜR, hiçbir mevcut vaka KAYBOLMAZ).
+const MOUNT_SLASH_PREFIXES = ['', '/', '//'] as const
+const TRPC_MOUNT_CASE_VARIANTS = ['trpc', 'TRPC', 'Trpc', 'tRpC'] as const
+const MOUNT_VARIANTS = MOUNT_SLASH_PREFIXES.flatMap((prefix) =>
+  TRPC_MOUNT_CASE_VARIANTS.map((core) => `${prefix}${core}`),
+)
 const DOT_TOKENS = ['.', '%2E', '%2e'] as const
 const TRAILING_SLASH_COUNTS = [0, 1, 2, 3] as const
+
+// T-022/S2 adım③ — architect'in R-3 bulgusundaki DÖRT "hedef" (`pm`'in
+// R-3 riskinde VE architect ⓵'in ASIL BULGU'sunda BİREBİR aynı dört literal):
+// PROSEDÜR ADI TAŞIMAYAN, bağımsız ham URL'ler. Express'in `/trpc/*path`
+// rotası (`path-to-regexp@8.4.2`, yukarıdaki yorum) bunların HİÇBİRİYLE
+// eşleşmez (`'/'`/`'//'`/`'//e'`/`'//e'` → beşten az karakter VEYA `/trpc`
+// öneki YOK) ⇒ `resolveRealTrpcProcedureName` HER ZAMAN `null` döner —
+// değişmezin antecedent'i (`trpcResolved ≠ null`) HİÇBİRİ İÇİN tetiklenmez.
+// Bu VACUOUS bir "geçer" DEĞİL — `it.each` ile AYRICA, doğrudan `null`
+// döndüğü MEKANİK olarak assert edilir (aşağıya bkz) ki gelecekte
+// `expressRoutesToTrpcMount`/`rawRequestTargetPath` sessizce GEVŞERSE bu
+// dosya SESSİZCE vacuous kalmaz, GÜRÜLTÜLÜ kırılır.
+const STANDALONE_AUTHORITY_AMBIGUOUS_TARGETS = [
+  '//',
+  '///',
+  '//evil.example',
+  '//evil.example/x',
+] as const
 
 /** Prosedür yolundaki İLK `.`'ı (namespace/action ayracı) `dotToken` ile değiştirir. */
 function applyDotToken(procedurePath: string, dotToken: string): string {
@@ -241,6 +319,18 @@ describe('normalizeRequestPath — tRPC ile DEĞİŞMEZLİK (security tur3 F8, D
       // hiçbir şey KANITLAMAZ).
       expect(resolvedCandidateCount).toBeGreaterThan(0)
       expect(violations).toEqual([])
+    },
+  )
+
+  // T-022/S2 adım③ — dosya başı `STANDALONE_AUTHORITY_AMBIGUOUS_TARGETS`
+  // yorumuna bkz: bu DÖRT hedef HİÇBİR appRouter prosedürünün ÖNÜNE
+  // EKLENMEDEN, kendi başlarına test edilir. Vacuous DEĞİL — `null` dönüşü
+  // BURADA doğrudan assert edilir (yukarıdaki değişmez testinin aksine,
+  // bunlar `continue` ile SESSİZCE atlanmaz).
+  it.each(STANDALONE_AUTHORITY_AMBIGUOUS_TARGETS)(
+    '%s → Express /trpc/*path rotası EŞLEŞMEZ ⇒ tRPCçözer null döner (R-3 hedefi, vacuous DEĞİL)',
+    (rawUrl) => {
+      expect(resolveRealTrpcProcedureName(rawUrl, knownProcedurePaths)).toBeNull()
     },
   )
 })

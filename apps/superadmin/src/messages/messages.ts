@@ -144,6 +144,13 @@ export const MESSAGES = {
       manualKeyLabel: 'Manuel anahtar',
       manualKeyInstructions:
         'Authenticator uygulamanızda hesap ekleyin, "manuel giriş" seçin, bu anahtarı yapıştırın.',
+      // ROADMAP v0.0.20.1 (T-022/S4, ADR-0024 Karar 5) EKLEMESİ — docs/ux/
+      // T-022-iki-faktorlu-kurulumun-surdurulmesi.md "Microcopy"'den BİREBİR
+      // alındı. Yalnızca `backupCodes === null` iken (sürdürülen kurulum)
+      // gösterilir — "anahtar yenilendi" DEMEZ, anahtarın AYNI kaldığını
+      // açıkça söyler (yedek kod yalnızca sınırı belirtir).
+      setupResumedNotice:
+        'Kurulum zaten başlatılmıştı — aynı anahtarla devam edin; yedek kodlar bu ekranda tekrar gösterilemez.',
       showUriToggle: 'Bağlantıyı göster (gelişmiş kullanıcılar için)',
       copiedStatus: 'Kopyalandı',
       copyFailedStatus: 'Kopyalanamadı',

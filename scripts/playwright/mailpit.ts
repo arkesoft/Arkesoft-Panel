@@ -100,9 +100,13 @@ function isMailpitMessageDetail(value: unknown): value is MailpitMessageDetail {
 
 /**
  * Mailpit'in (`infra/docker-compose.yml`'in açtığı `:8025`) HTTP API tabanı —
- * dört taşınan çağıranın hepsinde BİREBİR aynı değerdi.
+ * dört taşınan çağıranın hepsinde BİREBİR aynı değerdi. Dışa açılmaz
+ * (ROADMAP:3414, T-022): tek tüketicisi bu dosyanın kendi
+ * `findVerificationToken` fonksiyonu — `apps/api/src/__tests__/helpers/
+ * mailpit-client.ts` BAĞIMSIZ bir implementasyon (dosya başı nota bkz.),
+ * buradan import ETMİYOR.
  */
-export const MAILPIT_BASE_URL = 'http://127.0.0.1:8025'
+const MAILPIT_BASE_URL = 'http://127.0.0.1:8025'
 
 /**
  * Mailpit'ten belirli bir alıcıya gönderilmiş e-postadaki doğrulama

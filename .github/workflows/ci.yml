@@ -1256,9 +1256,37 @@ jobs:
         # (yorum satırı) VARSAYILANIYLA BİREBİR AYNI — bu job GH Actions
         # runner'ının loopback'ten (`127.0.0.1`) kendi kendine bağlandığı
         # BİLİNEN bir ortam (api/admin/storefront job'larının AYNI varsayımı).
+        #
+        # GÜNCELLEME (T-022/EK İŞ, devops) — ÜÇÜNCÜ env: `REDIS_URL`
+        # `.env`'in (`redis://localhost:6379`, DB 0) ÜZERİNE DB İNDEKSİ 1'e
+        # AÇIKÇA YAZILIR. ÖLÇÜLDÜ (node --env-file-if-exists davranışı,
+        # bu turda ampirik test edilmiş): zaten SÜRECE AKTARILAN bir kabuk
+        # değişkeni `--env-file-if-exists` dosyasındaki AYNI adı EZER —
+        # yani bu satır `.env`'i DEĞİŞTİRMEDEN apps/api'nin bu TEK sürecini
+        # DB 1'e yönlendirir. GEREKÇE: `rate-limit.service.ts`/`rate-limit.
+        # policy.ts` DOKUNULMADI, hiçbir Redis anahtarı SİLİNMEDİ — yalnızca
+        # bu e2e sürecinin TÜM Redis trafiği (oran sınırı sayaçları + BullMQ
+        # kuyruğu + health check; üçü de AYNI `ApiEnv.REDIS_URL`'den geçiyor,
+        # `redis.module.ts:45`/`queue.module.ts:68`, ikinci bir Redis
+        # tüketicisi YOK — ölçüldü) DB 0'ın (yerel geliştirme, önceki manuel
+        # koşumların BIRAKTIĞI sayaçlar) DIŞINA taşındı. Ampirik doğrulama
+        # (bu turda, gerçek `arkesoft-redis` konteynerine karşı): `EVAL`
+        # (rate limiter'ın BİREBİR Lua betiği) DB 1'de ÇALIŞTI; `CONFIG GET
+        # appendonly/maxmemory-policy` SUNUCU GENELİ bir ayar olduğu için DB
+        # indeksinden BAĞIMSIZ aynı sonucu verdi (`appendonly=yes`,
+        # `maxmemory-policy=noeviction` — `assertQueueCapableRedis` kapısı
+        # BOZULMAZ); BullMQ `Queue`/`Worker` çifti DB 1'de bir iş
+        # üretip-işleyip TAMAMLADI. DB 0'da BU turun başında ÖLÇÜLEN kalıntı
+        # durum: `platform:auth:post-auth-sign-up-email:ip:*` sayacı **19**
+        # (TTL ~783s) — DB 1 ise BOŞ başlıyor. Bu DEĞİŞİKLİK, aşağıdaki
+        # `SPEC_AUTH_COST` toplamının GERÇEK sınırı (`EMAIL_IP_LIMIT=10`)
+        # AŞMASINI çözmez (aynı tek apps/api süreci, aynı IP, aynı saatlik
+        # pencere — admin+superadmin AYNI DB'yi PAYLAŞIR) — yalnızca bu
+        # sürecin sayaçlarını önceki/paralel yerel koşumlardan İZOLE eder.
         env:
           SUPERADMIN_BASE_URL: http://superadmin.arkesoft.localhost:5174
           SUPERADMIN_IP_ALLOWLIST: 127.0.0.1
+          REDIS_URL: redis://127.0.0.1:6379/1
         run: |
           set -euo pipefail
           # storefront'un "e2e/global-setup.ts:17-30"u apps/api'nin ÇALIŞIYOR
@@ -1289,6 +1317,79 @@ jobs:
           if [ "$ready" != true ]; then
             echo "::error::apps/api 60 saniye içinde /health/ready üzerinden 2xx döndürmedi."
             cat /tmp/arkesoft-e2e-api.log
+            exit 1
+          fi
+
+      # GÜNCELLEME (T-022/EK İŞ, devops) — İKİNCİ apps/api süreci, SADECE
+      # superadmin için. GEREKÇE (ÖLÇÜLDÜ, bu turda sandbox'ta GERÇEK bir
+      # koşumla): tek apps/api süreci paylaşıldığında admin + superadmin'in
+      # toplam `SPEC_AUTH_COST.signUp` beyanı (7 + 4 = 11) `rate-limit.
+      # policy.ts`'teki GERÇEK `EMAIL_IP_LIMIT=10`'u AŞIYOR — İKİSİ de AYNI
+      # fiziksel soket adresinden (127.0.0.1, loopback; `client-ip.ts`
+      # `trustedProxyCount<=0` iken `socket.remoteAddress`'i okur, X-Forwarded-
+      # For'u YOK SAYAR) AYNI apps/api sürecine bağlandığı için sayaç
+      # PAYLAŞILIR. Yukarıdaki satırın (tek süreç, DB 1) İZOLE ETTİĞİ şey
+      # yalnızca ÖNCEKİ/PARALEL yerel koşumların kalıntısı — admin+superadmin
+      # ARASINDAKİ paylaşımı ÇÖZMEZ (dosya başı yoruma bkz). AMPİRİK KANIT
+      # (sandbox, bu turda): tek süreçle gerçek `pnpm test:e2e` koşumu
+      # `platform:auth:post-auth-sign-up-email:ip:*` sayacını TAM 11'e
+      # taşıdı ve GERÇEK bir `RATE_LIMIT_EXCEEDED` (503 DEĞİL — 429 sınıfı,
+      # `scope":"ip"`, `retryAfterSeconds` ~3574, EMAIL penceresi) ÜRETTİ —
+      # bu teorik değil, gözlenmiş bir regresyon.
+      #
+      # ÇÖZÜM: `EMAIL_IP_LIMIT`'e DOKUNULMADI, hiçbir Redis anahtarı SİLİNMEDİ,
+      # hiçbir spec'in GERÇEK istek sayısı AZALTILMADI (ikisi de YASAK). Bunun
+      # yerine admin ve superadmin'e AYRI birer apps/api süreci (AYRI Redis DB
+      # indeksi — DB 1 ve DB 2) tahsis edilir. Oran sınırlayıcı sayacı
+      # `ApiEnv.REDIS_URL`'e (tek env, `redis.module.ts:45`/`queue.
+      # module.ts:68`) bağlı bir SÜREÇ İÇİ durumdur — iki süreç AYRI DB
+      # indeksi kullandığında, İKİSİ DE "127.0.0.1" soket adresini görse
+      # BİLE, HMAC anahtarları FİZİKSEL OLARAK ayrı bir Redis veritabanında
+      # tutulur ve BİRBİRİNİ GÖRMEZ. Sonuç: admin'in 7 kayıt + superadmin'in
+      # 4 kaydı artık İKİ BAĞIMSIZ bütçeye düşer (7 ≤ 10, 4 ≤ 10) — gerçek
+      # sınır ikisi için de AYRI AYRI karşılanır, birleşik toplam (11) artık
+      # İLGİSİZDİR (çünkü hiçbir TEK Redis veritabanı 11'i GÖRMEZ).
+      #
+      # Bu, loopback IP takma adı (127.0.0.2 vb.) ile DENENMEDİ — ÖLÇÜLDÜ
+      # (sandbox, bu turda, macOS): `connect ETIMEDOUT 127.0.0.2` — ek ağ
+      # arayüzü takma adı GEREKTİRİR (sudo, platforma özgü), taşınabilir
+      # değil. Redis DB indeksi ayrımı hem macOS hem Linux runner'da aynı
+      # şekilde çalışır (ioredis URL ayrıştırması, ölçüldü).
+      #
+      # `admin` ve `storefront` YUKARIDAKİ (3000, DB 1) süreci kullanmaya
+      # DEVAM EDER — DEĞİŞİKLİK YOK. `superadmin` AŞAĞIDAKİ (3001, DB 2)
+      # YENİ sürece yönlendirilir ("E2E süitini çalıştır" adımındaki
+      # `ARKESOFT_SUPERADMIN_DEV_API_TARGET` env'ine bkz.).
+      - name: apps/api'nin İKİNCİ süreci (superadmin — ayrı Redis DB, T-022/EK İŞ)
+        shell: bash
+        env:
+          SUPERADMIN_BASE_URL: http://superadmin.arkesoft.localhost:5174
+          SUPERADMIN_IP_ALLOWLIST: 127.0.0.1
+          API_PORT: 3001
+          REDIS_URL: redis://127.0.0.1:6379/2
+        run: |
+          set -euo pipefail
+          (cd apps/api && exec node --env-file-if-exists=../../.env dist/main.js) \
+            >/tmp/arkesoft-e2e-api-superadmin.log 2>&1 &
+          api_pid=$!
+          echo "apps/api (superadmin, DB 2) arka planda başlatıldı (pid $api_pid)."
+
+          ready=false
+          for attempt in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:3001/health/ready" >/dev/null 2>&1; then
+              ready=true
+              echo "apps/api (superadmin) hazır (deneme $attempt)."
+              break
+            fi
+            if ! kill -0 "$api_pid" >/dev/null 2>&1; then
+              echo "::error::apps/api (superadmin) süreci (pid $api_pid) beklenmedik şekilde erken sonlandı."
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" != true ]; then
+            echo "::error::apps/api (superadmin) 60 saniye içinde /health/ready üzerinden 2xx döndürmedi."
+            cat /tmp/arkesoft-e2e-api-superadmin.log
             exit 1
           fi
 
@@ -1418,6 +1519,18 @@ jobs:
 
       - name: E2E süitini çalıştır (pnpm test:e2e)
         shell: bash
+        # GÜNCELLEME (T-022/EK İŞ, devops) — `ARKESOFT_SUPERADMIN_DEV_API_
+        # TARGET` superadmin'in KENDİ apps/api sürecine (3001, DB 2)
+        # yönlendirir — yukarıdaki "apps/api'nin İKİNCİ süreci" adımının
+        # dosya başı yorumuna bkz. (gerekçe + ampirik kanıt orada). `admin`
+        # (`ARKESOFT_PANEL_DEV_API_TARGET`) ve `storefront`
+        # (`STOREFRONT_API_BASE_URL`) BURADA AÇIKÇA VERİLMEZ — varsayılanları
+        # (`http://127.0.0.1:3000`) hâlâ İLK apps/api sürecine (DB 1) işaret
+        # eder, DEĞİŞİKLİK YOK. Her iki değişken de `turbo.json`'ın
+        # `tasks['test:e2e'].passThroughEnv` listesinde ZATEN VAR (T-021/S10)
+        # — burada yeni bir passThroughEnv girdisi GEREKMEZ.
+        env:
+          ARKESOFT_SUPERADMIN_DEV_API_TARGET: http://127.0.0.1:3001
         run: pnpm test:e2e
 
       - name: Görsel regresyonu çalıştır (pnpm test:visual)

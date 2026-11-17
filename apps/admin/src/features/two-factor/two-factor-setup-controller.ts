@@ -1,28 +1,44 @@
-// @arkesoft/admin — TwoFactorSetupController (ROADMAP v0.0.15, T-016/S10)
+// @arkesoft/admin — TwoFactorSetupController (ROADMAP v0.0.15, T-016/S10;
+// ROADMAP v0.0.20.1, T-022/S4 sözleşme düzeltmesi — bkz. aşağı)
 //
 // SAF, React'TEN BAĞIMSIZ durum makinesi — AC11'in İKİ bağlayıcı davranışını
-// (madde 4 "enable bir kez çağrılır, tekrar gösterim get-totp-uri ile" +
-// madde 5 "verify-totp sonrası session.me invalidation") BURADA, DOM/render
-// GEREKMEDEN test edilebilir kılar (`vitest.config.ts`'in `environment:
-// 'node'` BAĞLAYICI kararı — architect, apps/admin K5: "bileşen davranışı
-// Playwright'ta, burada DEĞİL" — bu dosya o kuralı İHLAL ETMEZ, çünkü React
-// bileşeni DEĞİL, saf bir kontrolcü sınıfıdır).
+// (madde 4 "enable yalnızca gerçekten taze kurulumda çağrılır, tekrar
+// gösterim get-totp-uri ile" + madde 5 "verify-totp sonrası session.me
+// invalidation") BURADA, DOM/render GEREKMEDEN test edilebilir kılar
+// (`vitest.config.ts`'in `environment: 'node'` BAĞLAYICI kararı — architect,
+// apps/admin K5: "bileşen davranışı Playwright'ta, burada DEĞİL" — bu dosya o
+// kuralı İHLAL ETMEZ, çünkü React bileşeni DEĞİL, saf bir kontrolcü sınıfıdır).
+//
+// DÜZELTME (ADR-0024 — canlıda bulunan hata): ÖNCEKİ sözleşmede çift-çağrı
+// koruması (`hasCalledEnable`) MOUNT ÖMRÜNE bağlıydı; sayfa yenilemesi bu
+// bayrağı sıfırlıyor, `enable` İKİNCİ KEZ çağrılıyor ve Better Auth YENİ bir
+// TOTP sırrı üretiyordu — kullanıcının authenticator'ına okuttuğu ilk anahtar
+// ÖLÜYORDU. Yeni sözleşme: `submitPassword` HER ZAMAN `get-totp-uri` ile
+// BAŞLAR (sır KORUNUR, Better Auth var olan sırrı çözüp AYNI URI'yi döner);
+// `enable`'a düşüş YALNIZCA sunucunun `TOTP_NOT_ENABLED` koduyla cevap
+// verdiği (yani GERÇEKTEN taze bir kurulum olduğu) durumda gerçekleşir. Karar
+// artık mount ömrüne değil SUNUCU DURUMUNA dayanır — sayfa yenilemesi, sekme
+// çoğaltma, geri/ileri gitme ve çökme sonrası kurtarma hepsi doğru çalışır.
 //
 // `TwoFactorSetupWizard.tsx` bu sınıfı `useState`'in LAZY başlangıç değeri
 // ile sarar (`useRef` DEĞİL — `react-hooks/refs` kuralı render sırasında ref
 // okuma/yazmayı yasaklıyor); TÜM karar mantığı burada yaşar, bileşen
 // yalnızca RENDER eder.
 //
-// DÜZELTME TURU 2 (T-016/M-6 — bağlayıcı, `solid` bulgusu): `mapError`
-// `(error: unknown) => string` İMZASI TAŞIYORDU — her çağrı sitesi ZATEN
-// `TwoFactorErrorResult.error: PanelError` tipinde bir değer gönderiyordu,
-// yani imza GERÇEK çağrı şeklinden GENİŞ tutulmuştu ve `TwoFactorSetup
-// Wizard.tsx`'in `mapError` sarmalayıcısı bu gereksiz genişliği `error as
-// PanelError` CAST'İYLE kapatıyordu — hiçbir runtime doğrulamasından SONRA
-// DEĞİL (CLAUDE.md §2 ihlali). İmza artık çağrı şeklinin GERÇEĞİNİ
-// (`PanelError`) yansıtıyor; sarmalayıcı CAST'E ihtiyaç duymadan silinebildi
-// (bkz. `TwoFactorSetupWizard.tsx`, artık `resolvePanelErrorMessage`
-// DOĞRUDAN geçiliyor).
+// DÜZELTME (T-022/S4-FIX, Orkestratör ölçtü): "Vazgeç" (`goBackToPasswordStep`)
+// → şifreyi TEKRAR gönderme AYNI mount içinde `get-totp-uri`'yi bu kez
+// BAŞARILI kılıyordu (sır artık kurulu), bu da `backupCodes: null`
+// üretiyordu — kullanıcının BİRAZ ÖNCE `enable`'dan aldığı yedek kodlar
+// EKRANDAN KAYBOLUYORDU, sayfa hiç yenilenmeden. `backupCodesCapturedFor
+// Display` bunu SADECE GÖSTERİM için önbellekler — KONTROL AKIŞINA
+// (`resolveTotpUriAction`, `enable` çağrılıp çağrılmayacağı) DOKUNMAZ; o
+// karar HER ZAMAN sunucu durumuna dayanır (ADR-0024 Karar 2). Önbellek bu
+// SINIFIN ÖRNEĞİNE bağlıdır (instance field) — `TwoFactorSetupWizard`
+// controller'ı `useState`'in LAZY başlangıcıyla BİR KEZ yaratır, yani sayfa
+// yenilemesi/sekme çoğaltma YENİ bir controller örneği (ve dolayısıyla BOŞ
+// önbellek) demektir; ADR-0024 Karar 5'in "get-totp-uri yedek kod
+// DÖNDÜRMEZ, bu sınır gizlenmeyecek" kuralı RELOAD vakasında AYNEN geçerli
+// kalır.
 import type { PanelError } from '../../errors/panel-error.js'
 import type {
   EnableTwoFactorResult,
@@ -34,7 +50,7 @@ export interface TwoFactorSetupDeps {
   readonly enable: (password: string) => Promise<EnableTwoFactorResult>
   readonly getTotpUri: (password: string) => Promise<GetTotpUriResult>
   readonly verifyTotp: (code: string) => Promise<VerifyTwoFactorResult>
-  /** AC11 madde 5 — verify-totp BAŞARILI olduğunda BİR KEZ çağrılır (çağıran `session.me`'yi invalidate eder). */
+  /** `verify-totp` BAŞARILI olduğunda BİR KEZ çağrılır (çağıran oturum/sekans verisini invalidate eder). */
   readonly onVerified: () => void
 }
 
@@ -47,7 +63,14 @@ export type TwoFactorSetupState =
   | {
       readonly step: 'totp'
       readonly totpURI: string
-      /** `get-totp-uri` ile tekrar gösterimde `null` OLABİLİR (ux'in kabul ettiği sınır — "sayfa yenilenirse yedek kodlar kaybolur"). */
+      /**
+       * `get-totp-uri` BAŞARILI olduğunda SUNUCUDAN gelmez (ADR-0024 Karar
+       * 2/5 — bu uç yedek kod DÖNDÜRMEZ). Burada görünen değer, AYNI mount
+       * içinde daha önce `enable`'dan alınmış kodların SADECE GÖSTERİM
+       * önbelleğidir (`backupCodesCapturedForDisplay`); önbellek boşsa
+       * (reload/yeni controller) `null` — bu durumda `setupResumedNotice`
+       * gösterilir.
+       */
       readonly backupCodes: readonly string[] | null
       readonly isSubmitting: boolean
       readonly errorMessage: string | null
@@ -61,9 +84,16 @@ export type TwoFactorSetupState =
     }
 
 export class TwoFactorSetupController {
-  private hasCalledEnable = false
-  private capturedBackupCodes: readonly string[] | null = null
   private state: TwoFactorSetupState = { step: 'password', isSubmitting: false, errorMessage: null }
+  /**
+   * SADECE GÖSTERİM önbelleği (T-022/S4-FIX) — `enable` başarılı olduğunda
+   * doldurulur, mount ömrü (bu sınıfın örnek ömrü) boyunca kalır.
+   * `resolveTotpUriAction`/`enable` çağrılıp çağrılmayacağı kararı BUNA
+   * BAKMAZ — o karar HER ZAMAN sunucu durumuna (`TOTP_NOT_ENABLED` kodu)
+   * dayanır (ADR-0024 Karar 2). Bu alan yalnızca `get-totp-uri` başarılı
+   * döndüğünde EKRANDA NE GÖSTERİLECEĞİNİ belirler.
+   */
+  private backupCodesCapturedForDisplay: readonly string[] | null = null
 
   constructor(
     private readonly deps: TwoFactorSetupDeps,
@@ -81,44 +111,85 @@ export class TwoFactorSetupController {
   }
 
   /**
-   * AC11 madde 4 — hangi REST çağrısının yapılacağını belirleyen SAF karar.
-   * `enable` zaten bu mount'ta çağrıldıysa (sihirbaz adım 3'ten adım 2'ye
-   * GERİ dönüp tekrar şifre gönderdiyse) `get-totp-uri` seçilir — `enable`
-   * İKİNCİ kez ÇAĞRILMAZ (ikinci çağrı sırrı yeniden üretir, backend'in
-   * authenticator kaydını öldürür).
+   * SAF karar — `get-totp-uri` hatayla sonuçlandığında `enable`'a DÜŞÜLÜP
+   * düşülmeyeceğini belirler (ADR-0024 Karar 2/3). TEK koşul:
+   * `error.kind === 'known' && error.code === 'TOTP_NOT_ENABLED'` —
+   * `INVALID_PASSWORD` dahil başka hiçbir hata `enable`'a düşürmez, aksi
+   * hâlde yanlış şifre girişi sırrı YENİDEN üretirdi.
+   *
+   * R-A5 — SÖZLEŞME NEDEN DEĞİŞTİ: önceki imza `(): 'enable' | 'get-totp-
+   * uri'` idi ve `submitPassword`'un HANGİ REST çağrısıyla BAŞLAYACAĞINI,
+   * mount ömrüne bağlı bir `hasCalledEnable` bayrağına bakarak
+   * kararlaştırıyordu — sayfa yenilemesi bu bayrağı SIFIRLIYOR, `enable`
+   * İKİNCİ KEZ çağrılıp Better Auth YENİ bir TOTP sırrı üretiyordu
+   * (ADR-0024 Bağlam, kullanıcının canlı denemesinde bulundu). Yeni
+   * sözleşme SUNUCU DURUMUNA dayanır: `submitPassword` HER ZAMAN
+   * `get-totp-uri` ile BAŞLAR (mount'a bağlı bayrak YOK); bu metot artık o
+   * çağrının DÖNDÜĞÜ hatayı SAF biçimde yorumlar — sayfa yenilense, sekme
+   * çoğaltılsa veya geri/ileri gidilse de SONUÇ aynıdır.
    */
-  resolveTotpUriAction(): 'enable' | 'get-totp-uri' {
-    return this.hasCalledEnable ? 'get-totp-uri' : 'enable'
+  resolveTotpUriAction(error: PanelError): 'enable' | 'show-error' {
+    return error.kind === 'known' && error.code === 'TOTP_NOT_ENABLED' ? 'enable' : 'show-error'
   }
 
+  /**
+   * ADR-0024 Karar 2 — ÖNCE `get-totp-uri` denenir (sır KORUNUR, yedek kod
+   * DÖNMEZ ⇒ `backupCodes: null`). Yalnızca `resolveTotpUriAction` 'enable'
+   * derse `enable`'a düşülür (yalnızca GERÇEKTEN taze bir kurulumda — TOTP
+   * henüz etkin değilken — gerçekleşir).
+   */
   async submitPassword(password: string): Promise<void> {
-    if (this.state.step !== 'password' && this.state.step !== 'totp') {
+    if (this.state.step !== 'password') {
       return
     }
     this.setState({ ...this.state, isSubmitting: true, errorMessage: null })
 
-    const action = this.resolveTotpUriAction()
-    const result =
-      action === 'enable' ? await this.deps.enable(password) : await this.deps.getTotpUri(password)
+    const totpUriResult = await this.deps.getTotpUri(password)
 
-    if (result.kind === 'error') {
+    if (totpUriResult.kind === 'retrieved') {
+      // SADECE GÖSTERİM — `enable` AYNI mount içinde daha önce çalıştıysa
+      // (ör. "Vazgeç" ile adım 1'e dönüp şifreyi TEKRAR gönderme) alınmış
+      // kodlar burada hâlâ bellekte; onları TEKRAR göster. Önbellek boşsa
+      // (reload/yeni controller örneği) `null` kalır — ADR-0024 Karar 5.
       this.setState({
-        step: 'password',
+        step: 'totp',
+        totpURI: totpUriResult.totpURI,
+        backupCodes: this.backupCodesCapturedForDisplay,
         isSubmitting: false,
-        errorMessage: this.mapError(result.error),
+        errorMessage: null,
       })
       return
     }
 
-    if (action === 'enable' && result.kind === 'enabled') {
-      this.hasCalledEnable = true
-      this.capturedBackupCodes = result.backupCodes
+    if (this.resolveTotpUriAction(totpUriResult.error) === 'show-error') {
+      this.setState({
+        step: 'password',
+        isSubmitting: false,
+        errorMessage: this.mapError(totpUriResult.error),
+      })
+      return
     }
 
+    const enableResult = await this.deps.enable(password)
+
+    if (enableResult.kind === 'error') {
+      this.setState({
+        step: 'password',
+        isSubmitting: false,
+        errorMessage: this.mapError(enableResult.error),
+      })
+      return
+    }
+
+    // SADECE GÖSTERİM önbelleğine YAZ — kontrol akışı (bu satıra NE ZAMAN
+    // ulaşılacağı) yukarıdaki `resolveTotpUriAction` kararına bağlı, bu
+    // satır o kararı DEĞİŞTİRMEZ; yalnızca sonraki bir `get-totp-uri`
+    // tekrar gösteriminde kodları KAYBETMEMEK için saklar.
+    this.backupCodesCapturedForDisplay = enableResult.backupCodes
     this.setState({
       step: 'totp',
-      totpURI: result.totpURI,
-      backupCodes: this.capturedBackupCodes,
+      totpURI: enableResult.totpURI,
+      backupCodes: enableResult.backupCodes,
       isSubmitting: false,
       errorMessage: null,
     })
@@ -128,6 +199,7 @@ export class TwoFactorSetupController {
     if (this.state.step !== 'totp') {
       return
     }
+    const backupCodes = this.state.backupCodes
     this.setState({ ...this.state, isSubmitting: true, errorMessage: null })
 
     const result = await this.deps.verifyTotp(code)
@@ -141,17 +213,26 @@ export class TwoFactorSetupController {
       return
     }
 
-    // AC11 madde 5 — verify-totp BAŞARILI: tetikleyici BİR KEZ çağrılır.
     this.deps.onVerified()
 
-    if (this.capturedBackupCodes !== null) {
-      this.setState({ step: 'backup-codes', backupCodes: this.capturedBackupCodes })
+    // T-022/S10 FIX turu 1 (`solid` L-3) — kurulum BAŞARIYLA bittiği ANDA
+    // SADECE GÖSTERİM önbelleği temizlenir: yedek kodlar artık `backup-
+    // codes`/`completed` adımına TAŞINDI, bu alanın mount ömrü boyunca
+    // kalmasına gerek YOK (kimlik doğrulama sırrı gerekenden uzun bellekte
+    // tutulmasın). ⚠ "Vazgeç" (S4-FIX) senaryosuyla ÇAKIŞMAZ: o senaryo
+    // `submitCode` hiç ÇAĞRILMADAN `goBackToPasswordStep`'e gider — bu satır
+    // yalnızca `verifyTotp` BAŞARILI olduğunda çalışır, kurulum TAMAMLANMAMIŞ
+    // bir geri dönüşte DOKUNULMAZ.
+    this.backupCodesCapturedForDisplay = null
+
+    if (backupCodes !== null) {
+      this.setState({ step: 'backup-codes', backupCodes })
     } else {
       this.setState({ step: 'completed' })
     }
   }
 
-  /** Kullanıcı adım 3'ten (yedek kodlar) adım 2'ye (kod onayı) GERİ döner — `enable` TEKRAR ÇAĞRILMAZ (resolveTotpUriAction zaten `hasCalledEnable`'ı kontrol eder). */
+  /** Kullanıcı adım 2'den (uygulama bağlama) adım 1'e (şifre) GERİ döner. */
   goBackToPasswordStep(): void {
     if (this.state.step !== 'totp') {
       return

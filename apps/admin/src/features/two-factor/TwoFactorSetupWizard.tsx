@@ -221,6 +221,11 @@ export function TwoFactorSetupWizard({
           <p className="text-(length:--font-size-small) text-(--color-text-secondary)">
             {MESSAGES.auth.twoFactor.manualKeyInstructions}
           </p>
+          {state.backupCodes === null ? (
+            <p className="text-(length:--font-size-small) text-(--color-text-secondary)">
+              {MESSAGES.auth.twoFactor.setupResumedNotice}
+            </p>
+          ) : null}
         </div>
         <details>
           <summary className="cursor-pointer text-(length:--font-size-small) text-(--color-brand-500)">

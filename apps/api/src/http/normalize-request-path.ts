@@ -14,6 +14,9 @@
 // altında, NE `tenancy`'ye NE `auth`'a BAĞIMLI: altı çağıranın YARISI
 // `tenancy/**`'de, YARISI `auth/**`'de/`platform/**`'de olduğu için modül
 // `tenancy → auth` (veya tersi) bağımlılığı DOĞURMAZ (PM R3 korunur).
+// `errors/assert-never.ts` İSTİSNA DEĞİL — SIFIR bağımlılıklı, zaten
+// `auth/**`/`tenancy/**`/`trpc/**`'in TAMAMI TARAFINDAN BAĞIMSIZ OLARAK
+// tüketilen ortak yaprak (leaf) yardımcı, döngüsel bağımlılık DOĞURMAZ.
 //
 // GÜNCELLEME (T-021 FIX turu 1, madde F1+F2, security tur1 `high` — birebir
 // aynı kök neden İKİ bulguda): bu fonksiyon `new URL(...).pathname`
@@ -35,14 +38,33 @@
 // bu fonksiyon o durumda ham (çözülmemiş) `pathname`'e DÜŞER (sessiz yutma
 // DEĞİL, BİLİNÇLİ fail-closed varsayılan: `same-origin.guard.ts`'in
 // `isTrustedOrigin`'İYLE AYNI desen — "ayrıştırılamayan bir değerin
-// GÜVENİLİR/MUAF/EŞLEŞEN sayılması daha KÖTÜ olurdu"). TAM EŞLEŞMELİ
-// küme/harita tüketen HER çağıran (iki exempt kümesi, üç yöntem+yol
-// haritası) için bu GÜVENLİDİR — ham, `%` taşıyan bir yol hiçbir TEMİZ
-// literalle ASLA eşleşmez, yani çağıran "korumalı" (muaf DEĞİL/politikasız
-// DEĞİL) varsayılanında KALIR. TEK istisna `isPlatformAdminGuardedPath`'in
-// ÖNEK testidir — ÖNEK eşleşmesinde "eşleşmeme" varsayılanı GÜVENSİZDİR
-// (guard'ı ATLAR), bu yüzden o dosya bozuk kodlamayı KENDİSİ AYRICA tespit
-// edip fail-closed davranır (bkz. `platform-admin-ip.guard.ts`'in
+// GÜVENİLİR/MUAF/EŞLEŞEN sayılması daha KÖTÜ olurdu").
+//
+// GÜVENLİ sınıf — KÜME ÜYELİĞİ (`.has(...)`) tüketen çağıranlar (iki exempt
+// kümesi: `auth-exempt-paths.ts`, `tenancy/tenant-exempt-paths.ts`; iki
+// statik yol kümesi: `auth-delegated-paths.ts`, `auth-own-paths.ts`): ham,
+// `%` taşıyan bir yol hiçbir TEMİZ literalle ASLA eşleşmez, yani çağıran
+// "korumalı" (muaf DEĞİL/politikasız DEĞİL) varsayılanında KALIR — eşleşme
+// yokluğu BURADA güvenli taraf.
+//
+// ⚠ FARKLI sınıf, AYNI GÜVENCE DEĞİL (solid FIX turu 1, L-B — `rate-limit/
+// rate-limit.policy.ts`'in `RATE_LIMITED_ROUTES` HARİTASI, `.get(...)` ile
+// tüketilir): eşleşme yokluğu burada `undefined` döner ve `resolveRateLimitPolicy`
+// bunu AYNEN yukarı iletir — `rate-limit.guard.ts` `undefined`'ı "politika
+// yok" olarak okur ve FAIL-OPEN (`true`, sınırsız) döner (`rate-limit.policy.ts`
+// dosya başı GÜNCELLEME yorumu, "fail-open" sözcüğü BİREBİR). Yani bu TEK
+// haritada eşleşme yokluğu "korumalı" DEĞİL, "sınırsız" anlamına gelir. `low`
+// kalır çünkü bu dal BUGÜN erişilebilir değil: ham/bozuk bir yol ZATEN
+// `RATE_LIMITED_ROUTES`'TAKİ hiçbir temiz literalle eşleşmiyor ve bu durumda
+// istenen uç GERÇEKTE sınırlanması gereken bilinen bir rota DEĞİL — ama
+// ikinci, daha geniş bir rotaya bağlı tüketici eklenirse bu asimetri `high`'a
+// büyür (F8'in kök nedeniyle AYNI sınıf: "eşleşme yokluğu" iki farklı
+// güvenlik anlamına gelebiliyor, tüketiciye göre).
+//
+// TEK istisna `isPlatformAdminGuardedPath`'in ÖNEK testidir — ÖNEK
+// eşleşmesinde "eşleşmeme" varsayılanı GÜVENSİZDİR (guard'ı ATLAR), bu
+// yüzden o dosya bozuk kodlamayı KENDİSİ AYRICA tespit edip fail-closed
+// davranır (bkz. `platform-admin-ip.guard.ts`'in
 // `matchesPrefixOrUnparsablePercentEncoding`'i — BURADAKİ EK, additive
 // export).
 //
@@ -81,21 +103,7 @@
 // implementasyonuyla, bu dosyanın fonksiyonlarını ÇAĞIRMADAN — aksi halde
 // test totolojik olurdu).
 
-/**
- * `pathname`'i TEK KEZ `decodeURIComponent` ile çözer — tRPC'nin
- * `resolveResponse.ts:241`indeki `decodeURIComponent(opts.path)` ile
- * BİREBİR aynı kanonikleştirme adımı (F1/F2, security tur1). Bozuk bir
- * yüzde dizisi `decodeURIComponent`'i FIRLATIR; bu durumda ham `pathname`
- * AYNEN döner (dosya başı GÜNCELLEME yorumuna bkz — bu bir `catch {}`
- * YUTMASI DEĞİLDİR, dokümante edilmiş, bilinçli bir fail-closed varsayılan).
- */
-function decodePathnameSafely(pathname: string): string {
-  try {
-    return decodeURIComponent(pathname)
-  } catch {
-    return pathname
-  }
-}
+import { assertNever } from '../errors/assert-never.js'
 
 // T-021 FIX turu 4 (security tur3, F8, `high`) — sondaki eğik çizgileri
 // TAMAMEN soyar (kök `/` korunarak); dosya başı GÜNCELLEME yorumuna bkz.
@@ -165,44 +173,183 @@ function foldTrpcMountPrefix(pathname: string): string {
   return TRPC_MOUNT_PREFIX + pathname.slice(TRPC_MOUNT_PREFIX.length)
 }
 
+// T-022/S2 adım④ (architect §1.5, ⚠⚠ `try/catch` TEK BAŞINA YETMEZ) —
+// ÖNCEKİ kanonikleştirme HER ZAMAN `new URL(rawUrl, ORIGIN)` (WHATWG'in
+// RELATİF çözümü) kullanıyordu. Bu, `rawUrl` `//` İLE BAŞLADIĞINDA
+// PROTOCOL-RELATIVE (authority) sözdizimi olarak YORUMLANIR: `new URL(
+// '//x/trpc/session.me', ORIGIN).pathname` → `/trpc/session.me` (host `x`
+// YUTULUR, `/trpc/session.me` TENANT_EXEMPT_PATHS'TE GERÇEKTEN VAR) ⇒
+// `isTenantExemptPath` fail-OPEN döner — `try/catch` BU VARYANTTA HİÇ
+// TETİKLENMEZ (fırlamıyor, SADECE yanlış pathname üretiyor).
+//
+// ÇÖZÜM — WHATWG'in KENDİSİ korunur (tRPC'nin KENDİ yolu da `new URL(req.url,
+// baseUrl)`, `trpc.controller.ts:114` — "Express/`parseurl` ne görüyorsa onu
+// kanonikleştir" SEZGİSİ TERSİNE guard bypass YARATIR, dosya başı §1.5
+// yorumuna bkz), AMA authority YORUMU YAPISAL OLARAK İMKÂNSIZ kılınır:
+// `rawUrl` `/` İLE BAŞLIYORSA (BİR veya DAHA FAZLA eğik çizgi — `//`, `///`
+// DAHİL) `ORIGIN` ile STRING BİRLEŞTİRMESİ yapılır (`new URL(ORIGIN +
+// rawUrl)`, RELATİF ÇÖZÜM DEĞİL) — host/scheme sınırı ZATEN `ORIGIN`
+// TARAFINDAN SABİTLENMİŞ olduğu için `rawUrl`'İN KENDİ `//`'si ASLA yeni bir
+// authority başlatamaz, WHATWG'in PATH İÇİ dot-segment çözümü (`..`) YİNE
+// ÇALIŞIR (tRPC ile AYNI davranış korunur — ölçüldü: `new URL(ORIGIN +
+// '//x/trpc/session.me').pathname` → `'//x/trpc/session.me'` DEĞİŞMEDEN,
+// `new URL(ORIGIN + '/trpc/a/../platform.tenantList').pathname` → HALA
+// `/trpc/platform.tenantList`'E İNDİRGENİR). `/` İLE BAŞLAMAYAN bir `rawUrl`
+// (ör. mount öneksiz bir göreli yol) ÖNCEKİ relatif çözüme AYNEN devam eder.
+// HER İKİ DALIN fırlatması (`new URL(...)` constructor'ı) `unparsable` ile
+// yakalanır — `try/catch` KALKMADI, YALNIZCA authority yorumunu
+// ENGELLEMEK için BİRLEŞTİRMEYE geçildi (kuşak+askı, dosya başı §1.5
+// yorumu).
+const CANONICALIZATION_ORIGIN = 'http://normalize-request-path.invalid'
+
 /**
- * `rawUrl`'in (`req.url`) yol kısmını normalize eder: sorgu dizesi/fragman
- * çıkarılır, yüzde-kodlama TEK KEZ çözülür (tRPC ile BİREBİR aynı, dosya
- * başı GÜNCELLEME yorumu), sondaki `/` soyulur (kök `/` hariç). İkinci
- * parametre yalnızca `new URL()`'in RELATİF url'i çözmesi için gereken bir
- * TABAN'dır — hiçbir zaman gerçek bir ağ isteğine KARIŞMAZ.
+ * `rawUrl`'in WHATWG `pathname`'ini, authority (`//host/...`) YORUMU
+ * YAPISAL OLARAK İMKÂNSIZ kılınmış şekilde çözer — yukarıdaki GÜNCELLEME
+ * yorumuna bkz. Ayrıştırma FIRLARSA (`new URL(...)` constructor hatası)
+ * `null` döner; iki çağıran (`normalizeRequestPath`/
+ * `matchesPrefixOrUnparsablePercentEncoding`) bu durumda KENDİ, AYRI
+ * fail-closed varsayılanını uygular (biri HAM `rawUrl`'e düşer, diğeri
+ * `true` döner) — TEK bir varsayılan BURAYA KODLANMAZ.
+ */
+function resolveCanonicalPathnameOrUnparsable(rawUrl: string): string | null {
+  try {
+    const url = rawUrl.startsWith('/')
+      ? new URL(CANONICALIZATION_ORIGIN + rawUrl)
+      : new URL(rawUrl, CANONICALIZATION_ORIGIN)
+    return url.pathname
+  } catch {
+    return null
+  }
+}
+
+// solid FIX turu 1, M-1 (medium) — `normalizeRequestPath` ile
+// `matchesPrefixOrUnparsablePercentEncoding` AYNI dört adımlı hattı
+// (resolve → decode → fold → strip) AYRI AYRI yazıyordu; paylaşılan
+// yalnızca İLK adımdı, `decodeURIComponent` İKİ KEZ (ayrı `try/catch`
+// bloklarında) ÇAĞRILIYORDU. Bu dosyanın KENDİ §1.5/F8 yorumlarının
+// tekrarladığı ilke ("aynı sebeple birlikte değişmesi gereken kod, tek
+// yerde durmalı" — `assertNever` birleştirmesiyle AYNI gerekçe) burada
+// İHLAL EDİLİYORDU: son üç turda bu hat ÜÇ KEZ büyüdü (yüzde-kodlama,
+// büyük/küçük harf, sondaki eğik çizgi), her biri tRPC asimetrisi kapatan
+// `high` bulguydu — dördüncü bir eksen TEK fonksiyona eklenirse diğeri
+// GERİDE kalır.
+//
+// Çözüm: hattın TAMAMI (resolve/decode/fold/strip) TEK, özel fonksiyonda
+// toplanır ve sonucu ÜÇ sonuçlu bir discriminated union olarak döner —
+// `canonical` (hat sorunsuz tamamlandı), `undecodable` (pathname çözüldü
+// ama `decodeURIComponent` FIRLADI) veya `unparsable` (`new URL(...)`
+// constructor'ı FIRLADI, pathname'e bile ULAŞILAMADI). ⚠⚠ Varsayılan
+// BURAYA KODLANMAZ — iki çağıranın `undecodable`/`unparsable` yorumu
+// BİLEREK TERS (biri HAM değere düşer, diğeri TUTUCU `true` döner, aşağıdaki
+// iki fonksiyonun KENDİ yorumlarına bkz); bu fonksiyon SADECE üç durumu
+// AYIRT EDER, hangisinin "güvenli" sayılacağına KARAR VERMEZ.
+type RequestPathCanonicalization =
+  | { readonly kind: 'canonical'; readonly path: string }
+  | { readonly kind: 'undecodable'; readonly rawPathname: string }
+  | { readonly kind: 'unparsable' }
+
+/**
+ * Dört adımlı kanonikleştirme hattının (resolve → decode → fold → strip)
+ * TEK, paylaşılan implementasyonu — `decodeURIComponent` burada TEK KEZ
+ * çağrılır (solid FIX turu 1, M-1). `rawUrl` hiç ayrıştırılamazsa
+ * (`resolveCanonicalPathnameOrUnparsable` `null` döner) `{ kind:
+ * 'unparsable' }`; pathname çözülür ama yüzde-kodlama BOZUKSA (`decodeURIComponent`
+ * FIRLAR) `{ kind: 'undecodable', rawPathname }` (ham, ÇÖZÜLMEMİŞ pathname
+ * TAŞINIR — `normalizeRequestPath` bunu fold+strip'e DEVAM ETTİRİR, bkz.
+ * kendi yorumu); HER İKİ adım da başarılıysa `{ kind: 'canonical', path }`
+ * (fold + strip UYGULANMIŞ nihai yol).
+ */
+function canonicalizeRequestPath(rawUrl: string): RequestPathCanonicalization {
+  const pathname = resolveCanonicalPathnameOrUnparsable(rawUrl)
+
+  if (pathname === null) {
+    return { kind: 'unparsable' }
+  }
+
+  let decoded: string
+
+  try {
+    decoded = decodeURIComponent(pathname)
+  } catch {
+    return { kind: 'undecodable', rawPathname: pathname }
+  }
+
+  const mountFolded = foldTrpcMountPrefix(decoded)
+  return { kind: 'canonical', path: stripTrailingSlashes(mountFolded) }
+}
+
+/**
+ * `rawUrl`'in (`req.url`) yol kısmını normalize eder: authority yorumu
+ * YAPISAL OLARAK engellenir (yukarıdaki GÜNCELLEME yorumu, §1.5), sorgu
+ * dizesi/fragman çıkarılır, yüzde-kodlama TEK KEZ çözülür (tRPC ile BİREBİR
+ * aynı, dosya başı GÜNCELLEME yorumu), sondaki `/` soyulur (kök `/` hariç).
+ * Hat (`canonicalizeRequestPath`) `unparsable` dönerse HAM `rawUrl` AYNEN
+ * döner; `undecodable` dönerse HAM (çözülmemiş) `pathname` ÜZERİNDE fold+strip
+ * ADIMLARI YİNE UYGULANIR (eski `decodePathnameSafely`'nin davranışıyla
+ * BİREBİR aynı — decode başarısız olsa da hat durmaz). İKİ durumda da bu TAM
+ * EŞLEŞMELİ tüketiciler (exempt kümeleri, rota haritaları) için güvenli
+ * varsayılan: ham/bozuk bir yol hiçbir TEMİZ literalle eşleşmez.
  */
 export function normalizeRequestPath(rawUrl: string): string {
-  const { pathname } = new URL(rawUrl, 'http://normalize-request-path.invalid')
-  const decoded = decodePathnameSafely(pathname)
-  const mountFolded = foldTrpcMountPrefix(decoded)
-  return stripTrailingSlashes(mountFolded)
+  const result = canonicalizeRequestPath(rawUrl)
+
+  switch (result.kind) {
+    case 'canonical':
+      return result.path
+    case 'undecodable':
+      return stripTrailingSlashes(foldTrpcMountPrefix(result.rawPathname))
+    case 'unparsable':
+      return rawUrl
+    default:
+      return assertNever(result, 'normalize-request-path.ts: RequestPathCanonicalization.kind')
+  }
 }
 
 /**
  * `rawUrl`'in kanonikleştirilmiş (TEK kez `decodeURIComponent` ile çözülmüş)
- * yolunun `prefix` ile BAŞLAYIP BAŞLAMADIĞINI belirler; yüzde-kodlama
- * BOZUKSA (`decodeURIComponent` FIRLAR, kanonikleştirme YAPILAMAZ) GÜVENLİ
+ * yolunun `prefix` ile BAŞLAYIP BAŞLAMADIĞINI belirler; hat
+ * (`canonicalizeRequestPath`) `undecodable` VEYA `unparsable` dönerse GÜVENLİ
  * VARSAYILAN olarak `true` (eşleşiyor SAY) döner — F1'in (security tur1,
  * `high`) açık şartı: "bozuk kodlamada kapsamda say". `normalizeRequestPath`
- * BUNU YAPMAZ (bozukta HAM pathname'e düşer) çünkü TAM EŞLEŞMELİ
- * tüketicileri (exempt kümeleri, rota haritaları) için ham/bozuk bir yol
- * ZATEN hiçbir literalle eşleşmediği için güvenlidir; ÖNEK eşleşmesi
- * (`isPlatformAdminGuardedPath` gibi) TERS varsayılana (eşleşmeme = güvenli)
- * sahip olduğu için AYRI, daha TUTUCU bir yardımcı gerekir — BU fonksiyon.
- * Saf, parametreli — yalnızca `platform-admin-ip.guard.ts` tüketir.
+ * BUNU YAPMAZ (bozukta/ayrıştırılamazda HAM pathname/`rawUrl`'e düşer) çünkü
+ * TAM EŞLEŞMELİ tüketicileri (exempt kümeleri, rota haritaları) için ham/
+ * bozuk bir yol ZATEN hiçbir literalle eşleşmediği için güvenlidir; ÖNEK
+ * eşleşmesi (`isPlatformAdminGuardedPath` gibi) TERS varsayılana (eşleşmeme
+ * = güvenli) sahip olduğu için AYRI, daha TUTUCU bir yardımcı gerekir — BU
+ * fonksiyon. Saf, parametreli — yalnızca `platform-admin-ip.guard.ts`
+ * tüketir.
+ *
+ * ⚠ BİLİNEN SINIRLAMA (solid FIX turu 1, L-A, `low` — T-022/S2'nin §1.5
+ * fix'i `unparsable` üreten girdi kümesini DARALTTI): bu tutucu `true`
+ * SADECE `canonicalizeRequestPath`'in `undecodable`/`unparsable` döndüğü
+ * durumları kapsar — hat BAŞARIYLA tamamlanıp `'/'`'E DARALAN bir pathname
+ * (örn. `'//'`, `'///'`) üretirse (`stripTrailingSlashes`'in KENDİ, BİLİNÇLİ
+ * davranışı) BU `canonical` bir sonuçtur ve normal `startsWith` yoluna girer
+ * (ÖLÇÜLDÜ: bugün `false` döner, çünkü `'/'` `prefix` ile BAŞLAMAZ —
+ * `__tests__/normalize-request-path.test.ts`'in "'//' ailesi" bloğu).
+ * ÖNCEDEN (§1.5 fix'ten ÖNCE) bu girdiler `new URL('//', ORIGIN)`'in
+ * FIRLAMASI yüzünden `unparsable` SAYILIYORDU ve tutucu `true` alıyordu;
+ * artık PARSABLE olduğu için bu güvenceyi KAYBETTİ. `low` kalır çünkü
+ * `PlatformAdminIpGuard`'ın TEK üretim tüketicisi (`isPlatformAdminGuardedPath`)
+ * için bu dal BUGÜN erişilebilir değil (ÖLÇÜLDÜ: `path-to-regexp@8.4.2`'nin
+ * `match('/trpc/*path')`'i `//…` için `false` döner, `TrpcController`'ın
+ * KENDİ rotası bu isteği HİÇ GÖRMEZ — canlı prob 404). ⚠⚠ İkinci, daha geniş
+ * bir rotaya (ör. `/trpc` öneki OLMAYAN, önek-TABANLI başka bir guard)
+ * bağlı bir tüketici eklenirse bu `high`'a büyür — ROADMAP teknik borcuna
+ * kaydedilmesi gerekir (bu dosyanın sahibi `ROADMAP.md`'ye YAZAMAZ, `docs`/
+ * `release` ajanına BIRAKILIR).
  */
 export function matchesPrefixOrUnparsablePercentEncoding(rawUrl: string, prefix: string): boolean {
-  const { pathname } = new URL(rawUrl, 'http://normalize-request-path.invalid')
+  const result = canonicalizeRequestPath(rawUrl)
 
-  let decoded: string
-  try {
-    decoded = decodeURIComponent(pathname)
-  } catch {
-    return true
+  switch (result.kind) {
+    case 'canonical':
+      return result.path.startsWith(prefix)
+    case 'undecodable':
+      return true
+    case 'unparsable':
+      return true
+    default:
+      return assertNever(result, 'normalize-request-path.ts: RequestPathCanonicalization.kind')
   }
-
-  const mountFolded = foldTrpcMountPrefix(decoded)
-  const normalized = stripTrailingSlashes(mountFolded)
-  return normalized.startsWith(prefix)
 }
