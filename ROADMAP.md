@@ -1276,8 +1276,35 @@ WCAG'ın kendi referans genişliğini kullansın.
       bir istemcinin her istekte bir 500 + `error` log ürettiği sınırsız bir yüzey
       açıyor (`security` T-021 tur 4, `medium`; veri sızıntısı/yetki atlatma YOK, bu
       yüzden `high` değil — T-021'in FIX 4'ü GETİRMEDİ, ön-varolan davranış)
-      **Dokunulan paketler:** packages/db, apps/api, apps/admin/e2e, apps/storefront/e2e, apps/superadmin/e2e
-      **Kabul kriteri:** katalog linter'ı iki denetim tablosunda `UPDATE`/`DELETE` yetkisi bulgusu üretir (fail-closed, iki yönlü mutasyonla kanıtlı); `pnpm test:e2e` içinde `@axe-core/playwright` çalışır ve kasıtlı bir kontrast/etiket ihlali testi kırar; reflow testi 320 px'te koşar; üç export'un gerçek tüketicisi var; `//` ailesi yolları 500 üretmez.
+- [ ] ⚠ **2FA kurulum sihirbazı sayfa yeniden yüklendiğinde TOTP sırrını DÖNDÜRÜYOR** —
+      `apps/superadmin/src/features/two-factor/two-factor-setup-controller.ts:71-76`
+      çift çağrıya karşı bir koruma **taşıyor** (`resolveTotpUriAction()`:
+      `hasCalledEnable ? 'get-totp-uri' : 'enable'`) ama koruma **MOUNT BAŞINA** —
+      `hasCalledEnable` controller örneğinde yaşıyor ve controller
+      `TwoFactorSetupWizard.tsx:60`'ta `useState` ile oluşturuluyor ⇒ **sayfa yeniden
+      yüklenince yeni controller, `hasCalledEnable = false`** ⇒ `enable` **ikinci kez**
+      çağrılıyor ⇒ **yeni sır**. Kullanıcı önceki sırrı authenticator'ına eklemişse
+      kodu **reddediliyor** ve ekranda yalnızca _"Kod doğrulanamadı"_ yazıyor —
+      ⚠ **nedenini anlaması imkânsız**.
+      ⭐ **CANLI ÜRETİLDİ** (kullanıcı, 2026-11-17, `superadmin.arkesoft.localhost:5174`):
+      girilen `238432`, ekrandaki sırdan üretilen üç pencerenin
+      (`117503`/`337190`/`035258`) **hiçbiriyle** eşleşmedi.
+      ⚠⚠ **HİÇBİR TEST BUNU YAKALAYAMAZDI:** `apps/superadmin/e2e/fixtures/platform-admin.ts`
+      `enable` → kod üret → `verify-totp` zincirini **tek seferde, sayfa yüklemeden**
+      yürütüyor; `qa` sihirbazı tarayıcıda uçtan uca **koşturmadı**
+      (T-021 `qa` tur 1/2 `DOĞRULANAMADI` kayıtları). Bu sınıf ancak **gerçek bir
+      kullanıcının yeniden yüklemesiyle** ortaya çıkıyor.
+      **Yön (ikisi birden):** (a) sırrı mount'tan bağımsız sabitle — sunucuda bekleyen
+      bir kurulum varsa `enable` yerine `get-totp-uri` seçilsin (⭐ uç **zaten var**,
+      `two-factor-rest.ts`); (b) sır döndüyse kullanıcıya **açık metin** göster
+      (_"anahtar yenilendi, uygulamanızdaki eski kaydı silip yenisini ekleyin"_) —
+      bugün `messages.ts`'te böyle bir metin **yok**.
+      **Doğrulama:** sihirbaz açıkken sayfa yeniden yüklenir, ilk sırdan üretilen
+      kod **hâlâ kabul edilir** (veya kullanıcı sır değişimi hakkında **açıkça**
+      bilgilendirilir); ⚠ bir Playwright spec'i **sayfa yeniden yüklemesini** içerir.
+      **Sorumlu:** `frontend` + `ux` (metin) · **Kaynak:** kullanıcı, canlı deneme
+      **Dokunulan paketler:** packages/db, apps/api, apps/superadmin, apps/admin/e2e, apps/storefront/e2e, apps/superadmin/e2e
+      **Kabul kriteri:** katalog linter'ı iki denetim tablosunda `UPDATE`/`DELETE` yetkisi bulgusu üretir (fail-closed, iki yönlü mutasyonla kanıtlı); `pnpm test:e2e` içinde `@axe-core/playwright` çalışır ve kasıtlı bir kontrast/etiket ihlali testi kırar; reflow testi 320 px'te koşar; üç export'un gerçek tüketicisi var; `//` ailesi yolları 500 üretmez; 2FA sihirbazında sayfa yeniden yüklemesi sırrı sessizce döndürmez (Playwright spec'i reload içerir).
       **Bağımlılık:** v0.0.20
       **Tahmini büyüklük:** M
 
