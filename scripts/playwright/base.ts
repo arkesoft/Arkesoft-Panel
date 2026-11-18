@@ -47,6 +47,22 @@ export const desktopDevice = devices[DESKTOP_DEVICE_NAME]
 /** `devices[MOBILE_DEVICE_NAME]` kısayolu — proje matrisi kurarken kullanılır. */
 export const mobileDevice = devices[MOBILE_DEVICE_NAME]
 
+/** WCAG 1.4.10 (reflow) referans genişliği — 320 CSS px. */
+const WCAG_REFLOW_VIEWPORT_WIDTH = 320
+
+/**
+ * `mobileDevice`'ın CİHAZ PROFİLİNİ (userAgent, isMobile, hasTouch,
+ * deviceScaleFactor, defaultBrowserType) KORUYAN, yalnızca `viewport`
+ * GENİŞLİĞİ WCAG 1.4.10'un referans genişliğine (320 CSS px) daraltılmış
+ * türevi (T-024, ROADMAP v0.0.20.3). `mobileDevice` (`Pixel 7`, 412 px)
+ * BİLEREK DEĞİŞMEDİ — `storefront-visual-mobile` onu tüketmeye DEVAM EDER,
+ * mobil görsel regresyon referans PNG'leri bu eklemeden ETKİLENMEZ.
+ */
+export const reflowMobileDevice = {
+  ...mobileDevice,
+  viewport: { width: WCAG_REFLOW_VIEWPORT_WIDTH, height: mobileDevice.viewport.height },
+}
+
 /**
  * Görsel regresyon karşılaştırma eşiği — ADR-0022 Karar 4'ün GEREKÇELİ
  * değeri. `0.002` (binde 2): font rasterizasyonunun CI koşucusu ile yerel

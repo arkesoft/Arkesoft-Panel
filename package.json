@@ -47,6 +47,7 @@
   },
   "devDependencies": {
     "@arkesoft/config": "workspace:*",
+    "@axe-core/playwright": "catalog:",
     "@changesets/cli": "catalog:",
     "@playwright/test": "catalog:",
     "prettier": "catalog:",

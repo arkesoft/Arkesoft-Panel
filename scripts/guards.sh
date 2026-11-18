@@ -910,6 +910,57 @@ check_playwright_retries_single_source() {
 }
 
 # ---------------------------------------------------------------------------
+# `@axe-core/playwright` tek-kaynak taraması (ROADMAP v0.0.20.3, T-024,
+# Orkestratör kararı A-T24-1, emsal BİREBİR: check_playwright_retries_single_source
+# yukarıda).
+#
+# AMAÇ: depoda `eslint-plugin-import` YOK (architect ölçtü:
+# `packages/config/eslint` → sıfır eşleşme) ⇒ bir spec `AxeBuilder`'ı
+# `scripts/playwright/a11y.ts` DIŞINDA DOĞRUDAN import edip `include`/
+# `exclude`/`disableRules` çağırabilir — yardımcının "tek daraltma yolu
+# allowlist" sözleşmesi (R6-②) o zaman yalnızca TASARIMLA korunur, MEKANİK
+# olarak DEĞİL. BUGÜN ÖLÇÜLDÜ: `@axe-core/playwright` jetonu `apps/**`/
+# `packages/**`/`scripts/**` genelindeki TÜM `.ts` dosyalarında YALNIZCA
+# `scripts/playwright/a11y.ts`'te geçiyor — bu kontrol o durumu MEKANİK
+# olarak KORUR: jeton `a11y.ts` DIŞINDA bir yerde görünürse İHLAL.
+# ---------------------------------------------------------------------------
+check_axe_single_source() {
+  local home_file="scripts/playwright/a11y.ts"
+  if [ ! -f "$home_file" ]; then
+    echo "axe tek-kaynak taraması hata verdi: $home_file bulunamadı — fail-closed."
+    return 1
+  fi
+
+  local scan_targets
+  scan_targets="$(find apps packages scripts -type f -name '*.ts' \
+    -not -path '*/node_modules/*' -not -path '*/dist/*' \
+    -not -path '*/generated/*' -not -path '*/.turbo/*' 2>/dev/null)"
+  if [ -z "$scan_targets" ]; then
+    echo "axe tek-kaynak taraması hata verdi: tarama hedefi (apps/**, packages/**, scripts/**) üretilemedi — fail-closed."
+    return 1
+  fi
+
+  local outside_matches
+  outside_matches="$(printf '%s\n' "$scan_targets" \
+    | grep -Fv "$home_file" \
+    | xargs -r grep -ln "@axe-core/playwright" 2>/dev/null || true)"
+
+  if [ -n "$outside_matches" ]; then
+    echo "axe tek-kaynak İHLALİ — '@axe-core/playwright' jetonu $home_file DIŞINDA bulundu (bir spec/dosya AxeBuilder'ı doğrudan import edip yardımcının allowlist sözleşmesini (R6-②) baypas edebilir):"
+    printf '%s\n' "$outside_matches"
+    return 1
+  fi
+
+  if ! grep -q "@axe-core/playwright" "$home_file"; then
+    echo "axe tek-kaynak taraması hata verdi: $home_file artık '@axe-core/playwright' jetonunu taşımıyor — tek kaynak kaybolmuş olabilir, fail-closed."
+    return 1
+  fi
+
+  echo "axe tek-kaynak: jeton yalnızca $home_file içinde geçiyor — hiçbir spec AxeBuilder'ı doğrudan import edip allowlist sözleşmesini baypas EDEMİYOR."
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # e2e env passthrough kontrolü (ROADMAP v0.0.20, T-021 FIX turu 2, devops —
 # qa tur1 `high` bulgusunun İŞ ③'ü). "scripts/e2e-env-passthrough-check.ts"'in
 # KENDİSİNE bkz. (kapsam, bilinen (B)-sınıfı kör nokta ve ikisinin NEGATİF
@@ -1194,6 +1245,7 @@ run_step "e2e env passthrough — process.env ⊆ turbo.json test:e2e (T-021 İ�
 run_step "Çapraz-uygulama e2e oran sınırı bütçesi (admin ↔ superadmin, T-022/EK İŞ)" check_cross_app_auth_budget
 run_step "Ham günlük ↔ artefakt yükleme + retention-days sınırı (T-022/S7 FIX2)" check_raw_log_upload_boundary
 run_step "actionlint (yerelde kuruluysa)" check_actionlint_if_available
+run_step "axe tek-kaynak taraması (T-024, A-T24-1)" check_axe_single_source
 
 echo ""
 echo "════════════════════════════════════════════════════════"

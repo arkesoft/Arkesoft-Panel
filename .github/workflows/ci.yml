@@ -1529,9 +1529,180 @@ jobs:
         # eder, DEĞİŞİKLİK YOK. Her iki değişken de `turbo.json`'ın
         # `tasks['test:e2e'].passThroughEnv` listesinde ZATEN VAR (T-021/S10)
         # — burada yeni bir passThroughEnv girdisi GEREKMEZ.
+        #
+        # DÜZELTME (ROADMAP v0.0.20.3, T-024 fix turu 1, `security` tur1 F1
+        # — `high`) — `PLAYWRIGHT_NO_COPY_PROMPT: '1'` EKLENDİ. GEREKÇE
+        # (Playwright 1.64.1 kaynağı, ÖLÇÜLDÜ):
+        # `node_modules/playwright/lib/index.js:662-680`'deki
+        # `_takePageSnapshot()` bu değişken YOKSA ve test düz bir `Error`
+        # ile (matcher hatası DEĞİL) başarısız olmuşsa sayfanın TAM ARIA
+        # anlık görüntüsünü alıp `errorContext.js:75-81` üzerinden
+        # `testInfo.outputPath('error-context.md')`'ye yazıyor; o dosya bu
+        # job'un aşağıdaki "Playwright artefaktlarını yükle" adımıyla
+        # (`apps/*/test-results` glob'u, `if: always()`, 7 gün saklama) BU
+        # DEPO PUBLIC olduğu için ANONİM indirilebilir hâle geliyor. Bu
+        # kanal admin/superadmin'in OTURUM-İÇİ taramalarında (bu sürümün
+        # eklediği `/hesap/guvenlik` ve superadmin `/` erişilebilirlik
+        # testleri) giriş yapılmış sayfanın TÜM erişilebilir metnini
+        # (fixture e-postası, oturum listesi IP/UA/tarih, kiracı adları)
+        # taşıyabilir — ayrıntı: `.claude/workflow/reviews/
+        # T-024-security-tur1.md` F1.
+        # ⚠⚠ DÜZELTME (T-024 fix turu 2, `qa` tur1 ÖLÇTÜ, D2) — aşağıdaki
+        # iddia YANLIŞTI: bu env `error-context.md`'nin DOĞMASINI
+        # ENGELLEMEZ. Kaynak (`index.js:663` `_takePageSnapshot()`)
+        # yalnızca `this._pageSnapshot`'ı `undefined` BIRAKACAK ŞEKİLDE
+        # erken döner; dosyanın kendisini yazan çağrı
+        # (`didFinishTest()` → `buildErrorContext(...)`, `index.js:704-722`)
+        # bu env'DEN BAĞIMSIZ çalışır ve `testInfo.errors.length > 0` iken
+        # HER ZAMAN dosyayı üretir. `errorContext.js:44-79`'daki
+        # `buildErrorContext` dört bölüm yazar: `# Instructions` (sabit
+        # metin), `# Test info` (başlık + dosya:satır), `# Error details`
+        # (`error.message`, yalnızca `stripAnsiEscapes` — PLAYWRIGHT
+        # KENDİSİ redakte ETMEZ) ve `# Test source` (spec dosyasının 100
+        # satır öncesi/sonrası — kod, kullanıcı verisi DEĞİL). BEŞİNCİ bölüm
+        # — `# Page snapshot` (`errorContext.js:75` `if (pageSnapshot)`) —
+        # bu env SAYESİNDE `pageSnapshot === undefined` olduğu için HİÇ
+        # YAZILMAZ; bu, `_takePageSnapshot()` YOLUNUN PII riski taşıyan
+        # TEK bölümüydü (sayfanın TAM ARIA anlık görüntüsü — oturum
+        # listesi IP/UA, fixture e-postası vb.). İKİNCİ katman: `# Error
+        # details`'taki `error.message` bu sürümün a11y testlerinde
+        # `scripts/playwright/a11y.ts`'in redaksiyonundan GEÇMİŞ bir
+        # metindir (F2, aşağıdaki adımların `jq` doğrulamasıyla AYNI
+        # varsayım).
+        # ⚠⚠⚠ DÜZELTME (T-024 fix turu 3, `security` tur2 ÖLÇTÜ) —
+        # YUKARIDAKİ "TEK bölümdü" / "(b) REDDEDİLDİ" GEREKÇESİ ÇÜRÜDÜ.
+        # `_takePageSnapshot()` Playwright'ın ARIA anlık görüntüsü alan
+        # TEK yolu DEĞİL: `playwright-core/coreBundle.js`'teki
+        # `_ariaSnapshotForExpect()` — `expect(locator).toBeVisible()`
+        # gibi bir MATCHER (ör. `toBeVisible`/`toHaveText`) düştüğünde,
+        # eleman görünmez/bulunamazsa `document.body`'nin TAMAMININ ARIA
+        # ağacını alıp `matcherResult.ariaSnapshot` → `errors[].
+        # errorContext` üzerinden `error-context.md`'ye YAZAR — bu yol
+        # `PLAYWRIGHT_NO_COPY_PROMPT`'u HİÇ GÖRMEZ, çünkü `index.js:663`
+        # `_takePageSnapshot()` İÇİNDE bir erken-dönüş; `_ariaSnapshotFor
+        # Expect()` o fonksiyonu HİÇ ÇAĞIRMAZ. İki dal birbirini DIŞLAR
+        # (`playwright/lib/index.js:667` — `if (this._testInfo.errors.
+        # some((e) => e.errorContext)) return`), yani matcher hatası
+        # varsa `_takePageSnapshot()` dalı ZATEN atlanıyordu — bu env'in
+        # kapattığı dal, TAM OLARAK matcher hatalarında ÇALIŞMAYAN daldı.
+        # Bu sürümün a11y oturum-içi taramaları
+        # (`apps/admin/e2e/accessibility.spec.ts:134`
+        # `expect(terminateTrigger).toBeVisible()`,
+        # `apps/superadmin/e2e/accessibility.spec.ts:110`) TAM OLARAK
+        # matcher-hatası sınıfı — yani İKİNCİ katman iddiası ("(a)'dan
+        # SONRA dosya PII taşımıyor çünkü Error details zaten redakte")
+        # bu vakalar için GEÇERSİZ: `matcherResult.ariaSnapshot`
+        # Playwright İÇİNDE doğar, `a11y.ts`'in redaksiyonu oraya HİÇ
+        # ERİŞEMEZ (o script `page.evaluate`/axe sonucunu redakte eder,
+        # Playwright'ın kendi matcher hata gövdesini DEĞİL). SONUÇ: (b)
+        # seçeneği — `upload-artifact`'a
+        # `!apps/*/test-results/**/error-context.md` hariç tutma deseni —
+        # ARTIK UYGULANDI (aşağıdaki "Playwright artefaktlarını yükle"
+        # adımı); `PLAYWRIGHT_NO_COPY_PROMPT` SİLİNMEDİ çünkü matcher-
+        # DIŞI (düz `Error`) başarısızlıklarda hâlâ tek katman koruma
+        # sağlıyor — ama tek başına YETERSİZ olduğu ÖLÇÜLDÜ, (b) birincil
+        # savunma, bu env ikincil savunma.
+        # ⚠ KAPSAM BİLİNÇLİ OLARAK YALNIZCA CI: bu env YEREL geliştiriciye
+        # (`pnpm test:e2e` kökten) UYGULANMAZ — yerelde `apps/*/test-
+        # results` ve `apps/*/playwright-report` `.gitignore`'da (T-008
+        # security tur1'de doğrulandı, `git check-ignore`), yani yerel
+        # `error-context.md` PUBLIC bir yüzeye hiç çıkmıyor; kapatmak
+        # yalnızca geliştiricinin yerel teşhis aracını (sayfa anlık
+        # görüntüsü) gerekçesiz kısıtlardı. Risk sadece CI'ın `upload-
+        # artifact` adımında (PUBLIC depo) var, çözüm de yalnızca ORADA.
+        # ⚠⚠ AMPİRİK DOĞRULAMA (bu turda, turbo'nun PLANLAMA katmanında —
+        # `envMode: "strict"`, ÖLÇÜLDÜ): `PLAYWRIGHT_NO_COPY_PROMPT=1 pnpm
+        # exec turbo run test:e2e --filter=@arkesoft/admin --dry=json` —
+        # `turbo.json`'a EKLEMEDEN ÖNCE kök `environmentVariables.
+        # passthrough: []` (turbo değişkeni kabukta görse de listede
+        # OLMADIĞI için ÇOCUK sürece GEÇİRMEYECEĞİNİ beyan ediyordu);
+        # `turbo.json`'daki `tasks['test:e2e'].passThroughEnv`'e eklendikten
+        # SONRA aynı çağrı `passthrough: ["PLAYWRIGHT_NO_COPY_PROMPT=…"]`
+        # döndü. Gerçek `playwright test` koşumu bu turda KOŞTURULMADI (oran
+        # sınırı yasağı) — bu ölçüm turbo'nun ÇOCUK sürece ne GEÇİRECEĞİNİ
+        # planladığını kanıtlıyor, `qa` gerçek koşumda TEYİT edecek.
         env:
           ARKESOFT_SUPERADMIN_DEV_API_TARGET: http://127.0.0.1:3001
+          PLAYWRIGHT_NO_COPY_PROMPT: '1'
         run: pnpm test:e2e
+
+      # DÜZELTME (ROADMAP v0.0.20.3, T-024 fix turu 1, `security` tur1 F4 —
+      # medium) — AC-21'in "kırmayan (= onaylanmış) `incomplete` ya kırar ya
+      # AD AD raporlanır" garantisinin ikinci yarısı CI'da HİÇBİR YERE
+      # çıkmıyordu (ÖLÇÜLDÜ: `playwright/lib/common/index.js:703` ⇒ CI
+      # varsayılan reporter `dot`; `annotations` jetonu hiçbir built-in
+      # reporter'ın konsol çıktısında GEÇMİYOR). Üç `playwright.config.ts`
+      # artık (YALNIZCA CI'da) `json` reporter'ı AÇIKÇA `apps/*/test-
+      # results`/`apps/*/playwright-report` glob'unun DIŞINDA bir dosyaya
+      # (`apps/<app>/playwright-annotations.json`) yazıyor — bu adım o
+      # dosyaları `jq` ile okuyup YALNIZCA `a11y-incomplete` tipindeki
+      # `description` alanını (`<scanName>/<ruleId> × <düğüm sayısı>` —
+      # `a11y.ts` ÖLÇÜLDÜ, PII TAŞIMAZ) `GITHUB_STEP_SUMMARY`'ye yazar.
+      # ⚠⚠ BİLİNÇLİ SINIR — bu adım JSON dosyasının KENDİSİNİ (hata
+      # mesajları/target snippet'leri TAŞIYABİLİR, F1'in kapattığı kanalla
+      # AYNI SINIF risk) NE yükler NE stdout'a BASAR — yalnızca önceden
+      # güvenli olduğu ÖLÇÜLEN tek alanı (description) çıkarır. Bu yüzden
+      # F1'in (`PLAYWRIGHT_NO_COPY_PROMPT`) kapattığı kanalı GERİ AÇMAZ.
+      # ⚠ KONUM BİLİNÇLİ — "E2E süitini çalıştır" İLE "Görsel regresyonu
+      # çalıştır" ARASINDA: storefront'un `playwright-annotations.json`'ı
+      # `test:visual` (AYNI config dosyası, AYNI outputFile) tarafından
+      # İKİNCİ kez yazılıp EZİLMEDEN ÖNCE okunur — ZATEN gereksiz, çünkü
+      # görsel projeler (`e2e/visual/**`) `a11y.ts` kullanan
+      # `accessibility.spec.ts`'i (`e2e/`) HİÇ TARAMAZ, ama okuma sırası
+      # yine de bu TESADÜFE bel BAĞLAMAMAK için BURADA sabitlendi.
+      # `if: always()`: "E2E süitini çalıştır" adımı BAŞARISIZ olsa da
+      # reporter `onEnd`'de JSON'ı YAZAR — annotation raporu TAM OLARAK
+      # başarısız bir koşumda EN DEĞERLİ.
+      - name: AC-21 — onaylanmış a11y "incomplete" bulgularını CI özetine yaz (PII'siz)
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          {
+            echo '## AC-21 — onaylanmış a11y "incomplete" bulguları (ad ad)'
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          any_found=false
+          for app in admin superadmin storefront; do
+            json_file="apps/${app}/playwright-annotations.json"
+            if [ ! -f "$json_file" ]; then
+              echo "::notice::${json_file} bulunamadı — bu uygulama için json reporter çıktı üretmemiş olabilir (annotation raporu atlandı, BU TEK BAŞINA bir hata DEĞİL — örn. 'E2E süitini çalıştır' adımı daha önceki bir hatayla hiç başlamadıysa beklenir)."
+              continue
+            fi
+
+            jq_log="$(mktemp)"
+            descriptions="$(jq -r '
+                [.. | objects | select(has("annotations")) | .annotations[]? | select(.type == "a11y-incomplete") | .description]
+                | unique | .[]
+              ' "$json_file" 2>"$jq_log")"
+            jq_exit=$?
+            if [ "$jq_exit" -ne 0 ]; then
+              echo "::warning::${json_file} jq ile ayrıştırılamadı (exit $jq_exit) — $app için annotation raporu atlandı."
+              if [ -s "$jq_log" ]; then
+                cat "$jq_log"
+              fi
+              continue
+            fi
+
+            if [ -z "$descriptions" ]; then
+              continue
+            fi
+
+            any_found=true
+            {
+              echo "### ${app}"
+              echo
+              echo '```'
+              printf '%s\n' "$descriptions"
+              echo '```'
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+
+          if [ "$any_found" = false ]; then
+            echo 'Hiçbir uygulamada onaylanmış a11y "incomplete" bulgusu RAPORLANMADI (ya hiç yok ya da ilgili json dosyaları üretilmedi — yukarıdaki notlara bkz.).' >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Görsel regresyonu çalıştır (pnpm test:visual)
         shell: bash
@@ -1552,15 +1723,179 @@ jobs:
       # R-9 (po, T-020) — trace/video/screenshot OTURUM ÇEREZİ ve
       # "Authorization" BAŞLIĞI taşır; "scripts/playwright/base.ts" (S4)
       # "trace:'on-first-retry'" + "video:'retain-on-failure'" ile bunu
-      # AZALTTI, "retention-days" zincirin SON halkası. "if: always()":
-      # başarısız koşumda artefakt EN DEĞERLİ olduğu an.
-      - name: Playwright artefaktlarını yükle (trace + video + screenshot)
-        if: always()
+      # AZALTTI, "retention-days" zincirin SON halkası.
+      #
+      # ⚠⚠ GÜNCELLEME (ROADMAP v0.0.20.3, T-024 fix turu 1, `security` tur1
+      # F1 — `high`) — bu yüklenen yol ("apps/*/test-results") AYRICA
+      # Playwright'ın KENDİ ürettiği "error-context.md"yi taşıyordu; bu
+      # ÜÇÜNCÜ bir kanaldır ve yukarıdaki "trace:'on-first-retry'" +
+      # "video:'retain-on-failure'" muhakemesi onu KAPSAMAZ — ikisi
+      # "retries"e (varsayılan 0, `base.ts` pini) ve "on-first-retry"/
+      # "retain-on-failure" bayraklarına bağlıdır, yani "retries: 0" iken
+      # trace/video HİÇ ÜRETİLMEZ (bu sürümün spec'leri ÖLÇÜLDÜ: `retries`
+      # jetonu config'lerde 0 eşleşme ⇒ varsayılan 0 geçerli). "error-
+      # context.md" FARKLI bir üretim yolundan geliyor
+      # (`node_modules/playwright/lib/index.js:662-680`
+      # `_takePageSnapshot()`): tetikleyicisi "retries" DEĞİL, "testInfo.
+      # errors.length > 0 ∧ hiçbir hata kendi errorContext'ini taşımıyor"
+      # — yani "retries: 0" burada HİÇBİR KORUMA SAĞLAMAZ, bu dosya HER
+      # başarısız test için (ilk ve tek deneme dahil) üretilebilir. Sayfa
+      # ARIA anlık görüntüsünü ("# Page snapshot" başlığı altında, TAM
+      # erişilebilir metin) taşıdığı için admin/superadmin'in oturum-içi
+      # taramalarında (bu sürümün eklediği iki yeni spec) PII sızıntısı
+      # yüzeyiydi. DÜZELTME: yukarıdaki "E2E süitini çalıştır" adımına
+      # `PLAYWRIGHT_NO_COPY_PROMPT: '1'` eklendi — KAYNAKTA kapatır
+      # (`index.js:663`), ⚠ DÜZELTME (T-024 fix turu 2, `qa` tur1 ÖLÇTÜ,
+      # D2): bu, dosyanın KENDİSİNİ doğurmaz DEMEK DEĞİL — dosya ("#
+      # Instructions"/"# Test info"/"# Error details"/"# Test source" ile)
+      # YİNE doğar, bastırılan TEK bölüm "# Page snapshot" (ayrıntı ve
+      # ölçüm: yukarıdaki adımın dosya başı yorumu).
+      # ⚠⚠⚠ DÜZELTME (T-024 fix turu 3, `security` tur2 ÖLÇTÜ) — BU
+      # ADIMIN `path:` DESENİ "YİNE DE DEĞİŞTİRİLMEDİ" İDDİASI YANLIŞTI;
+      # "dosya artık PII taşımıyor, iki katmana dayanıyor" gerekçesi
+      # ÇÜRÜDÜ (ayrıntı ve kaynak satırı: yukarıdaki "E2E süitini
+      # çalıştır" adımının dosya başı yorumu, `_ariaSnapshotForExpect()`
+      # bulgusu). ⚠ BU SATIRDA BİR ÖNCEKİ İFADE DE ("'# Error details'
+      # katmanı hiç devreye girmez") HASSAS YANLIŞTI — `errorContext.
+      # js:44-74`'ü (kurulu `playwright@1.64.1`) OKUYARAK düzeltildi: "#
+      # Error details" bölümü HER ZAMAN yazılır (`error.message` için);
+      # matcher hatasında `error.errorContext` (=
+      # `workerProcessEntry.js:830-831` →
+      # `matcherResult.ariaSnapshot`, `expect.js:12142` matcher dönüşünden
+      # gelir) AYRI bir "# Page snapshot" bölümü DEĞİL, TAM OLARAK bu "#
+      # Error details" bölümünün İÇİNE (`error.message`'dan SONRA) ek bir
+      # ```yaml``` bloğu olarak EKLENİR (`errorContext.js:65-72`). Risk
+      # değişmiyor — `a11y.ts`'in redaksiyonu bu bloğa YİNE HİÇ DOKUNMAZ
+      # (o script axe/`page.evaluate` sonucunu redakte eder, Playwright'ın
+      # kendi `error.errorContext` alanını DEĞİL) — ama "hangi başlık
+      # altına yazıldığı" iddiası düzeltildi. ⇒ `path:`
+      # listesine aşağıda hariç tutma deseni EKLENDİ:
+      # `!apps/*/test-results/**/error-context.md`. ⚠ SIRA ÖNEMLİ —
+      # `actions/upload-artifact@v4` (`@actions/glob@0.7.0` üzerinden)
+      # desenleri YUKARIDAN AŞAĞI işler; hariç tutma deseni KAPSAYAN
+      # desenden (`apps/*/test-results`) SONRA gelmezse hiçbir etkisi
+      # OLMAZ. AMPİRİK DOĞRULAMA (bu turda, depo DIŞI `/tmp`'ta, gerçek
+      # `@actions/glob@0.7.0` ile, sahte `error-context.md`/`trace.zip`/
+      # `screenshot.png`/`video.webm`/`index.html` dosyalarıyla,
+      # DB/port/oran-sınırına dokunmadan): planlanan ÜÇ satırlık sıra
+      # ("apps/*/test-results" → "!apps/*/test-results/**/error-
+      # context.md" → "apps/*/playwright-report") sonuç listesinde
+      # `error-context.md` dosyalarının HİÇBİRİNİ içermiyor (trace/
+      # screenshot/video/html dosyaları KORUNUYOR); hariç tutma deseni
+      # İLK satıra alınıp sıra TERSİNE çevrildiğinde etkisi SIFIRA
+      # DÜŞÜYOR ve üç `error-context.md` da sonuç listesinde ÇIKIYOR —
+      # bu, `@actions/glob`'un "negate deseni yalnızca kendisinden ÖNCEKİ
+      # desenlerin eşleşmelerini daraltır" davranışıyla TUTARLI.
+      # `PLAYWRIGHT_NO_COPY_PROMPT` SİLİNMEDİ — matcher-DIŞI (düz `Error`)
+      # başarısızlıklarda hâlâ `# Page snapshot` bölümünü KAYNAKTA
+      # bastırıyor; (b) (bu hariç tutma deseni) BİRİNCİL savunma, env
+      # İKİNCİL savunma — tek katmana güvenmemek bu turun dersi (bkz.
+      # yukarıdaki "E2E süitini çalıştır" adımının dosya başı yorumu).
+      #
+      # ⚠⚠⚠ KARAR (T-024 fix turu 3, `devops`, `security` tur2'nin
+      # "kararı sen ver" talebi) — `if: always()` → `if: failure()`.
+      # GEREKÇE: R-9'un ORİJİNAL savunması ("başarısız koşumda artefakt
+      # EN DEĞERLİ olduğu an") `failure()` tarafından TAMAMEN KAPSANIYOR;
+      # `always()`'in KATTIĞI TEK fark BAŞARILI koşumların artefaktını
+      # yüklemek. Bu sürümün `trace:'on-first-retry'` + `video:
+      # 'retain-on-failure'` pini ("retries: 0" ile) nedeniyle BAŞARILI
+      # bir koşumda trace/video ZATEN üretilmiyor; `error-context.md` da
+      # `testInfo.errors.length > 0` koşuluna bağlı olduğu için başarılı
+      # koşumda DOĞMAZ. ⇒ `always()`'in başarılı koşumda yüklediği şey
+      # pratikte `playwright-report`/boş `test-results` dizinleridir —
+      # PII riski TAŞIMAZ (çünkü içerik yok) ama HER yeşil koşumda
+      # gereksiz bir artefakt yükleme adımı çalıştırır. Hariç tutma
+      # deseni PII riskini `always()`/`failure()` AYRIMINDAN BAĞIMSIZ
+      # zaten kapatıyor olsa da, savunma derinliği ilkesiyle (bu Task'ın
+      # kendi dersi: "tek katmana güvenme") artefakt yükleme YÜZEYİNİ en
+      # küçük tutmak tercih edildi — `failure()` hiçbir teşhis değeri
+      # kaybettirmiyor (başarılı koşumun zaten boş/değersiz artefaktı),
+      # `always()`'i korumak bu noktada `security`'nin işaret ettiği gibi
+      # gereksiz karmaşıklıktı.
+      # ⚠⚠⚠⚠ DÜZELTME (T-024 fix turu 4, Orkestratör bağımsız doğruladı,
+      # `devops` uyguladı) — YUKARIDAKİ (fix turu 1) "ikisi 'retries'e
+      # (varsayılan 0, `base.ts` pini) ... bağlıdır, yani 'retries: 0'
+      # iken trace/video HİÇ ÜRETİLMEZ" İDDİASI "trace" İÇİN DOĞRU,
+      # "video" İÇİN YANLIŞTI. `scripts/playwright/base.ts:148-149`'u
+      # OKUYARAK düzeltildi: "trace:'on-first-retry'" GERÇEKTEN
+      # "retries"e bağlıdır (retries:0 ⇒ trace HİÇ üretilmez, bu kısım
+      # doğruydu) — ama "video:'retain-on-failure'" "retries"e DEĞİL,
+      # testin SONUÇ DURUMUNA (başarısız mı) bağlıdır; Playwright bu
+      # modda SON deneme başarısız olduğunda videoyu TUTAR, deneme
+      # sayısından BAĞIMSIZ. Yani `retries: 0` + bir test başarısız
+      # olursa video YİNE DOĞAR. Üç `playwright.config.ts` dosyasının
+      # (admin/superadmin/storefront) HİÇBİRİNDE "video" override'ı YOK
+      # (ölçüldü) — `base.ts`'in varsayılanı HER YERDE geçerli.
+      # ⚠⚠ BUNUN SONUCU: bu adımın "if: failure()" koşulu (yukarıdaki
+      # fix turu 3 KARAR'ı) bu kanalda HİÇBİR KORUMA SAĞLAMAZ — video TAM
+      # OLARAK testin başarısız olduğu anda doğar, artefakt yükleme adımı
+      # TAM OLARAK o anda çalışır; iki koşul ÇAKIŞIYOR, birbirini
+      # FİLTRELEMİYOR. SÖMÜRÜ (ampirik, bu fix turunda `security` tur3
+      # ÖLÇTÜ — depo DIŞI, yalnızca `setContent`, DB/port/oran-sınırı/
+      # Docker'a DOKUNMADAN): başarısız bir test → `video.webm` ÜRETİLDİ
+      # (10.842 bayt); `ffmpeg` ile çıkarılan kare e-posta/IP/user-agent/
+      # kiracı slug'ını OKUNABİLİR hâlde gösteriyor; geçen test → video
+      # YOK. `PLAYWRIGHT_NO_COPY_PROMPT` SET/UNSET bu kanalı ETKİLEMEZ
+      # (o yalnızca "# Page snapshot" bölümünü bastırır, video kodeki ile
+      # İLGİSİZ). Somut tetikleyici: `apps/admin/e2e/accessibility.spec.
+      # ts:134` ve `apps/superadmin/e2e/accessibility.spec.ts:110` —
+      # admin `/hesap/guvenlik` oturum-içi (IP/UA/tarih listesi) ve
+      # superadmin kiracı listesi sayfalarında matcher assert'i yapıyor,
+      # TAM OLARAK bu sayfaların video kaydını doğurabilecek specler.
+      # HAFİFLETİCİ (dürüstlük için): bu sürümün verisi SENTETİK fixture
+      # verisi; video `trace.zip`'in AKSİNE çerez/`Authorization`
+      # BAŞLIĞI TAŞIMAZ (sayfa görüntüsü, ağ trafiği DEĞİL).
+      # DÜZELTME: `path:` listesine `!apps/*/test-results/**/*.webm`
+      # EKLENDİ (yukarıdaki `path:` bloğu, `error-context.md` hariç
+      # tutma deseninden SONRA, `playwright-report`'tan ÖNCE — sıra aynı
+      # gerekçeyle önemli). `!apps/*/test-results/**/trace.zip` de
+      # EKLENDİ — bugün `retries: 0` olduğu için trace ZATEN üretilmiyor
+      # (bu kısım hâlâ doğru), ama `base.ts:113-133`'teki uzun yorum tam
+      # da "bir ajan 'retries ekleyelim, flaky testler geçsin' demesin"
+      # diye yazılmış; bu hariç tutma, o senaryoda İKİNCİL bir savunma
+      # katmanı olarak eklendi — ileride `retries` artırılırsa `path:`
+      # deseni DEĞİŞTİRİLMEDEN de trace sızıntıya dönüşmez.
+      # AMPİRİK DOĞRULAMA (bu turda, depo DIŞI `/tmp`'ta, gerçek
+      # `@actions/glob@0.7.0` ile, DÖRT satırlık TAM sıra —
+      # "apps/*/test-results" → "!...error-context.md" → "!...*.webm" →
+      # "!...trace.zip" → "apps/*/playwright-report" — sahte
+      # `error-context.md`/`trace.zip`/`video.webm`/`screenshot.png`/
+      # `index.html`/`.last-run.json` dosyalarıyla, DB/port/oran-
+      # sınırı/Docker'a dokunmadan): sonuç listesi `error-context.md`/
+      # `.webm`/`trace.zip`'İN HİÇBİRİNİ içermiyor; `screenshot.png`/
+      # `index.html`/`.last-run.json` KORUNUYOR (`playwright-report` ve
+      # boş `test-results` teşhis değeri hâlâ artefaktta).
+      # ⚠⚠⚠⚠ DERS — bu Task'ta ölçümle ÇÜRÜYEN ALTINCI iddia (fix turu
+      # 1: trace/video "AZALTTI" eksikliği → F1; fix turu 2:
+      # `PLAYWRIGHT_NO_COPY_PROMPT` dosyanın DOĞMASINI engeller iddiası;
+      # fix turu 3: "# Error details hiç devreye girmez" iddiası VE
+      # `path:` deseni "değiştirilmedi" iddiası; bu tur: "video de
+      # retries'e bağlı" iddiası) ve ÜÇÜNCÜ "tek katman ≠ kapalı kanal"
+      # vakası (ilki: `PLAYWRIGHT_NO_COPY_PROMPT` tek başına
+      # `error-context.md`'yi kapatmıyordu; ikincisi: `path:` deseni tek
+      # başına `# Error details`'ı kapatmıyordu; bu: trace/video
+      # muhakemesi + `if: failure()` birlikte `video.webm`'i
+      # kapatmıyordu). BİR SAVUNMANIN KAPSAMI, KAPATTIĞI KANAL
+      # SAYILMADAN İLAN EDİLEMEZ.
+      #
+      # DÜZELTME (T-024 fix turu 4, `security` tur3 L3 — `low`) — adım
+      # adında "screenshot" geçiyordu; üç `playwright.config.ts`
+      # dosyasının HİÇBİRİNDE (ne de `base.ts`'te) bir "screenshot"
+      # ayarı YOK (ölçüldü) — Playwright'ın varsayılanı ("off") geçerli,
+      # yani bu süit normal koşumda `screenshot.png` ÜRETMEZ (yukarıdaki
+      # ampirik doğrulamadaki `screenshot.png` sahte/sentetik bir glob
+      # test dosyasıydı, gerçek bir üretim iddiası DEĞİLDİ). Ad "trace +
+      # video" olarak düzeltildi.
+      - name: Playwright artefaktlarını yükle (trace + video)
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: e2e-playwright-artifacts
           path: |
             apps/*/test-results
+            !apps/*/test-results/**/error-context.md
+            !apps/*/test-results/**/*.webm
+            !apps/*/test-results/**/trace.zip
             apps/*/playwright-report
           retention-days: 7
 

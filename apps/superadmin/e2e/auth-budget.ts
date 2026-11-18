@@ -42,6 +42,11 @@ export const AUTH_IP_LIMITS = { signIn: 20, signUp: 10 } as const
  *     authz.spec.ts`'in AYNI deseni), İKİNCİ bir `sign-in` GEREKMEZ
  *     (storageState ile context açılır; 2FA'nın kendi `enable`/`get-totp-
  *     uri`/`verify-totp` çağrıları bu bütçeye GİRMEZ).
+ *   - `accessibility.spec.ts` (EKLENDİ: T-024/S6, AC-19/AC-20/AC-21): 1
+ *     sign-up + 1 sign-in — `createVerifiedFixtureUser` TEK zincirde
+ *     ikisini üretir, `enableTotpTwoFactor`'ün `enable`/`verify-totp`
+ *     çağrıları (`/giris` + `/` taramaları AYNI `beforeAll`'ın kullanıcısını
+ *     paylaşır) İKİNCİ bir `sign-in`/`sign-up` GEREKTİRMEZ.
  */
 export const SPEC_AUTH_COST: Record<string, { readonly signIn: number; readonly signUp: number }> =
   {
@@ -49,4 +54,5 @@ export const SPEC_AUTH_COST: Record<string, { readonly signIn: number; readonly 
     'superadmin-authz.spec.ts': { signIn: 1, signUp: 1 },
     'sidebar-focus-return.qa.spec.ts': { signIn: 1, signUp: 1 },
     'two-factor-setup-reload.spec.ts': { signIn: 1, signUp: 1 },
+    'accessibility.spec.ts': { signIn: 1, signUp: 1 },
   }

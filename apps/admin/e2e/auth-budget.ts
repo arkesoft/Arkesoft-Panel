@@ -50,6 +50,17 @@ export const AUTH_IP_LIMITS = { signIn: 20, signUp: 10 } as const
  *     `sign-in` gönderimi 1 sign-in; 2FA'nın kendi `enable`/`get-totp-uri`/
  *     `verify-totp` çağrıları BU bütçeye GİRMEZ — dosya başı yorumunun
  *     `/auth/sign-in/email` ve `/auth/sign-up/email`'e ÖZEL tanımı).
+ *   - `a11y-helper-self-test.spec.ts` (EKLENDİ: T-024/S3, AC-21/AC-22):
+ *     0 sign-in + 0 sign-up — beş senaryo da `page.setContent` ile sentetik
+ *     DOM üretir, kimlik doğrulama uçlarına TEK bir ağ çağrısı bile yapmaz
+ *     (dosya başı notu: "auth MALİYETİ sıfır").
+ *   - `accessibility.spec.ts` (EKLENDİ: T-024/S5, AC-19/AC-20/AC-21; ⚠
+ *     DÜZELTİLDİ — Orkestratör, "ek sign-in maliyeti sıfır" kısıtının
+ *     gereksiz daraltıcı olduğunu ÖLÇTÜ, bkz. dosyanın kendi başı yorumu):
+ *     1 sign-up + 2 sign-in — `beforeAll`'da BİR `sign-up` + İKİ `sign-in`
+ *     (AYNI fixture kullanıcısıyla, İKİNCİ `APIRequestContext`) — "Sonlandır"
+ *     tetikleyicisini render eden İKİNCİ oturum satırı GERÇEK bir ikinci
+ *     `/auth/sign-in/email` çağrısıyla üretiliyor, SQL `INSERT` YOK.
  */
 export const SPEC_AUTH_COST: Record<string, { readonly signIn: number; readonly signUp: number }> =
   {
@@ -59,4 +70,6 @@ export const SPEC_AUTH_COST: Record<string, { readonly signIn: number; readonly 
     'registration-flow.spec.ts': { signIn: 1, signUp: 1 },
     'responsive/sign-in-layout.spec.ts': { signIn: 0, signUp: 0 },
     'two-factor-setup-reload.spec.ts': { signIn: 1, signUp: 1 },
+    'a11y-helper-self-test.spec.ts': { signIn: 0, signUp: 0 },
+    'accessibility.spec.ts': { signIn: 2, signUp: 1 },
   }

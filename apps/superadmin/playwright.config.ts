@@ -64,6 +64,16 @@ if (
 
 export default createPlaywrightBaseConfig({
   testDir: './e2e',
+  // DÜZELTME (ROADMAP v0.0.20.3, T-024 fix turu 1, `security` tur1 F4 —
+  // medium) — `apps/admin/playwright.config.ts`'in AYNI gerekçesi
+  // (DEĞİŞTİRİLMEDİ, ayrıntı orada): `dot` (CI varsayılanı, DAVRANIŞ
+  // DEĞİŞMİYOR) + `json` (outputFile glob'ların DIŞINDA — `ci.yml`'in
+  // mevcut yükleme adımına GİRMEZ), YALNIZCA `process.env['CI']` iken.
+  // `exactOptionalPropertyTypes: true` — `apps/admin/playwright.config.ts`'in
+  // AYNI gerekçesi (DEĞİŞTİRİLMEDİ): anahtar CI DIŞINDA hiç SPREAD EDİLMEZ.
+  ...(process.env['CI']
+    ? { reporter: [['dot'], ['json', { outputFile: 'playwright-annotations.json' }]] as const }
+    : {}),
   // `apps/admin/playwright.config.ts:90-98`'in AYNI ölçülmüş tuzağı:
   // Playwright'ın varsayılan `testMatch`'i `*.test.ts`'i de eşleştirir —
   // `e2e/__tests__/auth-budget.test.ts` (Vitest testi) BU YÜZDEN burada

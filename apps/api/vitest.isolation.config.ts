@@ -35,5 +35,27 @@ export default defineConfig({
     sequence: {
       concurrent: false,
     },
+    // DÜZELTME (ROADMAP v0.0.20.3, T-024 fix turu 2, `qa` tur1 ÖLÇTÜ, D3 —
+    // medium) — `packages/errors/vitest.config.ts`'teki T-008/borç 1442
+    // AÇIKLAMASIYLA AYNI kök neden, bu dosyada hiç KAPATILMAMIŞTI: Vitest'in
+    // `fsModuleCachePath` VARSAYILANI paketin KENDİ dizinine göre değil,
+    // otomatik algılanan MONOREPO ÇALIŞMA ALANI KÖKÜNE göre çözülüyor
+    // (ÖLÇÜLDÜ, kaynak: `vitest/dist/chunks/cli-api.*.js`: `this.rootCache =
+    // vitest.config.fsModuleCachePath || join(searchForWorkspaceRoot(...),
+    // "node_modules", ".vitest-cache")`). `vitest.config.ts` (`pnpm test`)
+    // bu paylaşımı T-008'de paket-yerel bir `fsModuleCachePath` vererek
+    // KAPATTI — ama bu dosya (`pnpm test:isolation`) o düzeltmeyi hiç
+    // ALMADI, yani KÖK `node_modules/.vitest-cache`'i HÂLÂ `packages/db`'nin
+    // AYNI adlı isolation config'iyle PAYLAŞIYORDU. `turbo.json`'daki
+    // `test:isolation` görevi `test:e2e`'nin aksine `--concurrency=1`
+    // TAŞIMIYOR ve `@arkesoft/api#test:isolation` ile `@arkesoft/db#
+    // test:isolation` arasında bağımlılık kenarı YOK — turbo bu ikisini
+    // VARSAYILAN olarak PARALEL çalıştırıyor; iki Vitest süreci AYNI
+    // paylaşılan dizini EŞZAMANLI silip/oluşturunca `qa`'nın ölçtüğü
+    // `ENOTEMPTY: directory not empty, rmdir '…/node_modules/.vitest-cache'`
+    // doğuyor (ÖLÇÜLDÜ: ikinci koşum AYNI komutla yeşil — klasik dosya
+    // sistemi yarışı imzası). Çözüm: `vitest.config.ts`'teki AYNI deseni
+    // uygula — paket-yerel yol, paylaşılan dizin tamamen ortadan kalkar.
+    fsModuleCachePath: 'node_modules/.vitest-cache',
   },
 })
