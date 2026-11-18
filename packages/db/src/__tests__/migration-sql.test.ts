@@ -1625,3 +1625,133 @@ describe('migration-sql — nokta atışı pin (T-012/S2): "tenant_theme_selecti
     ).toBe(true)
   })
 })
+
+// --- ROADMAP v0.0.21, T-018/S2 — NOKTA ATIŞI PİN (bilinçli sapma, yalnızca
+// EKLEME, `tenant_theme_selection`/`better_auth_tables` pin bloğu emsali) ---
+//
+// Gerekçe: architect VERİ MODELİ + ADR-0020 bu migration için BEŞ bağlayıcı
+// özellik istiyor — (1) yıkıcı adım YOK, (2) iki yeni CHECK kısıtı beklenen
+// biçimde, (3) İKİ tenant tablosu (`tenant_version_state`,
+// `tenant_update_history`) RLS `ENABLE`+`FORCE`+KANONİK politika taşıyor
+// (R-A1 — bayt-birebir kopya, `rbac_audit_log_and_invitation`'dan), (4)
+// `tenant_version_state` İKİ UNIQUE INDEX taşıyor (R-A2 — `tenantId @unique`
+// VE `@@unique([tenantId, id])`, ikisi BİRLİKTE), (5) üç yeni tabloda HİÇBİR
+// `tenant_id` kolonu YOK (platform seviyesi: `platform_release`, `theme`,
+// `theme_release`). Genel tarayıcıya (`migration-set.ts`) yeni bir sezgisel
+// yama EKLENMEDİ (R-D1 yasağı emsali) — bu, yalnızca
+// `20261111090000_version_registry` migration dizinine ÖZGÜ bir assertion'dır.
+describe('migration-sql — nokta atışı pin (T-018/S2): "version_registry" expand migrasyonu', () => {
+  const VERSION_REGISTRY_MIGRATION_DIRECTORY = '20261111090000_version_registry'
+
+  /** Migration bulunamazsa boş dize döner — çağıran kendi `toBeDefined()` kontrolünü ayrıca yapar. */
+  function findVersionRegistryMigrationSql(): string {
+    const migrations = readMigrationSet(MIGRATIONS_DIR)
+    const migration = migrations.find(
+      (candidate) => candidate.directoryName === VERSION_REGISTRY_MIGRATION_DIRECTORY,
+    )
+    return migration?.sql ?? ''
+  }
+
+  it(`"${VERSION_REGISTRY_MIGRATION_DIRECTORY}" migration kümesinde gerçekten var`, () => {
+    const migrations = readMigrationSet(MIGRATIONS_DIR)
+    expect(
+      migrations.some(
+        (migration) => migration.directoryName === VERSION_REGISTRY_MIGRATION_DIRECTORY,
+      ),
+    ).toBe(true)
+  })
+
+  it('migration hiçbir yıkıcı ifade taşımıyor (DROP / SET NOT NULL yok — CLAUDE.md §10 md 10)', () => {
+    const sql = findVersionRegistryMigrationSql()
+    expect(sql.includes('DROP ')).toBe(false)
+    expect(sql.includes('SET NOT NULL')).toBe(false)
+  })
+
+  it("CHECK #1 beklenen biçimde: (status = 'draft') = (published_at IS NULL)", () => {
+    const sql = findVersionRegistryMigrationSql()
+    expect(sql.includes('ADD CONSTRAINT "theme_release_published_at_pairing_check"')).toBe(true)
+    expect(
+      sql.includes(`CHECK (("status" = 'draft') = ("published_at" IS NULL))`),
+      'CHECK #1 ifadesi beklenen eşleşme değişmezini birebir taşımıyor',
+    ).toBe(true)
+  })
+
+  it('CHECK #2 beklenen biçimde: finished_at IS NULL OR finished_at >= started_at', () => {
+    const sql = findVersionRegistryMigrationSql()
+    expect(
+      sql.includes('ADD CONSTRAINT "tenant_update_history_finished_after_started_check"'),
+    ).toBe(true)
+    expect(
+      sql.includes('CHECK ("finished_at" IS NULL OR "finished_at" >= "started_at")'),
+      'CHECK #2 ifadesi beklenen değişmezi birebir taşımıyor',
+    ).toBe(true)
+  })
+
+  // R-A1 (bağlayıcı): RLS bloğu `rbac_audit_log_and_invitation`'dan BAYT-BİREBİR
+  // kopyalandı — `TO` yan tümcesi yok, `current_setting` İKİ argümanlı,
+  // `WITH CHECK` AÇIKÇA yazılı, `::text` cast'i yok. R-P1 (bağlayıcı, PO):
+  // `it.each` YASAK — tek bir `it()` içinde tablo-sürücülü `for` döngüsü
+  // (yukarıdaki "altı biçim varyantı" bloğu emsali).
+  it('"tenant_version_state" ve "tenant_update_history" RLS ENABLE + FORCE + kanonik USING/WITH CHECK politikasını BAYT-BİREBİR taşıyor (R-A1)', () => {
+    const sql = findVersionRegistryMigrationSql()
+    const tableNames = ['tenant_version_state', 'tenant_update_history'] as const
+
+    for (const tableName of tableNames) {
+      expect(
+        sql.includes(`ALTER TABLE "${tableName}" ENABLE ROW LEVEL SECURITY;`),
+        `"${tableName}" ENABLE ROW LEVEL SECURITY ifadesi bulunamadı`,
+      ).toBe(true)
+      expect(
+        sql.includes(`ALTER TABLE "${tableName}" FORCE ROW LEVEL SECURITY;`),
+        `"${tableName}" FORCE ROW LEVEL SECURITY ifadesi bulunamadı`,
+      ).toBe(true)
+      expect(
+        sql.includes(`CREATE POLICY "${tableName}_tenant_isolation" ON "${tableName}"`),
+        `"${tableName}" için beklenen politika adı bulunamadı`,
+      ).toBe(true)
+      expect(
+        sql.includes(`USING ("tenant_id" = current_setting('app.tenant_id', true))`),
+        '"USING" yüklemi kanonik ifadeyi (rbac_audit_log_and_invitation emsali) birebir taşımıyor',
+      ).toBe(true)
+      expect(
+        sql.includes(`WITH CHECK ("tenant_id" = current_setting('app.tenant_id', true));`),
+        '"WITH CHECK" yüklemi kanonik ifadeyi birebir taşımıyor',
+      ).toBe(true)
+      // `TO <rol>` yan tümcesi YOK (= TO PUBLIC) — kanonik üç karardan biri.
+      expect(
+        sql.includes(`CREATE POLICY "${tableName}_tenant_isolation" ON "${tableName}" TO`),
+        `"${tableName}" politikası beklenmeyen bir "TO" yan tümcesi taşıyor`,
+      ).toBe(false)
+    }
+  })
+
+  // R-A2 (bağlayıcı): `tenant_version_state` İKİ UNIQUE INDEX taşıyor —
+  // `UNIQUE(tenant_id)` (gerçek 1:1 değişmezi) VE `UNIQUE(tenant_id, id)`
+  // (migration linter'ının `tenant_id` öncü bileşik indeks şartı). Tek kolonlu
+  // UNIQUE INDEX TEK BAŞINA bu şartı KARŞILAMAZ (solid gate T-004 tur 1 bulgu
+  // C8 — yukarıdaki "prob süiti" testinde ayrıca pinlenmiş genel kural).
+  it('"tenant_version_state" İKİ UNIQUE INDEX taşıyor: UNIQUE(tenant_id) VE UNIQUE(tenant_id, id) — R-A2', () => {
+    const sql = findVersionRegistryMigrationSql()
+    expect(
+      sql.includes(
+        'CREATE UNIQUE INDEX "tenant_version_state_tenant_id_key" ON "tenant_version_state"("tenant_id");',
+      ),
+    ).toBe(true)
+    expect(
+      sql.includes(
+        'CREATE UNIQUE INDEX "tenant_version_state_tenant_id_id_key" ON "tenant_version_state"("tenant_id", "id");',
+      ),
+    ).toBe(true)
+  })
+
+  it('"platform_release" / "theme" / "theme_release" hiçbir "tenant_id" kolonu TAŞIMIYOR (platform seviyesi)', () => {
+    const sql = findVersionRegistryMigrationSql()
+    for (const tableName of ['platform_release', 'theme', 'theme_release'] as const) {
+      const tableBodyPattern = new RegExp(`CREATE TABLE "${tableName}" \\(([\\s\\S]*?)\\n\\);`)
+      const match = tableBodyPattern.exec(sql)
+      expect(match, `"${tableName}" CREATE TABLE gövdesi bulunamadı`).not.toBeNull()
+      const body = match?.[1] ?? ''
+      expect(body.includes('"tenant_id"'), `"${tableName}" "tenant_id" kolonu TAŞIYOR`).toBe(false)
+    }
+  })
+})

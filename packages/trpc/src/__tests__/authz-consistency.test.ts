@@ -121,6 +121,9 @@ describe('A-A2 — envanter kaynağının kendisi (ölçüm, varsayım değil)',
       ['member.invite', 'mutation'],
       ['member.remove', 'mutation'],
       ['member.updateRole', 'mutation'],
+      ['registration.checkSlugAvailability', 'query'],
+      ['registration.createTenant', 'mutation'],
+      ['registration.onboardingChecklist', 'query'],
       ['session.list', 'query'],
       ['session.me', 'query'],
       ['storefront.currentTenant', 'query'],
@@ -175,10 +178,10 @@ describe('AC3 ayak (c) — KAPALI DÜNYA: beyan edilen yüzey = gerçek yüzey',
     expect([...inventory.keys()].sort()).toEqual(Object.keys(PROCEDURE_SURFACE).sort())
   })
 
-  it('kayıt sayıları eşit ve ON BİR (tablonun boş olmadığının kanıtı; ROADMAP v0.0.15.1, T-017/S4)', () => {
+  it('kayıt sayıları eşit ve ON DÖRT (tablonun boş olmadığının kanıtı; ROADMAP v0.1.0, T-019/S3)', () => {
     const inventory = readRouterInventory()
 
-    expect(Object.keys(PROCEDURE_SURFACE).length).toBe(11)
+    expect(Object.keys(PROCEDURE_SURFACE).length).toBe(14)
     expect(inventory.size).toBe(Object.keys(PROCEDURE_SURFACE).length)
   })
 
@@ -203,7 +206,7 @@ describe('AC3 ayak (c) — KAPALI DÜNYA: beyan edilen yüzey = gerçek yüzey',
     expect(listRecordedPermissionUsages().length).toBe(6)
   })
 
-  it('izinsiz beyan edilen yollar TAM OLARAK bilinen BEŞ istisnadır (builder beyanı inceleme görünürlüğü; ROADMAP v0.0.15.1, T-017/S4 — session.list EKLENDİ)', () => {
+  it('izinsiz beyan edilen yollar TAM OLARAK bilinen SEKİZ istisnadır (builder beyanı inceleme görünürlüğü; ROADMAP v0.1.0, T-019/S3 — üç registration.* prosedürü EKLENDİ)', () => {
     // ⚠ TABLONUN KAPATAMADIĞI DELİK BURADA GÖRÜNÜR OLUR: bir prosedürü
     // `builder: 'tenant'` diye BİLEREK beyan etmek mekanik olarak
     // yakalanamaz. Bu assert o beyanı bir KARDİNALİTE + AD listesine bağlar:
@@ -216,6 +219,9 @@ describe('AC3 ayak (c) — KAPALI DÜNYA: beyan edilen yüzey = gerçek yüzey',
 
     expect(ungated.sort()).toEqual([
       ['member.acceptInvitation', 'protected'],
+      ['registration.checkSlugAvailability', 'protected'],
+      ['registration.createTenant', 'protected'],
+      ['registration.onboardingChecklist', 'protected'],
       ['session.list', 'protected'],
       ['session.me', 'protected'],
       ['storefront.currentTenant', 'publicTenant'],

@@ -36,6 +36,16 @@
 // `tenantId` boş/yalnızca boşluk ise `throw` — cuid2 BİÇİM kontrolü BİLEREK
 // YOK (ADR-0003 madde 1: "ID formatı değişebilir" ile çelişir, bu fonksiyon
 // biçime bağımlı olmamalı).
+//
+// GÜNCELLEME (ROADMAP v0.1.0, T-019/S1, architect VERİ MODELİ — ADR-0021
+// §4): `withNewTenant()` + `PlatformTenantWriter` EKLENDİ — kayıt akışının
+// YENİ bir kiracıyı ve onun kiracı kapsamlı satırlarını (`tenant_
+// membership(owner)`, `subscription`) TEK transaction'da yazabilmesi için.
+// `app.tenant_id` jetonunun TEK EVİ olma kuralı BOZULMADI: yeni fonksiyon
+// AYNI `TENANT_CONTEXT_SETTING` sabitini, AYNI `WeakMap` kaydını ve AYNI
+// bağlı-parametre `set_config()` çağrısını kullanır — ikinci bir literal
+// AÇILMAZ. Bu, bilerek `withTenant()` ile BİREBİR aynı YETKİYİ taşır, YENİ
+// bir yetki VERMEZ (fonksiyonun kendi doc'unda tekrar yazılıdır).
 
 import type { PrismaDatabase, TransactionClient } from './client.js'
 
@@ -112,5 +122,119 @@ export function withTenant<T>(
   return client.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT set_config(${settingName}, ${tenantId}, true)`
     return callback(tx)
+  })
+}
+
+/**
+ * `withNewTenant()`'ın `insertTenant` geri çağrımına verilen istemci tipi
+ * (ROADMAP v0.1.0, T-019/S1, architect VERİ MODELİ — ADR-0021 §4).
+ *
+ * YALNIZCA İKİ üye: `tenant` (yeni kiracı satırını yazmak için — RLS'siz
+ * platform tablosu, GUC kurulmadan INSERT meşrudur) ve `plan` (kayıt
+ * akışının `trial` planını OKUMASI için — `Plan` de platform seviyesi,
+ * `tenant_id` TAŞIMAZ).
+ *
+ * ⚠⚠ DÜZELTME (ROADMAP v0.1.0, T-019 gate tur1 düzeltmesi — `solid` M3 +
+ * `security` S-2, İKİ gate BAĞIMSIZ OLARAK aynı satırı buldu): `plan` üyesi
+ * İLK sürümde `Pick<TransactionClient, 'tenant' | 'plan'>` ile `plan`
+ * delegesinin TAMAMINI (create/update/upsert/delete DAHİL) veriyordu — bu
+ * doc o sürümde de "`plan` … OKUMASI için" diyordu, yani kod kendi
+ * dokümante ettiği niyetten DAHA GENİŞTİ. Negatif kanıt: `insertTenant`
+ * bloğuna `await tx.plan.delete({ where: { id: TRIAL_PLAN_ID } })` yazmak
+ * O SÜRÜMDE DERLENİYORDU (kayıt yolundan platform fiyatlandırma satırı
+ * silinebilirdi). `plan` artık KENDİ İÇİNDE `Pick<TransactionClient['plan'],
+ * 'findUnique'>` ile daraltılır — `insertTenant`'ın GERÇEKTE kullandığı TEK
+ * metot budur (ölçüldü: `apps/api/src/registration/registration.service.ts`
+ * `insertTenant` fazında `tx.plan.findUnique(...)` DIŞINDA `plan` üzerinde
+ * hiçbir çağrı yok). `tx.plan.delete(...)`/`update(...)`/`upsert(...)`/
+ * `create(...)`/`deleteMany(...)` artık `pnpm typecheck`'te KIRILIR (negatif
+ * pin: `__tests__/tenant-context-new-tenant.test.ts`).
+ *
+ * `user`/`account`/`session`/`verification`/`twoFactor` BİLEREK YOK
+ * (`AUTH_SECRET_BEARING_MODELS`'in BİREBİR aynısı — bu geri çağrım kimlik
+ * doğrulama tablolarına erişmemeli) ve `$transaction` BİLEREK YOK
+ * (`AppPrismaDatabase`/`TenantTransactionClient`'ın BİREBİR aynı kararı — iç
+ * içe transaction yapısal olarak İMKÂNSIZ olmalı). Negatif tip pini:
+ * `__tests__/tenant-context-new-tenant.test.ts`.
+ */
+export type PlatformTenantWriter = Pick<TransactionClient, 'tenant'> & {
+  readonly plan: Pick<TransactionClient['plan'], 'findUnique'>
+}
+
+/**
+ * Kayıt akışının TEK transaction'ı (ROADMAP v0.1.0, T-019/S1, architect VERİ
+ * MODELİ — ADR-0021 §4). Üç adımı SIRAYLA, AYNI transaction içinde yapar:
+ *
+ *   1. `insertTenant(tx)` — platform `tenant` satırını (ve gerekirse `plan`
+ *      okumasını) yazar, `{ id }` döner.
+ *   2. GUC'u o satırın id'sine `set_config(…, true)` ile **bağlı
+ *      parametreyle** ayarlar (`$queryRawUnsafe` YOK, ikinci literal YOK —
+ *      `withTenant()`'ın BİREBİR aynı deseni).
+ *   3. `callback(tx, tenantId)` — kiracı kapsamlı satırları (`tenant_
+ *      membership(owner)`, `subscription`) GUC KURULDUKTAN SONRA yazar; bu
+ *      sıra `WITH CHECK`'in sağlanmasını garanti eder.
+ *
+ * NEDEN (ROADMAP:3113'ün ikinci bağımsız duvarı — architect'in ölçtüğü
+ * yapısal gerçek): `AppPrismaDatabase` `$transaction` TAŞIMAZ (`client.ts`)
+ * ve `TenantTransactionClient` `tenant` TAŞIMAZ (`client.ts`) — kiracı
+ * satırı ile üyelik/abonelik satırları bugün AYNI transaction'da
+ * YAZILAMIYORDU. İki fazlı yazım CLAUDE.md §4'ü ("çok kayıtlı yazma işlemleri
+ * transaction içinde") ihlal eder VE somut bir hata sınıfı doğurur: faz B
+ * patlarsa SAHİPSİZ bir kiracı kalır, slug `@unique` yüzünden KALICI
+ * tutulur, kullanıcı aynı slug'la tekrar deneyemez.
+ *
+ * ⚠⚠ BU FONKSİYON YENİ BİR YETKİ VERMEZ — hem GUC EKSENİNDE hem TABLO ERİŞİMİ
+ * EKSENİNDE (ikincisi T-019 gate tur1 düzeltmesiyle DOĞRU hâle geldi,
+ * aşağıya bkz.).
+ *
+ * GUC ekseni: çağıranın GUC'u keyfi bir kiracıya ayarlayabilmesi bugünkü
+ * `withTenant(herhangiBirId, …)` ile BİREBİR aynıdır — yeni bir kaçış kapısı
+ * DEĞİLDİR, aynı güvenlik garantisinin (çağıranın `tenantId`'yi doğru
+ * seçmesine güvenme) ikinci bir çağrı yoludur.
+ *
+ * Tablo erişimi ekseni (`solid` M3 + `security` S-2'nin BAĞIMSIZ bulduğu
+ * eksen — bu iddia İLK sürümde `plan` için YANLIŞTI): `insertTenant`'ın
+ * `tenant` üyesi yeni bir şey AÇMAZ — `apps/api`'nin `AppPrismaDatabase`'i
+ * zaten `tenant`'ı taşır (platform tablosu, RLS'siz INSERT zaten meşru).
+ * `plan` üyesi artık `PlatformTenantWriter`'ın kendi doc'unda yazılı
+ * daraltmayla (`Pick<TransactionClient['plan'], 'findUnique'>`) SALT
+ * OKUNUR — `apps/api`'nin `plan`'a YAZABİLDİĞİ başka hiçbir tip-seviyesi yol
+ * YOK (`AppPrismaDatabase`/`TenantTransactionClient` `plan`'ı hiç TAŞIMAZ),
+ * yani `withNewTenant()` bu eksende de yeni bir YAZMA yeteneği AÇMAZ.
+ *
+ * `app.tenant_id` jetonu bu dosyanın DIŞINA literal olarak SIZMAZ (K-E12/AC4
+ * mekanik taraması — `TENANT_CONTEXT_SETTING` değişkeni burada da
+ * KULLANILIR, ikinci bir literal AÇILMAZ).
+ *
+ * @throws `client` `createPrismaClient({ tenantContextSetting })` İLE
+ *   kurulmamışsa (kayıt yoksa, fail-closed — `withTenant`'ın BİREBİR aynı
+ *   kontrolü).
+ * @throws `insertTenant` boş veya yalnızca boşluk karakterlerinden oluşan bir
+ *   `id` döndürürse (`withTenant`'ın `tenantId` kontrolünün BİREBİR aynısı).
+ */
+export function withNewTenant<T>(
+  client: PrismaDatabase,
+  insertTenant: (tx: PlatformTenantWriter) => Promise<{ readonly id: string }>,
+  callback: (tx: TransactionClient, tenantId: string) => Promise<T>,
+): Promise<T> {
+  const settingName = tenantContextSettingByClient.get(client)
+  if (settingName === undefined) {
+    throw new Error(
+      'withNewTenant(): bu istemci tenant context için kaydedilmemiş — ' +
+        'createPrismaClient() "tenantContextSetting" seçeneğiyle oluşturulmalı.',
+    )
+  }
+
+  return client.$transaction(async (tx) => {
+    const createdTenant = await insertTenant(tx)
+
+    if (createdTenant.id.trim().length === 0) {
+      throw new Error(
+        'withNewTenant(): "insertTenant" boş veya yalnızca boşluk olan bir "id" döndürdü.',
+      )
+    }
+
+    await tx.$queryRaw`SELECT set_config(${settingName}, ${createdTenant.id}, true)`
+    return callback(tx, createdTenant.id)
   })
 }

@@ -141,10 +141,33 @@
 //       `session.list` `protectedProcedure`dür (oturumsuz 401) ve dönüş tipi
 //       (`ActiveSessionWire[]`, yalnızca ÇAĞIRANIN KENDİ oturumları) hiçbir
 //       `tenantId`/`slug`/`status` alanı TAŞIMAZ.
+//
+// GÜNCELLEME (ROADMAP v0.1.0, T-019/S9a, ADR-0021 §2/§3): 21 → 24, SEKİZİNCİ
+// grup eklendi:
+//   (8) 3 kayıt akışı ucu (`/trpc/registration.checkSlugAvailability`,
+//       `/trpc/registration.createTenant`, `/trpc/registration.
+//       onboardingChecklist`) — `/trpc/session.me`/`/trpc/session.list`'in
+//       (grup 4/7) BİREBİR GEREKÇESİ: kayıt sihirbazı panel host'unda
+//       (`panel.arkesoft.{APP_BASE_DOMAIN}`) servis edilir, bu REZERVE bir
+//       alt alan addır (`reserved-subdomains.ts`), `resolveHost` onu
+//       `reserved_subdomain` ile ÇÖZÜMSÜZ bırakır — tenant bağlamı bu üç uç
+//       için HİÇ geçerli değildir (ikisi kiracıyı HİÇ bilmez —
+//       `checkSlugAvailability`/`createTenant`, ADR-0021 §1; üçüncüsü
+//       kiracıyı GİRDİDEN seçer — `onboardingChecklist`, ADR-0021 §2/§3).
+//       Muafiyet KİMLİK muafiyeti DEĞİLDİR (`AUTH_EXEMPT_PATHS`'e HİÇBİR
+//       satır EKLENMEDİ, 12'de kalır) — üçü de `protectedProcedure`dür
+//       (oturumsuz 401). `onboardingChecklist` ADR-0021 §2'nin BEŞ koşulunu
+//       (A-E) TAM karşılar: beyan edilen `slug`'a GÜVENİLMEZ, sahiplik
+//       doğrulaması `tenant_membership` üzerinden BLOK İÇİNDE yapılır, dört
+//       ret modu AYNI 404'e indirgenir, çıktı yalnızca çağıranın KENDİ
+//       kiracısına ait adım/durum çiftleri taşır, suistimal yüzeyi beyan
+//       edilmiştir (2 okuma, slug zaten herkese açık). `checkSlugAvailability`/
+//       `createTenant` AYRICA oran sınırına bağlıdır
+//       (`auth/rate-limit/trpc-rate-limited-paths.ts`, F15).
 
 import { normalizeRequestPath } from '../http/normalize-request-path.js'
 
-/** Tenant çözümü gerektirmeyen, tam eşleşmeli yirmi bir uç. */
+/** Tenant çözümü gerektirmeyen, tam eşleşmeli yirmi dört uç. */
 export const TENANT_EXEMPT_PATHS: ReadonlySet<string> = new Set([
   '/health',
   '/health/ready',
@@ -173,6 +196,11 @@ export const TENANT_EXEMPT_PATHS: ReadonlySet<string> = new Set([
   // (7) ROADMAP v0.0.15.1, T-017/S9 — panel yüzeyi ucu, dosya başı
   // GÜNCELLEME paragrafında gerekçeli (`/trpc/session.me`'nin emsali).
   '/trpc/session.list',
+  // (8) ROADMAP v0.1.0, T-019/S9a — üç kayıt akışı ucu, dosya başı
+  // GÜNCELLEME paragrafında gerekçeli (ADR-0021 §2/§3).
+  '/trpc/registration.checkSlugAvailability',
+  '/trpc/registration.createTenant',
+  '/trpc/registration.onboardingChecklist',
 ])
 
 /**

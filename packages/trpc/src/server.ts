@@ -41,6 +41,11 @@ export type { SessionSecurityReadPort } from './ports/session-security-read.port
 // `SessionSecurityReadPort` satırının BİREBİR tekrarı). `apps/api`'nin
 // adaptörü (S9) bu tipi `@arkesoft/trpc/server`'dan ithal edecek.
 export type { SessionListReadPort } from './ports/session-list-read.port.js'
+// ROADMAP v0.1.0, T-019/S3 — her port AYNI yoldan export edilir (yukarıdaki
+// `SessionListReadPort` satırının BİREBİR tekrarı). `apps/api`'nin adaptörü
+// (S9) bu iki tipi `@arkesoft/trpc/server`'dan ithal edecek.
+export type { RegistrationReadPort } from './ports/registration-read.port.js'
+export type { RegistrationWritePort } from './ports/registration-write.port.js'
 export type { TenantReadPort } from './ports/tenant-read.port.js'
 export type { TenantSecurityWritePort } from './ports/tenant-security-write.port.js'
 export type { StorefrontTenantReadPort } from './ports/storefront-tenant-read.port.js'

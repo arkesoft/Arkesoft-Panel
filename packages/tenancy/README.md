@@ -31,4 +31,23 @@ kod satırlarında geçemez.
 - `src/resolve-host.ts` — `resolveHost` + `normalizeHostname`. Algoritmanın
   satır satır gerekçesi dosya başı yorumunda.
 - `src/reserved-subdomains.ts` — `RESERVED_SUBDOMAINS` (12 kalem).
+- `src/slug.ts` — **tenant slug grameri, tek kaynak** (ROADMAP v0.1.0, T-019).
+  `TENANT_SLUG_PATTERN` buraya `resolve-host.ts`'ten **taşındı** (kopyalanmadı);
+  `resolve-host.ts` artık bu dosyadan import eder — iki regex literali aynı
+  anda var olamaz. Üç dışa açılan değer:
+  - `normalizeTenantSlug()` — sihirbazın mağaza adından slug **önermesi**
+    içindir, asla fırlatmaz, her girdi için bir dize döner.
+  - `validateTenantSlug()` — sunucunun kullanıcının **gönderdiği** slug'ı
+    doğrulaması içindir; sessizce normalize **etmez**, kanonik değilse
+    reddeder (normalizasyon ≠ doğrulama, bağlayıcı ayrım).
+  - `TENANT_SLUG_PATTERN` — RFC 1123 alt alan adı etiketiyle uyumlu regex.
+
+  ⚠ **Bu dosya kabul oracle'ı DEĞİLDİR.** `validateTenantSlug()`'ın `valid`
+  dönmesi, slug'ın host çözümlemesinde çözülebileceğinin garantisi değildir
+  (`MAX_HOST_HEADER_LENGTH` host'un tamamına uygulanır, slug'a değil). Asıl
+  kabul oracle'ı `resolveHost()`'un kendisidir; kayıt akışını tüketen taraf
+  (`apps/api`) son doğrulama adımında `resolveHost(`${slug}.${baseDomain}`)`
+  ile ikinci bir kontrol yapmak zorundadır.
+
 - `src/index.ts` — tek giriş noktası; tüketiciler iç dosya yoluna girmez.
+  v0.1.0'da üç → altı dışa açılan değer (yukarıdaki üçü eklendi).

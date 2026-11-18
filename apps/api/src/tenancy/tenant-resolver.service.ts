@@ -37,6 +37,7 @@ import { assertNever } from '../errors/assert-never.js'
 import type { HttpRequestHeaders } from '../http/http-request.types.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import type { TenantContext, TenantResolution } from '../request-context/request-context.types.js'
+import { deriveTenantLifecycleState } from './tenant-lifecycle-state.js'
 
 /** `TenantResolverService`'in Prisma'dan okuduğu MİNİMAL satır şekli — `name` YOK. */
 type TenantRow = Pick<Tenant, 'id' | 'slug' | 'status' | 'deletedAt'>
@@ -196,6 +197,13 @@ export class TenantResolverService {
    * (K-A4, bağlayıcı). `status === 'suspended'` ÇÖZÜLMÜŞ SAYILIR, context'e
    * YAZILIR, burada HTTP'de ENGELLENMEZ — bu davranış v0.1.0/v0.0.8 kararı,
    * burada kural İCAT EDİLMEZ.
+   *
+   * GÜNCELLEME (ROADMAP v0.1.0, T-019/S9a, architect KARAR 2, AC-14):
+   * `row.deletedAt !== null` kontrolü {@link deriveTenantLifecycleState}'e
+   * DELEGE EDİLDİ — "silinmişliğin tek doğruluk kaynağı `deletedAt`'tir"
+   * kararının TEK EVİ artık `tenant-lifecycle-state.ts`'tir, bu dosya onu
+   * TÜKETİR. Davranış DEĞİŞMEDİ (aynı girdi → aynı çıktı), yalnızca karar
+   * mantığı ortak bir fonksiyona TAŞINDI.
    */
   private static toResolution(
     row: TenantRow | null,
@@ -205,17 +213,50 @@ export class TenantResolverService {
       return { kind: 'unresolved', reason: 'no_row' }
     }
 
-    if (row.deletedAt !== null) {
+    const lifecycleState = deriveTenantLifecycleState(row.status, row.deletedAt)
+
+    if (lifecycleState === 'deleted') {
       return { kind: 'unresolved', reason: 'soft_deleted' }
     }
 
     const tenant: TenantContext = {
       id: row.id,
       slug: row.slug,
-      status: row.status,
+      status: lifecycleState,
       source,
     }
 
     return { kind: 'resolved', tenant }
+  }
+
+  /**
+   * ⭐⭐ KAYIT AKIŞININ KABUL ORACLE'I (ROADMAP v0.1.0, T-019/S9a, architect
+   * R-A3 — "oluşturulabilir ama ERİŞİLEMEZ kiracı" sınıfını YAPISAL olarak
+   * kapatır). Bir slug'ın kayıtta kabul edilmesi, ANCAK onu bir alt alan adı
+   * etiketi olarak ÇÖZÜMLEYEBİLECEĞİMİZ zaman anlamlıdır — paylaşılan bir
+   * regex bunu KANITLAMAZ, burada `resolveHost()`'un KENDİSİ çalıştırılır
+   * (`accept ⊆ resolvable` ilişkisi kanıtla değil İNŞAYLA garanti edilir).
+   *
+   * İki sapma ekseni paylaşılan regex'in DIŞINDADIR (ölçülmüş, R-A3):
+   *   1. Rezerve kontrolü desenden ÖNCE çalışır (`resolve-host.ts:224` vs
+   *      `:228`) — sıra farkı burada da AYNEN geçerlidir.
+   *   2. `MAX_HOST_HEADER_LENGTH` (`resolve-host.ts:43`) HOST'UN TAMAMINA
+   *      uygulanır, slug'a DEĞİL — 63 karakterlik MEŞRU bir slug + uzun
+   *      `APP_BASE_DOMAIN` (staging) host'u 255'i AŞABİLİR, bu durumda
+   *      çözümleme `unparsable_host` ile REDDEDER.
+   *
+   * ⚠⚠ `normalizedBaseDomain` İKİNCİ bir `normalizeHostname(env.APP_BASE_DOMAIN)`
+   * çağrısıyla ÜRETİLMEZ — BU kurucunun ZATEN ürettiği TEK değer (yukarıda)
+   * yeniden kullanılır; ikinci bir normalizasyon çağrısı yapılandırma
+   * sapması için ÜÇÜNCÜ bir eksen doğururdu.
+   *
+   * SAF — Prisma sorgusu ATILMAZ, FIRLATMAZ. `slug` zaten
+   * `packages/tenancy`'nin `validateTenantSlug()`'ından GEÇMİŞ (biçim/rezerve
+   * kontrolü ORADA yapılır) — bu metot SADECE "çözümlenebilir mi" sorusuna
+   * cevap verir.
+   */
+  isSlugReachable(slug: string): boolean {
+    const result = resolveHost(`${slug}.${this.normalizedBaseDomain}`, this.normalizedBaseDomain)
+    return result.kind === 'subdomain' && result.slug === slug
   }
 }

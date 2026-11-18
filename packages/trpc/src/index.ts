@@ -101,6 +101,35 @@ export type {
   TenantRoleWire,
 } from './schemas/member.schema.js'
 
+export {
+  checkSlugAvailabilityInputSchema,
+  checkSlugAvailabilityOutputSchema,
+  createTenantInputSchema,
+  createTenantOutputSchema,
+  onboardingChecklistInputSchema,
+  onboardingChecklistOutputSchema,
+  onboardingStepKeySchema,
+  onboardingStepSchema,
+  onboardingStepStatusSchema,
+  registrationFieldErrorKeySchema,
+  siteTypeSchema,
+  slugAvailabilityOutcomeSchema,
+} from './schemas/registration.schema.js'
+export type {
+  CheckSlugAvailabilityInput,
+  CreateTenantInput,
+  CreateTenantResult,
+  OnboardingChecklist,
+  OnboardingChecklistInput,
+  OnboardingStep,
+  OnboardingStepKey,
+  OnboardingStepStatus,
+  RegistrationFieldErrorKey,
+  SiteType,
+  SlugAvailability,
+  SlugAvailabilityOutcome,
+} from './schemas/registration.schema.js'
+
 export { PERMISSIONS, ROLE_PERMISSIONS } from './authz/permissions.js'
 export type { Permission } from './authz/permissions.js'
 

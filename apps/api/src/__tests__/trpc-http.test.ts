@@ -31,6 +31,8 @@ import type {
   JobReadPort,
   MemberWritePort,
   MembershipReadPort,
+  RegistrationReadPort,
+  RegistrationWritePort,
   SessionListReadPort,
   SessionSecurityReadPort,
   StorefrontTenantReadPort,
@@ -340,6 +342,18 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
     const probeSessionListRead: SessionListReadPort = {
       listOwnSessions: () => Promise.reject(new ProbeDetailsError()),
     }
+    // ROADMAP v0.1.0, T-019/S9a — `TrpcPorts`'un ZORUNLU iki yeni üyesi. Bu
+    // probe `registration.*`'ı ÇAĞIRMAZ (hedef `tenant.current`); stub
+    // yalnızca sözleşmeyi doldurmak için var, hiçbir assert buna dayanmaz.
+    // ⚠ OPSİYONEL YAPILMASI YASAK (`context/trpc-context.types.ts`'in
+    // YAZILI yasağı) — `sessionListRead`'in v0.0.15.1 emsali.
+    const probeRegistrationRead: RegistrationReadPort = {
+      checkSlugAvailability: () => Promise.reject(new ProbeDetailsError()),
+      onboardingChecklist: () => Promise.reject(new ProbeDetailsError()),
+    }
+    const probeRegistrationWrite: RegistrationWritePort = {
+      createTenant: () => Promise.reject(new ProbeDetailsError()),
+    }
     const context: TrpcContext = {
       requestId,
       logger: { info: () => undefined, warn: () => undefined, error: () => undefined },
@@ -354,6 +368,8 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
         memberWrite: probeMemberWrite,
         sessionSecurityRead: probeSessionSecurityRead,
         sessionListRead: probeSessionListRead,
+        registrationRead: probeRegistrationRead,
+        registrationWrite: probeRegistrationWrite,
       },
       errors: {
         unauthenticated: () => new UnauthenticatedError(),

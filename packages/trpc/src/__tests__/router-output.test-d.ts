@@ -36,6 +36,11 @@ import type {
   MemberRemoved,
   MemberRole,
 } from '../schemas/member.schema.js'
+import type {
+  CreateTenantResult,
+  OnboardingChecklist,
+  SlugAvailability,
+} from '../schemas/registration.schema.js'
 
 // `test()` sarmalayıcıları ÇALIŞMA ZAMANINDA YÜRÜMEZ (bu dosya
 // `vitest.config.ts`'in `include: ['src/**/*.test.ts']` deseninin DIŞINDA,
@@ -302,4 +307,70 @@ test('member.* GİRDİLERİNİN HİÇBİRİNDE kiracı alanı YOK (ADR-0009 madd
   expectTypeOf<RouterInputs['member']['acceptInvitation']>().not.toHaveProperty('tenantId')
   expectTypeOf<RouterInputs['member']['updateRole']>().not.toHaveProperty('tenantId')
   expectTypeOf<RouterInputs['member']['remove']>().not.toHaveProperty('tenantId')
+})
+
+// ---------------------------------------------------------------------------
+// `registration.*` — ROADMAP v0.1.0, T-019/S3, ADR-0021
+// ---------------------------------------------------------------------------
+
+test('registration.checkSlugAvailability çıktısı literal tel şekliyle TAM eşleşir (totoloji karşıtı)', () => {
+  expectTypeOf<RouterOutputs['registration']['checkSlugAvailability']>().toEqualTypeOf<{
+    outcome: 'available' | 'taken' | 'reserved' | 'invalidFormat' | 'unreachable'
+  }>()
+  expectTypeOf<
+    RouterOutputs['registration']['checkSlugAvailability']
+  >().toEqualTypeOf<SlugAvailability>()
+})
+
+test('registration.checkSlugAvailability girdisinde kiracı alanı YOK (kiracı kavramı GEÇERSİZ, ADR-0021 §3)', () => {
+  expectTypeOf<RouterInputs['registration']['checkSlugAvailability']>().not.toHaveProperty(
+    'tenantId',
+  )
+})
+
+test('registration.createTenant çıktısı literal tel şekliyle TAM eşleşir (totoloji karşıtı, ADR-0021 §3.1 DÜZELTMESİ — tenantId DÜŞTÜ)', () => {
+  expectTypeOf<RouterOutputs['registration']['createTenant']>().toEqualTypeOf<{
+    slug: string
+    status: 'pending' | 'provisioning' | 'active' | 'suspended'
+  }>()
+  expectTypeOf<RouterOutputs['registration']['createTenant']>().toEqualTypeOf<CreateTenantResult>()
+})
+
+test('registration.createTenant çıktısında tenantId/planId/siteType YOK (NEGATİF PİN — ADR-0021 §3.1 SİMETRİK SIKILAŞTIRMA + PM kullanıcı kararı #1 + "ölü sözlük" kuralı)', () => {
+  type CreateTenantOutput = RouterOutputs['registration']['createTenant']
+
+  expectTypeOf<CreateTenantOutput>().not.toHaveProperty('tenantId')
+  expectTypeOf<CreateTenantOutput>().not.toHaveProperty('planId')
+  expectTypeOf<CreateTenantOutput>().not.toHaveProperty('siteType')
+})
+
+test('registration.createTenant girdisinde kiracı alanı YOK (bu çağrı kiracıyı DOĞRULAMAZ, YARATIR — ADR-0021 §2 koşul A)', () => {
+  expectTypeOf<RouterInputs['registration']['createTenant']>().not.toHaveProperty('tenantId')
+})
+
+test('registration.onboardingChecklist çıktısı literal tel şekliyle TAM eşleşir (totoloji karşıtı)', () => {
+  expectTypeOf<RouterOutputs['registration']['onboardingChecklist']>().toEqualTypeOf<{
+    steps: {
+      key: 'account' | 'store_identity' | 'site_type' | 'subscription' | 'provisioning'
+      status: 'done' | 'todo'
+    }[]
+  }>()
+  expectTypeOf<
+    RouterOutputs['registration']['onboardingChecklist']
+  >().toEqualTypeOf<OnboardingChecklist>()
+})
+
+test('registration.onboardingChecklist çıktısında kiracıya ait HİÇBİR alan YOK (ADR-0021 §3, ADR-0016 madde 6 koşul C deseni)', () => {
+  type ChecklistOutput = RouterOutputs['registration']['onboardingChecklist']
+
+  expectTypeOf<ChecklistOutput>().not.toHaveProperty('tenantId')
+  expectTypeOf<ChecklistOutput>().not.toHaveProperty('slug')
+  expectTypeOf<ChecklistOutput>().not.toHaveProperty('name')
+})
+
+test("registration.onboardingChecklist girdisi `slug: string`'dir — ADR-0021 §2'nin BİLİNÇLİ, KAYITLI istisnası (ADR-0009 madde 7'nin TEK girdi kaynaklı kiracı seçimi), seçici `tenantId` DEĞİL `slug` (ADR-0021 §3.1 DÜZELTMESİ, T-019/S3 düzeltme turu)", () => {
+  expectTypeOf<RouterInputs['registration']['onboardingChecklist']>().toEqualTypeOf<{
+    slug: string
+  }>()
+  expectTypeOf<RouterInputs['registration']['onboardingChecklist']>().not.toHaveProperty('tenantId')
 })

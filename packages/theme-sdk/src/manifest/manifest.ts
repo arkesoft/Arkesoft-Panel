@@ -12,9 +12,12 @@
 // tanımlar.
 //
 // ⚠ `version`/`sdkRange` — YALNIZCA BİÇİM doğrulanır, SEMVER KARŞILAŞTIRMASI
-// YAPILMAZ (bağlayıcı kısıt, `../migrations/chain.ts`'in dosya başı
-// yorumuyla AYNI gerekçe: `packages/versioning`'in işi, bu pakete o pakete
-// bağımlılık DOĞMAZ). `version` TAM bir semver'dir (`1.2.3` gibi, aralık
+// YAPILMAZ (`../migrations/chain.ts`'in dosya başı yorumuyla AYNI gerekçe:
+// karşılaştırma `packages/versioning`'in işi). ADR-0020 Karar 2/B ile bu
+// paket artık biçim ilkelini (`SEMVER_CORE_PATTERN_SOURCE`) o paketten
+// İTHAL EDİYOR — ama `parseSemver`/`compareSemver`/`satisfies` İTHAL
+// ETMEZ, karşılaştırma mantığı bu pakete SIZMAZ (aşağıdaki B4 notu da bu
+// ADR ile güncellendi). `version` TAM bir semver'dir (`1.2.3` gibi, aralık
 // OPERATÖRÜ TAŞIMAZ — bu TEMANIN KENDİ sürümüdür); `sdkRange` bir ARALIK
 // biçimidir (`^1.2.0`, `>=1.0.0 <2.0.0` gibi — theme-sdk'nın HANGİ sürüm
 // aralığıyla uyumlu olduğunun BEYANI).
@@ -23,9 +26,10 @@
 // (S4/S5 paralelliğinin bedeli olarak) KENDİ yerel "çekirdek semver"
 // desenini (`SEMVER_CORE_SOURCE`) taşıyordu; `../migrations/chain.ts`'in
 // deseniyle ÖLÇÜLEBİLİR şekilde SAPMIŞTI (`"1.0.0-01"` burada KABUL,
-// orada RED — bkz. `../semver-format.ts`'in dosya başı yorumu, tam
-// ölçüm). Artık ikisi de `../semver-format.js`'teki TEK kaynaktan
-// (`SEMVER_CORE_PATTERN_SOURCE`) beslenir — `rg` ile tanım sayısı 1.
+// orada RED — tam ölçüm `@arkesoft/versioning`'in `semver.ts` dosya başı
+// yorumunda BİREBİR taşınmış hâliyle duruyor). Artık ikisi de
+// `@arkesoft/versioning`'teki TEK kaynaktan (`SEMVER_CORE_PATTERN_SOURCE`,
+// ADR-0020 Karar 2/B ile oraya TAŞINDI) beslenir — `rg` ile tanım sayısı 1.
 //
 // ⚠ `version` biçimi GEÇERSİZSE özel bir kod YOK (15 kodun kapalı listesinde
 // "sürüm biçimi geçersiz" için AYRI bir kod TANIMLANMADI) — en yakın anlamı
@@ -47,10 +51,11 @@
 
 import { z } from 'zod'
 
+import { SEMVER_CORE_PATTERN_SOURCE } from '@arkesoft/versioning'
+
 import type { ThemeContractErrorCode } from '../errors.js'
 import { THEME_CONTRACT_MESSAGES } from '../messages.js'
 import type { ThemeSettingsMigration } from '../migrations/chain.js'
-import { SEMVER_CORE_PATTERN_SOURCE } from '../semver-format.js'
 import { THEME_SETTINGS_LIST_SCHEMA } from '../settings/primitives.js'
 import { THEME_TEMPLATES_SCHEMA } from './templates.js'
 

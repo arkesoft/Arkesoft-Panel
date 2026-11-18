@@ -46,6 +46,24 @@ import { nodeConfig } from '@arkesoft/config/eslint/node'
 //       `PrismaDatabase`/`createPrismaClient` import etmek SERBEST kalır ve
 //       R-1 katman 2 tam da kuyruk işlerinin yaşadığı dizinde SESSİZCE
 //       kaybolurdu.
+//
+// T-019 DÜZELTME TURU 4 EKLEMESİ (Q-1, backend) — (4) İKİYE BÖLÜNDÜ:
+//   (4a) `src/prisma/**`, `src/auth/**` — ÜRETİM, `noTestHelpersImportRestriction`
+//        YENİ EKLENDİ (aşağıya bkz.).
+//   (4b) `src/__tests__/**` — TEST, (4)'ün ESKİ seçenek kümesi DEĞİŞMEDEN
+//        kalır (test dosyaları birbirini normal şekilde import eder; YENİ
+//        kısıtlama BURAYA EKLENMEDİ, aksi hâlde `create-test-app.ts`'in
+//        KENDİSİ `helpers/create-test-redis-connection.ts`'i import ederken
+//        KIRMIZI olurdu).
+// Bölünmenin GEREKÇESİ: `noTestHelpersImportRestriction` test-only Redis
+// profilinin (`create-test-redis-connection.ts`) PRODUCTION'a sızmamasının
+// MEKANİK ikinci katmanı (birinci: `tsconfig.build.json`'ın `src/__tests__`
+// hariç tutması; üçüncü: `test-harness-redis-profile-isolation.test.ts`
+// grep taraması; dördüncü: `create-redis-connection.ts` BYTE-EŞİT kalır).
+// `src/prisma/**`/`src/auth/**` ÜRETİM kodu olduğu için bu kısıtlamayı ALIR;
+// `src/__tests__/**` test kodu olduğu için ALMAZ — iki küme AYRIK tutulduğu
+// için R-P1'in "bir dosya asla birden fazla bloğa düşmez" invaryantı
+// KORUNUR.
 
 /**
  * R-1 katman 2 (ADR-0008 taslağı, T-006 "MADDE 2 — R-1 KARARI"): tam Prisma
@@ -175,6 +193,29 @@ const pgRestriction = {
 }
 
 /**
+ * T-019 DÜZELTME TURU 4 EKLEMESİ (Q-1, backend) — ÜRETİM dosyalarının
+ * `__tests__/**` altındaki HERHANGİ bir dosyaya (test-only Redis profili
+ * `create-test-redis-connection.ts` DAHİL) import atmasını yasaklar.
+ * `create-test-redis-connection.ts`'in dosya başı yorumundaki DÖRT katmanlı
+ * mekanik izolasyonun İKİNCİ katmanı — birinci katman (`tsconfig.build.json`
+ * `src/__tests__`'i `exclude` eder) tek başına YETERLİ DEĞİL: bir üretim
+ * dosyası bu dizini import EDERSE `pnpm typecheck` (test dosyalarını DA
+ * include eden `tsconfig.json` ile) KIRMIZI OLMAZ (ikisi de AYNI include
+ * kümesinde) — yalnızca `pnpm build` (tsconfig.build.json) farklı bir anda
+ * patlar. Bu kural `pnpm lint`'te, DAHA ERKEN, DAHA AÇIK bir hata verir.
+ * `__tests__` dizininin KENDİSİ bu kısıtlamadan MUAFTIR — bkz. (4b) bloğu.
+ */
+const noTestHelpersImportRestriction = {
+  patterns: [
+    {
+      group: ['**/__tests__/*', '**/__tests__/**'],
+      message:
+        'Üretim kodu test harness yardımcılarını import EDEMEZ (ör. test-only Redis profili) — bu, test profilinin production’a sızmamasının mekanik ikinci katmanı (T-019 düzeltme turu 4, Q-1).',
+    },
+  ],
+}
+
+/**
  * K5 KATMAN 4 (ROADMAP v0.0.11, T-013/S6, architect K5): kuyruk işi
  * handler'larının (`src/queue/jobs/**`) kiracı bağlamını ATLAYARAK
  * veritabanına dokunmasını yasaklar.
@@ -279,6 +320,7 @@ export default [
           expressRestriction,
           pgRestriction,
           prismaClientSurfaceRestriction,
+          noTestHelpersImportRestriction,
         ),
       ],
     },
@@ -295,6 +337,7 @@ export default [
           bodyQueryParamRestriction,
           pgRestriction,
           prismaClientSurfaceRestriction,
+          noTestHelpersImportRestriction,
         ),
       ],
     },
@@ -311,17 +354,40 @@ export default [
           expressRestriction,
           pgRestriction,
           prismaClientSurfaceRestriction,
+          noTestHelpersImportRestriction,
         ),
       ],
     },
   },
-  // (4) src/prisma/**, src/auth/**, src/__tests__/**: Prisma istemci yüzeyi
-  // yasağı (R-1 katman 2) MUAF — (a) prisma/auth R-1'in kendi erişim noktası;
-  // (b) __tests__ üretim yolu değil (T-006/S1, PO riski 3, seçenek (a)).
-  // Diğer üç yasak (prisma ham import + Body/Query/Param + express + pg)
-  // burada da geçerli.
+  // (4a) src/prisma/**, src/auth/**: Prisma istemci yüzeyi yasağı (R-1
+  // katman 2) MUAF — R-1'in kendi erişim noktası. T-019 düzeltme turu 4
+  // (Q-1): `noTestHelpersImportRestriction` EKLENDİ — bu ikisi ÜRETİM kodu
+  // (dosya başı yorumu).
   {
-    files: ['src/prisma/**', 'src/auth/**', 'src/__tests__/**'],
+    files: ['src/prisma/**', 'src/auth/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        mergeRestrictions(
+          prismaRestriction,
+          bodyQueryParamRestriction,
+          expressRestriction,
+          pgRestriction,
+          noTestHelpersImportRestriction,
+        ),
+      ],
+    },
+  },
+  // (4b) src/__tests__/**: Prisma istemci yüzeyi yasağı MUAF — üretim yolu
+  // değil (T-006/S1, PO riski 3, seçenek (a)). Diğer üç yasak (prisma ham
+  // import + Body/Query/Param + express + pg) burada da geçerli.
+  // ⚠ T-019 düzeltme turu 4 (Q-1): `noTestHelpersImportRestriction` BİLEREK
+  // EKLENMEDİ — test dosyaları birbirini (ör. `helpers/create-test-app.ts`'in
+  // `helpers/create-test-redis-connection.ts`'i import etmesi) normal
+  // şekilde import eder; bu blok (4)'ün ESKİ seçenek kümesiyle BİREBİR
+  // aynıdır (yalnızca `files` listesi daraldı, dosya başı yorumu).
+  {
+    files: ['src/__tests__/**'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -337,7 +403,8 @@ export default [
   // (5) src/queue/jobs/**: K5 KATMAN 4 (T-013/S6). Blok (1)'in BEŞ
   // kısıtlamasının TAMAMI yeniden beyan edilir (`prismaClientSurfaceRestriction`
   // DAHİL) + kuyruk işi yasağı EKLENİR. Blok (1) bu dizini `ignores` ile
-  // dışlıyor → kümeler TAM AYRIK.
+  // dışlıyor → kümeler TAM AYRIK. T-019 düzeltme turu 4 (Q-1):
+  // `noTestHelpersImportRestriction` EKLENDİ — bu dizin ÜRETİM kodu.
   {
     files: ['src/queue/jobs/**'],
     rules: {
@@ -350,6 +417,7 @@ export default [
           pgRestriction,
           prismaClientSurfaceRestriction,
           queueJobTenantScopeRestriction,
+          noTestHelpersImportRestriction,
         ),
       ],
     },

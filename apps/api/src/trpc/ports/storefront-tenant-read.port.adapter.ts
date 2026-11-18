@@ -7,6 +7,16 @@
 // `TenantNotFoundError`) fırlatır; `storefront.router.ts`'teki resolver bu
 // yüzden `null` kontrolü YAPMAZ (sıfır dallanma, tek ifade).
 //
+// GÜNCELLEME (ROADMAP v0.1.0, T-019/S9a, architect KARAR 4, ADR-0021):
+// `where`'e `status: TenantStatus.active` EKLENDİ — `pending`/`provisioning`/
+// `suspended` bir kiracı vitrinde "satır yok" ile AYNI `TenantNotFoundError`
+// (TAM 404, 503 DEĞİL — 503 "kesinti" demek, burada kesinti YOK) ile
+// REDDEDİLİR. Çözümleyici katmanı (`TenantResolverService`) BİLEREK
+// filtrelemez (panel pending/suspended kiracıları GÖRMEK zorunda,
+// `tenant-summary.schema.ts`); bu kapı YALNIZCA vitrin okuma portunda.
+// `apps/storefront` ÜRETİM KODU BU DEĞİŞİKLİKLE DEĞİŞMEZ — `map-api-error.ts`
+// zarf dalı bu iş için ZATEN bilerek korunmuştu.
+//
 // ⚠ `TenantResolverService`'in okuduğu satırı (`TENANT_SELECT`,
 // `tenant-resolver.service.ts:57`) YENİDEN KULLANMAZ — o seçim `name`'i
 // BİLEREK ALMIYOR (`tenant-resolver.service.ts:24`, "`select` MİNİMAL: `name`
@@ -17,6 +27,7 @@
 // BİLEREK kabul edilir.
 
 import { Inject, Injectable } from '@nestjs/common'
+import { TenantStatus } from '@arkesoft/db'
 import type { StorefrontTenant } from '@arkesoft/trpc'
 import type { StorefrontTenantReadPort } from '@arkesoft/trpc/server'
 
@@ -45,7 +56,7 @@ export class StorefrontTenantReadPortAdapter implements StorefrontTenantReadPort
     //     eklenen tek yol, `auth-exempt-paths.ts`) ve bu fark `TenantReadPort
     //     Adapter`'dan (kimlikli yüzey) AYRIKA burada açıkça yazılıdır.
     const row = await this.prisma.db.tenant.findFirst({
-      where: { id: tenantId, deletedAt: null },
+      where: { id: tenantId, deletedAt: null, status: TenantStatus.active },
       select: { name: true, themeId: true, themeVersion: true },
     })
 

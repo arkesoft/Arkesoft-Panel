@@ -198,28 +198,65 @@ test.describe.serial('Panel akışı (T-008)', () => {
     await expect(page.getByRole('button', { name: 'Kullanıcı menüsü' })).toBeVisible()
     await expect(page.getByText('Mağaza seçilmedi')).toBeVisible()
 
-    // Pano "gerçekten boş" — jargonsuz boş durum metni.
-    await expect(page.getByText('Panel şu anda boş')).toBeVisible()
+    // DÜZELTME TURU 3 (frontend, T-019/S11 — bağlayıcı regresyon düzeltmesi,
+    // S10'un ÖLÇÜLMÜŞ işaretine göre): bu assertion ESKİDEN "Panel şu anda
+    // boş" (`dashboard.empty.heading`) metnini arıyordu. ROADMAP v0.1.0
+    // (T-019/S10) `/`'i YENİDEN TASARLADI: `beforeLoad` artık saklı bir
+    // mağaza referansı (`arkesoft.lastTenantSlug`, localStorage) olup
+    // olmadığına göre KARAR verir — bu testin fixture kullanıcısı için
+    // HENÜZ bir mağaza/kiracı YOK (ve localStorage'da referans YOK), bu
+    // yüzden `_app.index.tsx` "mağaza yok" + manuel adres girişi dalını
+    // render eder (`dashboard.onboarding.noStoreTitle`/`noStoreBody`,
+    // `messages.ts` — BİREBİR buradan okundu, UYDURULMADI). ⚠ Ölçülmüş
+    // düzeltme: brief'in "dashboard.home.* anahtarlarında" atfı YANLIŞTI —
+    // `dashboard.home.*` yalnızca manuel adres FORMUNUN metinlerini taşıyor
+    // (`manualAddressPrompt`/`manualAddressLabel`/`manualAddressSubmit`),
+    // boş durum BAŞLIĞI/GÖVDESİ `dashboard.onboarding.*`'de yaşıyor
+    // (`_app.index.tsx:81-84`, ölçüldü).
+    await expect(
+      page.getByRole('heading', { level: 2, name: 'Henüz bir mağazan yok' }),
+    ).toBeVisible()
+    await expect(
+      page.getByText('Mağazanı oluşturarak başlayabilirsin, yalnızca birkaç dakika sürer.'),
+    ).toBeVisible()
 
     // DÜZELTME TURU 2 (`wcag` medium, WCAG 2.4.1 Bypass Blocks — bağlayıcı
     // regresyon koruması): skip-link'in Enter'ı odağı GERÇEKTEN `<main>`'e
-    // taşıyor mu? Dashboard'un kendi mount-focus efekti az önce `h1`'i
-    // odaklamıştı — oradan bir Tab, `<main>` İÇİNDE etkileşimli öğe
-    // OLMADIĞI için (R3 — "gerçekten boş" pano, bugün main'in tek içeriği
-    // bir `h1` + `EmptyState`) DOM'daki İLK tabbable öğeye (skip-link)
-    // SARAR; bu, mekanizmanın `tabIndex={-1}` düzeltmesini ölçmek için
-    // KULLANILABİLİR bir başlangıç noktası (`AppShell.tsx`'in DÜZELTME
-    // TURU 2 notu).
-    await page.keyboard.press('Tab')
-    await expect(page.getByRole('link', { name: 'İçeriğe geç' })).toBeFocused()
+    // taşıyor mu?
+    // DÜZELTME TURU 3 (frontend, T-019/S11 — ÖLÇÜLMÜŞ İKİNCİ KIRILMA, briefin
+    // "yalnızca iki assertion" sınırının DIŞINDA ama AYNI köke bağlı —
+    // RİSKLER'e taşındı): bu bloğun ESKİ hâli `page.keyboard.press('Tab')`
+    // İLE skip-link'in BİR Tab sonra odaklanacağını varsayıyordu (R3 —
+    // "main'in tek içeriği h1 + EmptyState", tabbable içerik YOK). S10'un
+    // yeniden tasarımı main İÇİNE İKİ yeni tabbable öğe ekledi ("Mağaza
+    // oluştur" düğmesi + manuel adres formu). CANLI PLAYWRIGHT PROBUYLA
+    // ÖLÇÜLDÜ (tahmin EDİLMEDİ): `h1`den (tabIndex=-1, odaklı) bir `Tab`
+    // artık skip-link'e SARMAZ — DOM'da h1'den SONRAKİ ilk normal tab
+    // durağı olan "Mağaza oluştur" düğmesine GİDER (ardından girdi, ardından
+    // "Devam et" düğmesi). Bu, WCAG 2.4.1 ihlali DEĞİL (skip-link hâlâ
+    // DOM'un başında, normal Tab döngüsünde erişilebilir — sayfa YENİ
+    // yüklendiğinde `body`den bir Tab skip-link'e gider; bu test o anı
+    // YAKALAYAMIYOR çünkü dashboard'un mount-focus efekti odağı h1'e
+    // TAŞIMIŞ OLUYOR). Skip-link'in KENDİSİNİN (Enter'ın `<main>`'e odak
+    // taşıma davranışı) regresyon koruması BURADA `.focus()` İLE DOĞRUDAN
+    // tetiklenerek KORUNDU — Tab-SAYARAK keşfetme artık main'in İÇERİĞİNE
+    // bağımlı bir varsayım olurdu (R2'nin AYNI "oluşturulabilir ama
+    // ölçülmemiş" sınıfı). "Main bir durak değil" ikinci assertion'ı
+    // (main'den bir Tab skip-link'e SARAR) de AYNI nedenle ARTIK YANLIŞ —
+    // GERÇEK davranış ÖLÇÜLDÜ ve onunla DEĞİŞTİRİLDİ (main'den bir Tab
+    // şimdi main İÇİNDEKİ ilk normal tab durağına, "Mağaza oluştur"
+    // düğmesine gider). ⚠ RİSKLER: skip-link'in "sayfa başından Tab'la
+    // keşfedilebilirlik" tarafı bu dosyada ARTIK senaryolaştırılmıyor —
+    // `wcag`/`docs` bu kapsam boşluğunu (başka bir sayfada/no-mount-focus
+    // anında) değerlendirmeli.
+    await page.getByRole('link', { name: 'İçeriğe geç' }).focus()
     await page.keyboard.press('Enter')
     expect(await page.evaluate(() => document.activeElement?.id)).toBe('main-content')
     // Tab TURUNDA `main` kendisi bir durak DEĞİL (tabIndex=-1'in tanımı) —
-    // main'den bir Tab, sayfanın normal döngüsüne (burada: skip-link'e,
-    // main içinde başka içerik olmadığı için) devam eder; main'i bir
-    // SONRAKI Tab olarak GÖRMEZ.
+    // main'den bir Tab, main İÇİNDEKİ ilk normal tab durağına (ÖLÇÜLDÜ:
+    // "Mağaza oluştur" düğmesi) devam eder.
     await page.keyboard.press('Tab')
-    await expect(page.getByRole('link', { name: 'İçeriğe geç' })).toBeFocused()
+    await expect(page.getByRole('button', { name: 'Mağaza oluştur' })).toBeFocused()
 
     // Skip-link'in fragment navigasyonu URL'e `#main-content` EKLEDİ —
     // aşağıdaki URL assertion'ları KÖK'ü (`/`) bekliyor, bu yüzden temiz
@@ -417,11 +454,20 @@ test.describe.serial('Panel akışı (T-008)', () => {
 
       await page.goto('/')
       await expect(page.getByRole('heading', { level: 1, name: 'Panel' })).toBeVisible()
-      await expect(page.getByRole('heading', { level: 2, name: 'Panel şu anda boş' })).toBeVisible()
+      // DÜZELTME TURU 3 (frontend, T-019/S11 — bağlayıcı regresyon düzeltmesi):
+      // ESKİDEN "Panel şu anda boş" (`dashboard.empty.*`) metni aranıyordu.
+      // S10'un `/`'i YENİDEN TASARLAMASIYLA (ROADMAP v0.1.0) bu fixture
+      // kullanıcısı için (saklı mağaza referansı YOK) artık "mağaza yok" +
+      // manuel adres girişi dalı render edilir — `messages.ts`'in
+      // `dashboard.onboarding.noStoreTitle`/`noStoreBody`'sinden BİREBİR
+      // okundu (`dashboard.home.*` DEĞİL — o alt-kök yalnızca manuel adres
+      // FORMUNUN metinlerini taşıyor, `panel-flow.spec.ts:202` düzeltmesinin
+      // AYNI ölçülmüş notu).
       await expect(
-        page.getByText(
-          'Ürün, sipariş ve mağaza ayarları gibi yönetim ekranları bu panele adım adım ekleniyor.',
-        ),
+        page.getByRole('heading', { level: 2, name: 'Henüz bir mağazan yok' }),
+      ).toBeVisible()
+      await expect(
+        page.getByText('Mağazanı oluşturarak başlayabilirsin, yalnızca birkaç dakika sürer.'),
       ).toBeVisible()
 
       await context.close()

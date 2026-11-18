@@ -44,14 +44,25 @@
 // daraltılmış) DELEGE EDER. Bu yüzden `imports`'a `AuthModule` EKLENDİ —
 // token ORADAN gelir.
 
+// GÜNCELLEME (ROADMAP v0.1.0, T-019/S9a): `RegistrationReadPortAdapter`/
+// `RegistrationWritePortAdapter` EKLENDİ — `registration.*`'ın iş mantığı
+// adaptörleri. ⚠ Bu dosya `po`'nun T-019 dosya sahipliği listesinde
+// ADLANDIRILMAMIŞTI (S3'ün `trpc-context.types.ts` boşluğuyla AYNI sınıf —
+// `TrpcPorts`'un yeni ZORUNLU üyelerini DOLDURMAK bu modülün DI grafiğine
+// dokunmadan DERLENEMEZ/ÇALIŞAMAZ); `MemberWritePortAdapter`'ın AYNI
+// deseni: iş mantığı BU MODÜLDE DEĞİL, adaptör `RegistrationModule`'ün
+// servisine delege eder ve o modül `imports`'a EKLENDİ.
 import { Module } from '@nestjs/common'
 
 import { AuthModule } from '../auth/auth.module.js'
 import { MemberModule } from '../member/member.module.js'
+import { RegistrationModule } from '../registration/registration.module.js'
 import { TenantSecurityModule } from '../tenant/tenant-security.module.js'
 import { JobReadPortAdapter } from './ports/job-read.port.adapter.js'
 import { MemberWritePortAdapter } from './ports/member-write.port.adapter.js'
 import { MembershipReadPortAdapter } from './ports/membership-read.port.adapter.js'
+import { RegistrationReadPortAdapter } from './ports/registration-read.port.adapter.js'
+import { RegistrationWritePortAdapter } from './ports/registration-write.port.adapter.js'
 import { SessionListReadPortAdapter } from './ports/session-list-read.port.adapter.js'
 import { SessionSecurityReadPortAdapter } from './ports/session-security-read.port.adapter.js'
 import { StorefrontTenantReadPortAdapter } from './ports/storefront-tenant-read.port.adapter.js'
@@ -61,7 +72,7 @@ import { TrpcController } from './trpc.controller.js'
 import { TrpcErrorsPortAdapter } from './trpc-errors.port.adapter.js'
 
 @Module({
-  imports: [MemberModule, TenantSecurityModule, AuthModule],
+  imports: [MemberModule, TenantSecurityModule, AuthModule, RegistrationModule],
   controllers: [TrpcController],
   providers: [
     TenantReadPortAdapter,
@@ -72,6 +83,8 @@ import { TrpcErrorsPortAdapter } from './trpc-errors.port.adapter.js'
     MemberWritePortAdapter,
     SessionSecurityReadPortAdapter,
     SessionListReadPortAdapter,
+    RegistrationReadPortAdapter,
+    RegistrationWritePortAdapter,
     TrpcErrorsPortAdapter,
   ],
 })

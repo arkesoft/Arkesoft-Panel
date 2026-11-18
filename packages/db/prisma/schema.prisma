@@ -81,12 +81,51 @@ datasource db {
 /// GÜNCELLEME (ROADMAP v0.0.10, T-012/S2, architect VERİ MODELİ): `themeId`/
 /// `themeVersion` EKLENDİ — ikisi de `String?`, uzunluk sınırı YOK (`@db.VarChar`
 /// yasak, dosya başı R2). `NOT NULL` BU SÜRÜMDE YOK (CLAUDE.md §10 md 10,
-/// expand/contract); promosyon en erken v0.3.0, ayrı PR. DB seviyesinde
-/// `DEFAULT` YOK — platform varsayılan teması tek kaynakta, vitrinin kayıt
-/// defterinde yaşar (ADR-0002 Karar 5). Eşleşme değişmezi
-/// `(theme_id IS NULL) = (theme_version IS NULL)` migration'da ham SQL CHECK
-/// kısıtıyla (veya A-A4 ölçümü drift raporluyorsa tek kod yolunda) sağlanır —
-/// bkz. `prisma/migrations/<ts>_tenant_theme_selection/migration.sql`.
+/// expand/contract). DB seviyesinde `DEFAULT` YOK — platform varsayılan teması
+/// tek kaynakta, vitrinin kayıt defterinde yaşar (ADR-0002 Karar 5). Eşleşme
+/// değişmezi `(theme_id IS NULL) = (theme_version IS NULL)` migration'da ham
+/// SQL CHECK kısıtıyla (veya A-A4 ölçümü drift raporluyorsa tek kod yolunda)
+/// sağlanır — bkz. `prisma/migrations/<ts>_tenant_theme_selection/migration.sql`.
+///
+/// GÜNCELLEME (ROADMAP v0.0.21, T-018/S2, ADR-0020 Karar 1 — ÇİFT DOĞRULUK
+/// KAYNAĞI KAPATILDI): bu iki kolon bu sürümden itibaren **DEPRECATED AYNA
+/// KOLONDUR** — tek yazılabilir doğruluk kaynağı artık `TenantVersionState`
+/// (aşağıda). Hiçbir DDL değişikliği YOK (ne `DROP`, ne `SET NOT NULL`, ne
+/// `RENAME` — CLAUDE.md §10 md 10 BU SÜRÜMDE TETİKLENMİYOR). Beş fazlı takvim
+/// (ADR-0020 Karar 1'de tam metin): v0.0.21 expand (seed iki yere de tek
+/// kaynak sabitten yazar) → v0.1.0 kural yazıya geçer → v0.2.0 provisioning
+/// `TenantVersionState`'i birincil yazar → v0.0.22/v0.3.0 son okuyucu
+/// (`storefront-tenant-read.port.adapter.ts` zinciri) taşınır (tel sözleşmesi
+/// değişikliği: additive alan → `Deprecation`/`Sunset` → kaldırma). ⚠ "en
+/// erken v0.3.0" ifadesi **mümkün olan en erken andır, BİR TAAHHÜT DEĞİL** —
+/// CLAUDE.md §4 ("sonra tüket, iki sürüm sonra sil") ve §10 md 10 kullanımdan
+/// kaldırma penceresinin dolmasını şart koşar; son okuyucu v0.3.0'da
+/// taşınırsa `DROP COLUMN` (ayrı PR, yıkıcı) **en erken v0.5.0**'dır.
+///
+/// GÜNCELLEME (ROADMAP v0.1.0, T-019/S1, architect VERİ MODELİ — ADR-0021
+/// §4): `planId` bu sürümden itibaren **DEPRECATED'DIR** — **FK YAZILMADI**.
+/// Gerekçe `themeId`/`themeVersion`'ın YUKARIDAKİ deseniyle BİREBİR: FK
+/// yazmak T-018'in bir sürüm harcayarak kapattığı ÇİFT DOĞRULUK KAYNAĞI
+/// borcunu aynen yeniden doğururdu — `Subscription.planId` (NOT NULL,
+/// YAZILIR) ile `Tenant.planId` (nullable, YAZILIR) aynı soruya ("bu kiracı
+/// hangi planda?") İKİ CEVAP verirdi; `Tenant.themeId` ↔
+/// `TenantVersionState.themeId` probleminin birebir ikizi. Tek doğruluk
+/// kaynağı artık `Subscription.planId`'dir. Kolonun üretim kodundaki
+/// yazıcı/okuyucu sayısı **SIFIRDIR** (ölçüldü: `schema.prisma` ve
+/// `20261026082729_init/migration.sql` dışında hiçbir yerde geçmiyor) —
+/// expand/contract'ın "tüket" fazı bu yüzden **BOŞTUR**. `DROP COLUMN`
+/// **en erken v0.3.0**, ayrı PR, yıkıcı (CLAUDE.md §10 md 10).
+///
+/// GÜNCELLEME (ROADMAP v0.1.0, T-019/S1, architect VERİ MODELİ): `siteType`
+/// EKLENDİ — `SiteType?`, **NULLABLE, DB `DEFAULT` YOK** (`themeId`/
+/// `themeVersion`'ın BİREBİR gerekçesi: platform genelinde bir varsayılan
+/// site tipi YOKTUR; `DEFAULT` koymak bir ticari seçimi sessizce atamak
+/// olurdu, ADR-0002 Karar 5'in aynı mantığı). Değişmez — "kayıt akışının
+/// yarattığı her kiracının `siteType`'ı NOT NULL'dır" — **YAZMA YOLUNDA**
+/// zorlanır (S9), DB'de **DEĞİL**. ⚠ İleride `SET NOT NULL` **YIKICIDIR**.
+/// `enum SiteType { ecommerce corporate }` — ikisinin de **ÜRETİCİSİ** var
+/// (kayıt sihirbazı) ve `corporate`'ın **TÜKETİCİSİ** `ROADMAP:1304`'te
+/// adıyla yazılı ⇒ ölü sözlük DEĞİLDİR.
 model Tenant {
   id                       String       @id @default(cuid(2))
   slug                     String       @unique
@@ -96,6 +135,7 @@ model Tenant {
   primaryDomain            String?      @unique @map("primary_domain")
   themeId                  String?      @map("theme_id")
   themeVersion             String?      @map("theme_version")
+  siteType                 SiteType?    @map("site_type")
   // ROADMAP v0.0.15 (T-016/S1, architect): owner rolü için TOTP 2FA zorunlu
   // kılma anahtarı. Yeni TABLO DEĞİL — tek boolean için ayrı bir
   // `TenantSecurityPolicy` tablosu architect tarafından REDDEDİLDİ
@@ -108,19 +148,37 @@ model Tenant {
   updatedAt                DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   deletedAt                DateTime?    @map("deleted_at") @db.Timestamptz(3)
 
-  memberships TenantMembership[]
+  memberships   TenantMembership[]
   // ROADMAP v0.0.11 (T-013/S2): `Job.tenant` ilişkisinin ZORUNLU karşı tarafı.
   // Prisma ilişkileri iki taraflıdır — bu satır olmadan `prisma generate`
   // doğrulama hatasıyla durur (emsal: yukarıdaki `memberships`). DDL ÜRETMEZ
   // (FK kolonu `job` tarafındadır).
-  jobs        Job[]
+  jobs          Job[]
   // ROADMAP v0.0.14 (T-014/S1): `AuditLog.tenant` ve `TenantInvitation.tenant`
   // ilişkilerinin ZORUNLU karşı tarafları — `jobs` ile AYNI gerekçe (Prisma
   // ilişkileri iki taraflıdır; bu iki satır olmadan `prisma generate` doğrulama
   // hatasıyla durur ve hata `Tenant` tarafını işaret eder). İkisi de DDL
   // ÜRETMEZ (FK kolonları `audit_log`/`tenant_invitation` tarafındadır).
-  auditLogs   AuditLog[]
-  invitations TenantInvitation[]
+  auditLogs     AuditLog[]
+  invitations   TenantInvitation[]
+  // ROADMAP v0.0.21 (T-018/S2): `TenantVersionState.tenant` ve
+  // `TenantUpdateHistory.tenant` ilişkilerinin ZORUNLU karşı tarafları —
+  // `jobs`/`auditLogs` ile AYNI gerekçe (Prisma ilişkileri iki taraflıdır; bu
+  // iki satır olmadan `prisma generate` doğrulama hatasıyla durur). İkisi de
+  // DDL ÜRETMEZ (FK kolonları `tenant_version_state`/`tenant_update_history`
+  // tarafındadır). `versionState` OPSİYONEL (`?`) — `TenantVersionState` 1:1
+  // ilişkidir ve bu sürümde her kiracı için satır YOKTUR (seed sadece demo
+  // kiracı için yazar, v0.1.0'da yeni kiracı `pending` doğduğunda satırsız
+  // kalır, ADR-0020 Karar 1 takvimi).
+  versionState  TenantVersionState?
+  updateHistory TenantUpdateHistory[]
+  // ROADMAP v0.1.0 (T-019/S1): `Subscription.tenant` ilişkisinin ZORUNLU
+  // karşı tarafı — `versionState` ile AYNI gerekçe (Prisma ilişkileri iki
+  // taraflıdır; bu satır olmadan `prisma generate` doğrulama hatasıyla
+  // durur). DDL ÜRETMEZ (FK kolonu `subscription` tarafındadır). `?`
+  // (opsiyonel) — `Subscription` GERÇEK 1:1 ilişkidir (`@@unique([tenantId])`)
+  // ama her kiracı için satır ZORUNLU DEĞİLDİR (migration kümesi BOŞ doğar).
+  subscription  Subscription?
 
   @@map("tenant")
 }
@@ -559,6 +617,333 @@ model TenantInvitation {
   @@map("tenant_invitation")
 }
 
+/// Platform seviyesi, kesilmiş bir platform sürümünün kaydı (ROADMAP v0.0.21,
+/// T-018/S2, architect VERİ MODELİ + ADR-0020). `PLATFORM_LEVEL_TABLES`'ın
+/// YEDİNCİ üyesi — bir platform sürümü kiracıya değil, platformun KENDİSİNE
+/// aittir; §4'ün kademeli dağıtımı bile kiracıyı sürüme atar, sürümü kiracıya
+/// değil (ADR-0020 Karar — sınıflandırma ekseni: "olgu KİME aittir").
+///
+/// ⚠ `updatedAt` BİLEREK YOK (`AuditLog` emsali, güçlendirilmiş): kesilmiş bir
+/// sürüm kaydı DEĞİŞMEZ; `notes`'u sonradan düzenlemek sürüm geçmişini yeniden
+/// yazmaktır. `notes` NULLABLE — V5 disiplini ("tarihsel sürümler GERİYE
+/// DOLDURULMAZ", uydurmak kaydı YALANLA başlatır); bu sürümde yazılan TEK
+/// satırın (`stable`, seed) notu olabilir ama gelecekteki her satırın notu
+/// ZORUNLU değildir.
+///
+/// `channel` İKİ değer taşır (`stable`, `canary`) — Sürüm Politikası §4'ün
+/// tanımladığı ÜÇÜNCÜ değer (`dev`) BİLEREK YOK ("ölü sözlük, ölü iznin
+/// kardeşidir"; `dev`'in bu sürümde tüketicisi yok). Değer EKLEMEK
+/// `ALTER TYPE … ADD VALUE` ile additive'dir (vade: v0.16.0).
+///
+/// `@@unique([version, channel])`: aynı sürüm numarası farklı kanallarda AYRI
+/// satır olabilir (bir sürüm önce `canary`, sonra `stable` kesilebilir) ama
+/// AYNI kanalda İKİNCİ kez kesilemez. `@@index([channel, releasedAt desc])`:
+/// "bu kanalın en son sürümü" sorgusunun İDEAL indeksi (N-2 penceresi ve
+/// güncelleme kontrolü bu yüklemle okur, v0.16.0).
+model PlatformRelease {
+  id            String         @id @default(cuid(2))
+  version       String
+  channel       ReleaseChannel
+  releasedAt    DateTime       @map("released_at") @db.Timestamptz(3)
+  notes         String?
+  minApiVersion String         @map("min_api_version")
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([version, channel])
+  @@index([channel, releasedAt(sort: Desc)])
+  @@map("platform_release")
+}
+
+/// Platform seviyesi tema kaydı (ROADMAP v0.0.21, T-018/S2, ADR-0020 Karar 3).
+/// `PLATFORM_LEVEL_TABLES`'ın SEKİZİNCİ üyesi.
+///
+/// ⚠⚠ `id` DOĞAL ANAHTARDIR (`String @id`, `@default(cuid(2))` YOK) — ADR-0003
+/// R2 konvansiyonundan BİLİNÇLİ bir sapma (ADR-0020 Karar 3'te tam gerekçe).
+/// Değeri temanın manifest id'sidir (bugün `'modern'`) — ADR-0002 Karar 3 tema
+/// kimliğini zaten `"{id}@{version}"` biçiminde dondurdu ve `Tenant.themeId`
+/// BUGÜN `'modern'` taşıyor; vekil (cuid2) bir anahtar seçmek bu kolonu
+/// çözümlenemez hâle getirir ve v0.0.21 AC-11 sapma testini iki farklı türde
+/// değeri karşılaştırmaya zorlardı.
+///
+/// ⚠⚠ `slug` OLUŞTURULMAZ — ROADMAP'in alan listesinden bilinçli bir daraltma
+/// (VARSAYIM A-T18-7, Orkestratör onayı): `slug`, `id`'nin bayt-birebir ikinci
+/// kopyası olurdu — bu modelin VARLIK SEBEBİYLE (çift kopya sorunu, ADR-0020
+/// Karar 1) doğrudan çelişir.
+model Theme {
+  id        String      @id
+  name      String
+  status    ThemeStatus @default(active)
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  releases ThemeRelease[]
+
+  @@map("theme")
+}
+
+/// Platform seviyesi, bir temanın yayınlanmış/taslak sürüm kaydı (ROADMAP
+/// v0.0.21, T-018/S2, architect VERİ MODELİ). `PLATFORM_LEVEL_TABLES`'ın
+/// DOKUZUNCU üyesi.
+///
+/// `sdkRange` theme-sdk aralığıdır (bugün `'>=0.1.0 <1.0.0'` formatında,
+/// `packages/theme-sdk/src/manifest/manifest.ts:72-84`'ün kapalı grameriyle
+/// doğrulanır — doğrulama `apps/api`/`theme-sdk` tarafında, bu kolon seviyesinde
+/// DEĞİL). `changelog` NULLABLE — bir `draft` sürümün changelog'u henüz
+/// yazılmamış olabilir.
+///
+/// **CHECK #1** (`theme_release_published_at_pairing_check`, elle migration
+/// SQL'i, `tenant_theme_selection_pairing_check` emsali): `(status = 'draft')
+/// = (published_at IS NULL)` — `draft` bir sürümün `publishedAt`'i VARDIR
+/// anlamına gelen yanlış bir durumu veritabanı seviyesinde İMKÂNSIZ kılar.
+///
+/// ⚠ ADR-0002 Karar 8 (bağlayıcı): `modern@0.1.0` seed'de `status='draft'`,
+/// `publishedAt=NULL` yazılır — yayın koşulunun iki bileşeni (görsel regresyon
+/// v0.0.19, Lighthouse v0.1.x+) bu sürümde karşılanamaz; `published` yazmak
+/// kaydı YALANLA başlatırdı.
+///
+/// `@@unique([themeId, version])`: bir tema aynı sürüm numarasını İKİNCİ kez
+/// yayınlayamaz. `@@index([themeId, status, publishedAt desc])`: "bu temanın
+/// yayınlanmış en son sürümü" sorgusunun İDEAL indeksi (provisioning, v0.2.0).
+///
+/// ⚠⚠ `TenantVersionState.themeId`'ye BİLEŞİK YABANCI ANAHTAR YAZILMAZ
+/// (ADR-0020 Karar 3 — üç gerekçe: `Tenant.themeId`'nin bugün FK'si yok,
+/// asimetri sapma testini ifade edilemez kılar; ADR-0002 Karar 5 kodda var
+/// olup `Theme` satırı henüz yazılmamış bir temayı meşru ara durum sayar; FK
+/// izolasyon probunun `cleanupTenant` sözleşmesini platform fixture
+/// sızıntısına açardı). Referans bütünlüğü yazma yolunda (v0.2.0) zorlanır.
+model ThemeRelease {
+  id          String             @id @default(cuid(2))
+  themeId     String             @map("theme_id")
+  version     String
+  sdkRange    String             @map("sdk_range")
+  changelog   String?
+  status      ThemeReleaseStatus @default(draft)
+  publishedAt DateTime?          @map("published_at") @db.Timestamptz(3)
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  theme Theme @relation(fields: [themeId], references: [id], onDelete: Cascade)
+
+  @@unique([themeId, version])
+  @@index([themeId, status, publishedAt(sort: Desc)])
+  @@map("theme_release")
+}
+
+/// Platform seviyesi plan ŞABLONU (ROADMAP v0.1.0, T-019/S1, architect VERİ
+/// MODELİ). `PLATFORM_LEVEL_TABLES`'ın ONUNCU üyesi.
+///
+/// ⚠⚠ `id` DOĞAL ANAHTARDIR (`String @id`, `@default(cuid(2))` YOK) —
+/// `Theme.id` emsali (ADR-0020 Karar 3) BİREBİR tekrarlanır: değer bugün
+/// `'trial'`, vekil (cuid2) bir anahtar seçmek bu kolonu çözümlenemez hâle
+/// getirirdi.
+///
+/// `limits` → `Json` NOT NULL, bir LİMİT **ŞABLONUDUR** (`Subscription.limits`
+/// ANLIK GÖRÜNTÜSÜNÜN kaynağı — ikisi AYNI şey DEĞİLDİR, bkz. `Subscription`
+/// model doc'u). Anahtarlar: `maxProducts`, `maxOrdersPerMonth`,
+/// `maxStorageBytes`, `maxUsers` (dördü non-negatif tamsayı); Zod şeması
+/// `apps/api` tarafında yaşar (CLAUDE.md §4 — JSONB okunurken Zod ile parse
+/// edilir), `TenantVersionState.previousState` emsali.
+///
+/// ⚠ `name` OPERATÖRE DÖNÜKTÜR — TELE ÇIKMAZ ve PANELDE RENDER EDİLMEZ (aksi
+/// hâlde CLAUDE.md §4'ün i18n kuralı, "kullanıcıya dönük metin kodda sabit
+/// yazılmaz", ihlal olurdu).
+///
+/// ⚠ ROADMAP'in beşinci kalemi ("modül erişimi") BİLEREK YOK — modül
+/// kataloğu yok, boş bir liste ÖLÜ VERİ olurdu.
+///
+/// ⚠ BİLEREK YOK: `PlanStatus` enum ("ölü sözlük, ölü iznin kardeşidir" —
+/// `ReleaseChannel.dev`/`UpdateStatus.rolled_back` emsali), `trialDays`,
+/// `priceCents` (üçü de v0.17.0 — enforcement/tahsilat). Değer/kolon
+/// EKLEMEK additive'dir.
+///
+/// İndeks: **yalnızca PK** — `tenant_id` TAŞIMAZ (migration linter'ının
+/// `TENANT_ID_ON_PLATFORM_TABLE` kuralı).
+model Plan {
+  id        String   @id
+  name      String
+  limits    Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  // ROADMAP v0.1.0 (T-019/S1): `Subscription.plan` ilişkisinin ZORUNLU karşı
+  // tarafı (Prisma ilişkileri iki taraflıdır). DDL ÜRETMEZ (FK kolonu
+  // `subscription` tarafındadır).
+  subscriptions Subscription[]
+
+  @@map("plan")
+}
+
+/// Kiracıya bağlı, kiracının BUGÜNKÜ sürüm bileşiminin TEK yazılabilir
+/// doğruluk kaynağı (ROADMAP v0.0.21, T-018/S2, ADR-0020 Karar 1).
+/// `TENANT_SCOPED_TABLES`'ın BEŞİNCİ üyesi — `tenant_membership`/`job`/
+/// `audit_log`/`tenant_invitation`'ın taşıdığı tüm değişmezleri (CLAUDE.md §7
+/// md 1-3) taşır: `tenant_id` `text` NOT NULL, RLS `ENABLE`+`FORCE`, kanonik
+/// `USING`/`WITH CHECK` politikası (bkz. `<ts>_version_registry/migration.sql`,
+/// `20261104083007_rbac_audit_log_and_invitation/migration.sql:122-135`'ten
+/// BAYT-BİREBİR kopyalandı) ve `tenant_id` öncü bileşik indeksler.
+///
+/// Dört sürüm alanı (`platformVersion`/`themeId`/`themeVersion`/`apiVersion`)
+/// NOT NULL — Arkesoft'un rakiplerden ayrıştığı iddianın veri temeli: "kiracı
+/// hangi sürüm bileşiminde?" sorusunun TEK satırda yaşayan TEK cevabı.
+/// `previousState` → `Json?` (NULLABLE — ilk kurulumun önceki hâli YOK, A-T18
+/// varsayım teyidi); geri alma (rollback) için anlık görüntü, Sürüm Politikası
+/// §5.1-5.2'nin geri yazacağı dört alanın TAMAMINI taşır (v0.0.21 AC-6
+/// yeterlilik pini). Okunurken Zod ile parse edilir (CLAUDE.md §4); şema
+/// `apps/api` tarafında yaşar, bu kolon bu yüzden sır/PII TAŞIMAZ.
+///
+/// ⚠ `lastUpdatedAt` ≠ `updatedAt`: BİRİNCİSİ sürüm GEÇİŞİNİN iş zaman damgası
+/// (yazma yolu AÇIKÇA yazar, `@updatedAt` DEĞİL), İKİNCİSİ Prisma'nın satır-
+/// dokunma damgasıdır. Gelecekte alakasız bir kolon düzeltmesi `updatedAt`'i
+/// kaydırır ama `lastUpdatedAt`'i KAYDIRMAMALIDIR. ⚠⚠ TRIGGER YOK (ADR-0020
+/// Karar 4, `schema.prisma:13-14`'ün yürürlükteki kuralı) — ikisi de UYGULAMA
+/// KATMANINDA yazılır.
+///
+/// ⚠⚠ `tenantId @unique` (GERÇEK 1:1 değişmezi) **VE** `@@unique([tenantId,
+/// id])` (migration linter'ının `tenant_id` öncü bileşik indeks şartı,
+/// `__tests__/helpers/migration-set.ts` `MISSING_TENANT_ID_LEADING_UNIQUE_INDEX`)
+/// — İKİSİ BİRLİKTE, kasıtlı maliyet (ADR-0020 Sonuçlar, `Job`/`AuditLog`
+/// emsali: ikincisi birincinin ÖNEKİ, artık, ama tablo kiracı başına BİR satır
+/// taşır). Ek `@@index` YOK — RLS her sorguya `tenant_id = …` yüklemini zaten
+/// ekler ve `tenantId @unique` zaten o yüklemin ideal indeksidir.
+///
+/// `TenantVersionState.themeId`'ye `ThemeRelease`'den BİLEŞİK FK YOKTUR
+/// (ADR-0020 Karar 3 — bkz. `ThemeRelease` model doc'u).
+model TenantVersionState {
+  id              String   @id @default(cuid(2))
+  tenantId        String   @unique @map("tenant_id")
+  platformVersion String   @map("platform_version")
+  themeId         String   @map("theme_id")
+  themeVersion    String   @map("theme_version")
+  apiVersion      String   @map("api_version")
+  lastUpdatedAt   DateTime @map("last_updated_at") @db.Timestamptz(3)
+  previousState   Json?    @map("previous_state")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@map("tenant_version_state")
+}
+
+/// Kiracıya bağlı sürüm güncelleme/geri alma denetim kaydı (ROADMAP v0.0.21,
+/// T-018/S2, architect VERİ MODELİ). `TENANT_SCOPED_TABLES`'ın ALTINCI üyesi
+/// — yukarıdaki `TenantVersionState`'in taşıdığı tüm değişmezleri (CLAUDE.md
+/// §7 md 1-3) taşır: `tenant_id` `text` NOT NULL, RLS `ENABLE`+`FORCE`,
+/// kanonik `USING`/`WITH CHECK` politikası ve `tenant_id` öncü bileşik
+/// indeksler.
+///
+/// `fromState` → `Json?` NULLABLE (ilk kurulumun önceki hâli YOK — A-T18
+/// varsayım DÜZELTMESİ, teyit), `toState` → `Json` NOT NULL. İkisi de anlık
+/// görüntü biçimindedir (bkz. `TenantVersionState.previousState`).
+///
+/// ⚠ `triggeredBy` SERBEST METİN DEĞİLDİR → `UpdateTrigger` enum + AYRI
+/// `triggeredByUserId String?` (FK YOK, `AuditLog.actorUserId` emsali — "o
+/// anda tetikleyen kimdi" bir OLGUDUR, canlı bir referans TUTMAZ).
+/// `platform_auto` ile kullanıcı tetiklemesi FARKLI TÜRDE olgulardır (§4
+/// "discriminated union; boolean/dize bayrak yığını kurma" yasağı). ⚠ İKİNCİ
+/// bir CHECK (`triggered_by` ↔ `triggered_by_user_id` eşleşmesi) YAZILMAZ —
+/// CHECK bugünkü bir YAZICININ ihlal edebileceği değişmezi korur, bu sürümde
+/// HİÇ yazıcı yok; erken CHECK tüketicisi olmayan bir kısıt olurdu.
+///
+/// `status` → `UpdateStatus` enum (`running`/`completed`/`failed`). ⚠⚠
+/// `rolled_back` değeri BİLEREK YOKTUR (`AuditAction.revoked` emsali, "ölü
+/// sözlük, ölü iznin kardeşidir") — geri alma KENDİ SATIRIDIR, `fromState`/
+/// `toState`'in yönü onu zaten ayırt eder. Değer EKLEMEK additive'dir (vade
+/// v0.16.0).
+///
+/// **CHECK #2** (`tenant_update_history_finished_after_started_check`, elle
+/// migration SQL'i): `finished_at IS NULL OR finished_at >= started_at` —
+/// bitiş zamanı başlangıçtan ÖNCE olan bir satırı veritabanı seviyesinde
+/// İMKÂNSIZ kılar.
+///
+/// `error` → `Json?`, `Job.error`'ın BİREBİR SÖZLEŞME kopyası: tam olarak
+/// `@arkesoft/errors` → `toErrorBody()`'nin çıktısıdır; `AppError.context` o
+/// gövdeye ASLA girmez, dolayısıyla bu kolon sır/PII TAŞIMAZ (CLAUDE.md §4'ün
+/// "asla loglanmaz" listesinin veritabanı karşılığı).
+///
+/// `@@unique([tenantId, id])` DEKORATİF DEĞİL, ZORUNLU (`Job`/`AuditLog`'un
+/// birebir aynı durumu — doğal bileşik benzersizlik YOKTUR, migration
+/// linter'ının `tenant_id` öncü bileşik indeks şartı mekanik olarak zorluyor).
+/// `@@index([tenantId, startedAt desc])`: "bu kiracının güncelleme geçmişi"
+/// sorgusunun İDEAL indeksi (RLS zaten `tenant_id = …` yüklemini ekler).
+model TenantUpdateHistory {
+  id                String        @id @default(cuid(2))
+  tenantId          String        @map("tenant_id")
+  fromState         Json?         @map("from_state")
+  toState           Json          @map("to_state")
+  triggeredBy       UpdateTrigger @map("triggered_by")
+  triggeredByUserId String?       @map("triggered_by_user_id")
+  status            UpdateStatus  @default(running)
+  startedAt         DateTime      @map("started_at") @db.Timestamptz(3)
+  finishedAt        DateTime?     @map("finished_at") @db.Timestamptz(3)
+  error             Json?
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, startedAt(sort: Desc)])
+  @@map("tenant_update_history")
+}
+
+/// Kiracıya bağlı abonelik kaydı (ROADMAP v0.1.0, T-019/S1, architect VERİ
+/// MODELİ). `TENANT_SCOPED_TABLES`'ın YEDİNCİ üyesi — en yakın emsal
+/// `TenantVersionState`: `tenant_id` `text` NOT NULL, RLS `ENABLE`+`FORCE`,
+/// kanonik `USING`/`WITH CHECK` politikası (bkz.
+/// `<ts>_registration_plan_subscription/migration.sql`,
+/// `tenant_version_state`'ten BAYT-BİREBİR kopyalanmıştır) ve `tenant_id`
+/// öncü bileşik indeksler.
+///
+/// `planId` → FK **`ON DELETE RESTRICT`** (CASCADE DEĞİL): canlı bir
+/// aboneliği olan planı silmek aboneliği silmemelidir.
+///
+/// ⚠ `status` → `SubscriptionStatus` enum'u **TEK değer** taşır (`active`):
+/// `trial` bir PLANDIR, DURUM değil; `trialing` bir FATURALAMA durumudur ve
+/// v0.17.0'a atılmıştır. Kolonu ŞİMDİ koymanın sebebi v0.17.0'ın DOLU bir
+/// tabloya `NOT NULL` kolon eklemek ZORUNDA kalmamasıdır (CLAUDE.md §10
+/// md 10 — expand/contract).
+///
+/// ⭐⭐ `limits` → `Json` NOT NULL, ABONELİK ANINDAKİ PLAN LİMİTLERİNİN ANLIK
+/// GÖRÜNTÜSÜDÜR (`Plan.limits` ŞABLON, bu SNAPSHOT) — ROADMAP'in "plan
+/// limitleri tenant'a yazılır" kabul kriterinin KARŞILIĞI. Üç fayda: (1)
+/// kriterin lafzı karşılanır, (2) bir plan düzenlemesi GEÇMİŞE DÖNÜK
+/// limitleri DEĞİŞTİRMEZ, (3) v0.17.0'ın kiracı bazlı istisna kancası
+/// BEDELSİZ doğar.
+///
+/// `startedAt` İŞ ZAMAN DAMGASIDIR, `createdAt` DEĞİL — uygulama katmanı
+/// AÇIKÇA yazar (`TenantVersionState.lastUpdatedAt`'in bağlayıcı ayrımı).
+/// TRIGGER YOK (ADR-0020 Karar 4'ün yürürlükteki kuralı).
+///
+/// ⚠ BİLEREK YOK: `endsAt`/`trialEndsAt`/`canceledAt`/tahsilat alanları
+/// (v0.17.0).
+///
+/// ⚠⚠ `@@unique([tenantId])` **VE** `@@unique([tenantId, id])` İKİSİ
+/// BİRLİKTE ZORUNLU (`TenantVersionState`'in birebir emsali): birincisi
+/// GERÇEK 1:1 değişmezi ve BEDAVA İDEMPOTENCY (çift gönderim ikinci abonelik
+/// üretemez), ikincisi migration linter'ının `tenant_id` öncü BİLEŞİK
+/// indeks şartı (`MISSING_TENANT_ID_LEADING_UNIQUE_INDEX`, en az İKİ kolon —
+/// sondaki virgül kasıtlıdır, `migration-set.ts` C8). Ek `@@index` YOK — RLS
+/// her sorguya `tenant_id = …` yüklemini zaten ekler, `tenantId @unique` o
+/// yüklemin İDEAL indeksidir.
+model Subscription {
+  id        String             @id @default(cuid(2))
+  tenantId  String             @unique @map("tenant_id")
+  planId    String             @map("plan_id")
+  status    SubscriptionStatus @default(active)
+  limits    Json
+  startedAt DateTime           @map("started_at") @db.Timestamptz(3)
+  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan   Plan   @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@map("subscription")
+}
+
 /// Kiracı durumu. `deleted` değeri YOKTUR (A-V8) — silinmişliğin tek doğruluk
 /// kaynağı `Tenant.deletedAt`'tir.
 enum TenantStatus {
@@ -633,4 +1018,84 @@ enum AuditAction {
   tenant_security_policy_changed
 
   @@map("audit_action")
+}
+
+/// Platform sürümünün yayın kanalı (ROADMAP v0.0.21, T-018/S2, ADR-0020). İKİ
+/// değer — Sürüm Politikası §4'ün tanımladığı ÜÇÜNCÜ değer (`dev`) BİLEREK
+/// YOKTUR ("ölü sözlük, ölü iznin kardeşidir"; `dev`'in bu sürümde tüketicisi
+/// yok). Değer EKLEMEK `ALTER TYPE … ADD VALUE` ile additive'dir (vade:
+/// v0.16.0, `docs` ROADMAP'e not düşer).
+enum ReleaseChannel {
+  stable
+  canary
+
+  @@map("release_channel")
+}
+
+/// Tema durumu (ROADMAP v0.0.21, T-018/S2). `hidden`/`internal` BİLEREK
+/// YOKTUR — bu sürümde tek tüketici `active`/`deprecated` ayrımıdır
+/// (ikinci bir tema yayınlandığında/eskisi çekildiğinde). Değer EKLEMEK
+/// additive'dir.
+enum ThemeStatus {
+  active
+  deprecated
+
+  @@map("theme_status")
+}
+
+/// Tema sürümünün yayın durumu (ROADMAP v0.0.21, T-018/S2). `draft`'tan
+/// `published`'a geçiş CHECK #1 (`theme_release_published_at_pairing_check`)
+/// ile `publishedAt`'in eşzamanlı yazılmasını zorunlu kılar.
+enum ThemeReleaseStatus {
+  draft
+  published
+  deprecated
+
+  @@map("theme_release_status")
+}
+
+/// Bir sürüm güncellemesini kimin/neyin başlattığı (ROADMAP v0.0.21, T-018/S2,
+/// architect — `triggeredBy` serbest metin DEĞİL, discriminated union).
+/// `tenant_user`: kiracı panelden tetikledi. `platform_auto`: platform
+/// otomatik/zorunlu güvenlik yaması olarak tetikledi (CLAUDE.md §9).
+enum UpdateTrigger {
+  tenant_user
+  platform_auto
+
+  @@map("update_trigger")
+}
+
+/// Sürüm güncellemesinin durumu (ROADMAP v0.0.21, T-018/S2). ⚠⚠
+/// `rolled_back` değeri BİLEREK YOKTUR (`AuditAction.revoked` emsali) — geri
+/// alma kendi satırıdır, `TenantUpdateHistory.fromState`/`toState`'in yönü
+/// onu zaten ayırt eder. Değer EKLEMEK additive'dir (vade: v0.16.0).
+enum UpdateStatus {
+  running
+  completed
+  failed
+
+  @@map("update_status")
+}
+
+/// Kiracının site tipi (ROADMAP v0.1.0, T-019/S1, architect VERİ MODELİ).
+/// İkisinin de **ÜRETİCİSİ** var (kayıt sihirbazı) ve `corporate`'ın
+/// **TÜKETİCİSİ** `ROADMAP:1304`'te adıyla yazılı — ölü sözlük DEĞİLDİR.
+/// Değer EKLEMEK `ALTER TYPE … ADD VALUE` ile additive'dir.
+enum SiteType {
+  ecommerce
+  corporate
+
+  @@map("site_type")
+}
+
+/// Abonelik durumu (ROADMAP v0.1.0, T-019/S1, architect VERİ MODELİ). ⚠ TEK
+/// değer (`active`) — `trial` bir PLANDIR, durum değil; `trialing` bir
+/// FATURALAMA durumudur ve v0.17.0'a atılmıştır. Kolonu ŞİMDİ koymanın
+/// sebebi v0.17.0'ın DOLU bir tabloya `NOT NULL` kolon eklemek ZORUNDA
+/// kalmamasıdır (CLAUDE.md §10 md 10). Değer EKLEMEK `ALTER TYPE … ADD
+/// VALUE` ile additive'dir (vade: v0.17.0).
+enum SubscriptionStatus {
+  active
+
+  @@map("subscription_status")
 }

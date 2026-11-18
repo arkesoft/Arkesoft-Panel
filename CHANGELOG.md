@@ -25,6 +25,27 @@ pnpm changeset
 
 <!-- Changesets bu çizginin altına yazar. Elle girdi eklemeyin. -->
 
+## 0.9.0 — 2026-11-15
+
+- Artık yeni müşteriler panelde kendi başlarına kayıt olup birkaç adımda (hesap →
+  mağaza adı → mağaza adresi → site tipi) kendi mağazalarını oluşturabiliyor.
+  Mağaza adresi (alt alan adı) seçilirken müsaitlik anında kontrol ediliyor;
+  alınmış, yasaklı (www, api, admin gibi) veya Türkçe karakter içeren adlar
+  doğru şekilde işleniyor ve kullanıcıya anlaşılır bir hata gösteriliyor.
+  Kayıt tamamlandığında mağaza "kurulum bekliyor" durumunda doğuyor ve panelde,
+  mağazanızı ziyaretçilere açmak için kalan adımları gösteren bir kurulum
+  kontrol listesi görünüyor. [v0.1.0]
+
+## 0.8.0 — 2026-11-12
+
+- Platform, tema ve API sürümleri artık veritabanında izlenebilir [v0.0.21]. Her
+  müşterinin (kiracının) o anda hangi platform + tema + API sürümü bileşiminde
+  olduğu tek bir kayıtta tutulur; bu kayıt, bir önceki sürüm bileşimini de
+  geri dönülebilir şekilde saklar. Sürüm güncelleme ve geri alma işlemlerinin
+  geçmişi de ayrıca kayda geçer. Bu sürümde panelde gösterilen bir ekran yoktur
+  — bu değişiklik, ileride gelecek sürüm görünürlüğü ve geri alma özelliklerinin
+  veri temelini kurar.
+
 ## 0.7.0 — 2026-11-11
 
 - Hesabım → Güvenlik ekranına aktif oturumlarınızı gösteren yeni bir kart eklendi: hangi

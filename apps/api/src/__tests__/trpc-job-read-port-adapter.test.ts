@@ -391,6 +391,15 @@ describe('JobReadPortAdapter (ROADMAP v0.0.11, T-013/S8)', () => {
           sessionListRead: {
             listOwnSessions: () => Promise.reject(new Error('çağrılmamalı')),
           },
+          // ROADMAP v0.1.0, T-019/S9a — `TrpcPorts`'un ZORUNLU iki yeni
+          // üyesi. Bu probe `registration.*`'ı ÇAĞIRMAZ.
+          registrationRead: {
+            checkSlugAvailability: () => Promise.reject(new Error('çağrılmamalı')),
+            onboardingChecklist: () => Promise.reject(new Error('çağrılmamalı')),
+          },
+          registrationWrite: {
+            createTenant: () => Promise.reject(new Error('çağrılmamalı')),
+          },
         },
         errors: {
           unauthenticated: () => {

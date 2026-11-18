@@ -358,6 +358,18 @@ Yeni bir endpoint, prosedür, kuyruk işi veya tablo eklerken **her maddeyi** do
 - [ ] **`public` dışına şema açmıyorum** (bugün yapısal olarak kapalı: çalışma zamanı
       rolleri `CREATE ON DATABASE` taşımıyor — ölçüldü). Açılırsa katalog okuyucularının
       tamamının `nspname = 'public'` filtresi o şemayı kör noktaya çevirir.
+- [ ] **Sır taşıyan tablo ekliyorsam dört listeye de yazdım.** Eklediğim tablo parola
+      özeti, token, TOTP sırrı, kurtarma kodu veya benzeri bir kimlik doğrulama sırrı
+      taşıyorsa: (1) `packages/db/src/tenancy.ts` → `AUTH_SECRET_BEARING_TABLES`,
+      (2) aynı dosyada `AUTH_ROLE_TABLE_PRIVILEGE_EXPECTATIONS` (`columnLevel: true` ile),
+      (3) `packages/db/sql/bootstrap-roles.sql`'in `FOREACH` dizisi,
+      (4) `packages/db/sql/rollback-auth-role.sql`'in `FOREACH` dizisi.
+      ⚠ **Neden elle kontrol:** listeler **şemadan türetilmiyor**; kurallar dizilerin
+      _üzerinde_ dönüyor, yani yeni tablo **dördünün hiçbirine** eklenmezse dördü
+      birbiriyle tutarlı kalır ve **linter sıfır bulgu verir** (T-016 `security` tur 3'te
+      mutasyonla ölçüldü). Üç/dört listeye eklemek yeterli değil ama **yakalanır**
+      (`auth-secret-tables-sql-consistency.test.ts` drift testi); **hiçbirine
+      eklememek yakalanmaz.**
 
 ---
 

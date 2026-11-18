@@ -277,6 +277,23 @@ export function pinAppPrismaDatabaseDropsTenantInvitation(db: AppPrismaDatabase)
 }
 
 /**
+ * NEGATİF PİN (ROADMAP v0.1.0, T-019/S1, architect VERİ MODELİ — ADR-0021 §4,
+ * `pinAppPrismaDatabaseDropsJob`/`pinAppPrismaDatabaseDropsAuditLog`'un
+ * BİREBİR uygulaması) — `subscription` delegesi `AppPrismaDatabase` üzerinde
+ * ERİŞİLEMEZ OLMALIDIR.
+ *
+ * `Subscription` kiracıya bağlı bir tablodur ve ona erişimin TEK meşru yolu
+ * `withTenant()`/`withNewTenant()` → `TenantTransactionClient`'tır (orada
+ * allowlist'TEDİR, bkz. `client.ts`). `AppPrismaDatabase`'e EKLENMEDİĞİ için
+ * `prisma.db.subscription.*` gibi bir çağrı `apps/api`'de DERLENMEZ. Bu satır
+ * derlenirse (hata ÜRETMEZSE) o garanti SESSİZCE kaybolmuş demektir.
+ */
+export function pinAppPrismaDatabaseDropsSubscription(db: AppPrismaDatabase): unknown {
+  // @ts-expect-error — "subscription" Pick<> allowlist'inde YOK (BİLEREK, ADR-0021 §4), AppPrismaDatabase'de erişilemez; Subscription'a erişim YALNIZCA withTenant()/withNewTenant() üzerinden.
+  return db.subscription
+}
+
+/**
  * NEGATİF PİN (A-G3, `TenantTransactionClient` için) — `account`/`session`/
  * `verification` delegeleri burada da ERİŞİLEMEZ OLMALIDIR.
  */
@@ -405,9 +422,17 @@ export function pinAppPrismaDatabaseKeysExactlyMatchAllowlist(): {
  * eklenirse bu dosya yine kırmızıya döner (R-A2'nin üçüncü savunma katmanı,
  * bu sürümde de GEÇERLİ). Mekanik karşılıkları:
  * `pinAppPrismaDatabaseDropsAuditLog` / `pinAppPrismaDatabaseDropsTenantInvitation`.
+ *
+ * GÜNCELLEME (ROADMAP v0.1.0, T-019/S1, architect VERİ MODELİ — ADR-0021 §4):
+ * `'subscription'` EKLENDİ, küme DÖRT üyeden BEŞE çıktı — `'job'`/
+ * `'auditLog'`/`'tenantInvitation'` ile AYNI gerekçe. ⚠
+ * `ExpectedAppPrismaDatabaseKeys` HÂLÂ ÜÇ ÜYEDE — `'subscription'` oraya
+ * EKLENMEZ; eklenirse bu dosya kırmızıya döner (R-A2'nin üçüncü savunma
+ * katmanı, bu sürümde de GEÇERLİ). Mekanik karşılığı:
+ * `pinAppPrismaDatabaseDropsSubscription`.
  */
 type ExpectedTenantTransactionClientKeys =
-  'tenantMembership' | 'job' | 'auditLog' | 'tenantInvitation'
+  'tenantMembership' | 'job' | 'auditLog' | 'tenantInvitation' | 'subscription'
 
 type TenantTransactionClientExtraKeys = Exclude<
   keyof TenantTransactionClient,

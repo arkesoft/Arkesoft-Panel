@@ -541,10 +541,21 @@ yasaktır.
 
 - **`job` ve `audit_log`'un doğal bileşik benzersizliği YOKTU** → migration linter'ının öncü `tenant_id` şartını karşılamak için `@@unique([tenantId, id])` **açıkça** yazılmak zorunda kaldı. Bu indeks **dekoratif değildir**: migration'dan satırı çıkarmak linter'ı `MISSING_TENANT_ID_LEADING_UNIQUE_INDEX` ile kırmızıya düşürüyor (mutasyonla ölçüldü).
 - **`tenant_invitation`'ın doğal benzersizliği VARDI** (`(tenantId, email)` — bir kiracıya aynı adrese iki bekleyen davet olamaz) → yapay `(tenantId, id)` indeksi **gerekmedi**. İkinci bir benzersizlik (`(tenantId, tokenHash)`) kabul sorgusunun ideal indeksidir.
+- **`tenant_version_state`'in (v0.0.21, T-018) benzersizliği GERÇEK 1:1'dİ** — bir kiracının
+  **en fazla bir** sürüm durumu satırı olabilir. Bu durumda **ikisi birlikte** yazılmak
+  zorunda: `tenantId @unique` (gerçek 1:1 değişmezini zorlayan **asıl** kısıt) **ve**
+  `@@unique([tenantId, id])` (migration linter'ının öncü `tenant_id` şartını karşılayan
+  **yapay** kısıt, `schema.prisma:736,748`). Tek kolonlu `tenantId @unique` **tek başına
+  yetmez** — migration linter'ı `tenant_id` öncü bir _bileşik_ indeks arıyor ve onu
+  bulamaz. İkincisi birincinin **önekidir**, yani Postgres açısından artıktır (satır
+  başına bir fazladan indeks yazımı maliyeti kabul edilmiştir, bkz. ADR-0020 "Olumsuz ve
+  kabul edilen maliyetler").
 
-Yani yeni tablo için sorulacak soru şudur: _"bu tablonun kiracı kapsamında zaten bir iş
-anlamı taşıyan bileşik benzersizliği var mı?"_ Varsa onu kullanın; yoksa `(tenantId, id)`'yi
-**gerekçesiyle** yazın.
+Yani yeni tablo için sorulacak soru **iki parçalıdır**: (1) _"bu tablonun kiracı
+kapsamında zaten bir iş anlamı taşıyan bileşik benzersizliği var mı?"_ Varsa onu
+kullanın; yoksa `(tenantId, id)`'yi gerekçesiyle yazın. (2) _"tablonun kiracı başına
+GERÇEKTEN en fazla bir satırı mı var (gerçek 1:1)?"_ Evetse `tenantId @unique`'i de
+**ayrıca** yazın — `(tenantId, id)` bunu zorlamaz, yalnızca linter'ı susturur.
 
 #### Append-only tablo ile izolasyon probu arasındaki gerilim
 

@@ -16,6 +16,10 @@
 // hiçbir asıl yeteneğini kaybetmedi → sıkılaştırma da KATKISAL kaldı
 // (architect K-A13).
 //
+// GÜNCELLEME (ROADMAP v0.1.0, T-019/S3): `registration` namespace'i EKLENDİ —
+// mevcut beş satırın HİÇBİRİ silinmedi/değişmedi, yine EKLEME (MINOR,
+// `@arkesoft/trpc` 0.6.1 → 0.7.0, ADR-0021).
+//
 // ⚠ Bu dosya prosedür yüzeyinin TEK kaydıdır ve `authz/procedure-surface.ts`
 // o yüzeyin BEYANIDIR; ikisi `__tests__/authz-consistency.test.ts`'te küme
 // eşitliğiyle karşılaştırılır. Buraya bir namespace eklemek, o tabloya satır
@@ -24,6 +28,7 @@
 import { router } from '../trpc.js'
 import { jobRouter } from './job.router.js'
 import { memberRouter } from './member.router.js'
+import { registrationRouter } from './registration.router.js'
 import { sessionRouter } from './session.router.js'
 import { storefrontRouter } from './storefront.router.js'
 import { tenantRouter } from './tenant.router.js'
@@ -34,6 +39,7 @@ export const appRouter = router({
   storefront: storefrontRouter,
   job: jobRouter,
   member: memberRouter,
+  registration: registrationRouter,
 })
 
 /** İstemci factory'sinin (`client/create-trpc-client.ts`) tiplediği kök router tipi. */

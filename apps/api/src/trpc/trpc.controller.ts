@@ -56,6 +56,15 @@
 // çünkü tanım gereği henüz üye değildir ve kiracı bağlamını bir YETENEK
 // belirtecinden türetir. Muafiyetin dört koşulu o dosyanın başındadır.
 //
+// GÜNCELLEME (ROADMAP v0.1.0, T-019/S9a, ADR-0021 §2/§3): `TENANT_EXEMPT_PATHS`'e
+// bu sürümde ÜÇ satır eklendi — `/trpc/registration.checkSlugAvailability`,
+// `/trpc/registration.createTenant`, `/trpc/registration.onboardingChecklist`
+// (gerekçe `tenancy/tenant-exempt-paths.ts` dosya başı yorumunda, grup (8)).
+// `AUTH_EXEMPT_PATHS` BU satırla DEĞİŞMEDİ (12'de kalır) — üçü de
+// `protectedProcedure`dür (oturumsuz 401), kayıt sihirbazının panel host'unda
+// (REZERVE alt alan adı) servis edildiği için kiracı bağlamından muaf olması
+// GEREKİR, kimlikten DEĞİL.
+//
 // `allowBatching: false` zaten `createTrpcRequestHandler()` İÇİNDE
 // (`@arkesoft/trpc/server`, S3) — burada fail-closed bir yedeğe İHTİYAÇ YOK
 // (S1'in spike'ı gerçek seçeneği doğruladı).
@@ -73,6 +82,8 @@ import { toWebHeaders } from '../http/to-web-headers.js'
 import { JobReadPortAdapter } from './ports/job-read.port.adapter.js'
 import { MemberWritePortAdapter } from './ports/member-write.port.adapter.js'
 import { MembershipReadPortAdapter } from './ports/membership-read.port.adapter.js'
+import { RegistrationReadPortAdapter } from './ports/registration-read.port.adapter.js'
+import { RegistrationWritePortAdapter } from './ports/registration-write.port.adapter.js'
 import { SessionListReadPortAdapter } from './ports/session-list-read.port.adapter.js'
 import { SessionSecurityReadPortAdapter } from './ports/session-security-read.port.adapter.js'
 import { StorefrontTenantReadPortAdapter } from './ports/storefront-tenant-read.port.adapter.js'
@@ -174,6 +185,10 @@ export class TrpcController {
     private readonly sessionSecurityRead: SessionSecurityReadPortAdapter,
     @Inject(SessionListReadPortAdapter)
     private readonly sessionListRead: SessionListReadPortAdapter,
+    @Inject(RegistrationReadPortAdapter)
+    private readonly registrationRead: RegistrationReadPortAdapter,
+    @Inject(RegistrationWritePortAdapter)
+    private readonly registrationWrite: RegistrationWritePortAdapter,
     @Inject(TrpcErrorsPortAdapter) private readonly errorsPort: TrpcErrorsPortAdapter,
   ) {}
 
@@ -184,8 +199,9 @@ export class TrpcController {
     // ⚠ `TrpcPorts` burada ELLE kurulur (üretimdeki TEK yer). `jobRead`
     // v0.0.11'den, `membershipRead`/`memberWrite` v0.0.14'ten, `tenantSecurityWrite`
     // v0.0.15'ten, `sessionSecurityRead` v0.0.15 FIX turu 2'den, `sessionListRead`
-    // v0.0.15.1'den itibaren ZORUNLU üyedir — herhangi biri atlanırsa typecheck
-    // kırılır (`context/trpc-context.types.ts`'in gerekçesi, po R-P2/R-PM5).
+    // v0.0.15.1'den, `registrationRead`/`registrationWrite` v0.1.0'dan itibaren
+    // ZORUNLU üyedir — herhangi biri atlanırsa typecheck kırılır
+    // (`context/trpc-context.types.ts`'in gerekçesi, po R-P2/R-PM5).
     // ⚠ Üyeleri OPSİYONEL yaparak typecheck hatasını susturmak o dosyanın
     // YAZILI yasağıdır; doğru çözüm portu DOLDURMAKTIR — bu satırlar o
     // çözümün ta kendisi.
@@ -199,6 +215,8 @@ export class TrpcController {
         memberWrite: this.memberWrite,
         sessionSecurityRead: this.sessionSecurityRead,
         sessionListRead: this.sessionListRead,
+        registrationRead: this.registrationRead,
+        registrationWrite: this.registrationWrite,
       },
       this.errorsPort,
     )

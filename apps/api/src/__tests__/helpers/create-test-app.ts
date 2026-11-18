@@ -56,6 +56,262 @@
 //   (b) çözülen Redis host'u (`new URL(apiEnv.REDIS_URL).hostname`) loopback
 //       allowlist'inde (`127.0.0.1`/`::1`/`localhost`) DEĞİLSE → fırlat.
 //
+// T-019/S7 EKLEMESİ (K7, backend — ÖNCE ÜRET SONRA DÜZELT) — ÜÇÜNCÜ bir
+// FAIL-CLOSED kapı: EŞZAMANLI KOŞUM TESPİTİ. ÖLÇÜLDÜ (ham kanıt KARARLAR'da):
+// bu dosyanın flush'ı GLOBAL'dir (`platform:auth:*`, tenant/koşuma kapsamsız)
+// — iki `createTestApp()` ÖRNEĞİ AYNI Redis'e bağlıyken biri flush ederse
+// DİĞERİNİN o ana kadar biriktirdiği sayaçları SİLER (tek-süreç içi kontrollü
+// simülasyonla kanıtlandı: A 15 istek → B'nin createTestApp() flush'ı → A
+// 6 istek daha → kümülatif 21. istek BEKLENEN 429'u ÜRETMEDİ). Bu GERÇEK bir
+// risktir ÇÜNKÜ (a) `apps/api`'nin KENDİ `test:isolation` görevi (dört
+// `*.isolation.test.ts` dosyası) de `createTestApp()` + gerçek sign-in/sign-up
+// çağırır, AYNI loopback IP'den, AYNI paylaşılan Redis'e — (b) bu repo'nun
+// ÇOK-AJANLI geliştirme akışında birden fazla ajan/terminal AYNI yerel
+// Postgres/Redis'i paylaşır (bu T-019 Task'ının "Postgres/Redis MÜNHASIR"
+// kuralları TAM BU RİSKİ TANIR). CI'da bu KOŞMAZ (`turbo.json`'ın
+// `test:isolation` yorumu: run-gates'in SIRALI adım tasarımı `test` ve
+// `test:isolation`'ı AYNI invocation'da asla birlikte planlamaz) — risk
+// YEREL/ÇOK-AJANLI geliştirmeye ÖZGÜDÜR.
+//
+// SAYAÇ ANAHTAR UZAYINI KOŞUMA KAPSAMLAMA (R-PO5'in istediği minimal
+// düzeltme) — DOĞRUDAN `platform:auth:*` anahtar BİÇİMİNİ (production
+// `rate-limit.service.ts`'in sabiti) değiştirmek bu alt görevin DOKUNACAĞI
+// dosya listesinin DIŞINDA bir DI kayıt dosyası (`auth.module.ts`) gerektirir
+// — ÖLÇÜLDÜ, Orkestratör'e raporlandı (KARARLAR), kendi başına EKLENMEDİ.
+// Bunun yerine `process.ppid` KULLANILIR: ÖLÇÜLDÜ (KARARLAR) — vitest
+// `isolate: true` HER test DOSYASINI kendi `process.pid`'inde ayrı bir
+// alt süreçte koşturur AMA hepsi AYNI `process.ppid`'i (TEK `pnpm test`/
+// `pnpm test:isolation` invocation'ının koordinatör süreci) PAYLAŞIR; bu
+// değer FARKLI invocation'lar arasında FARKLIDIR. Bu yüzden `process.ppid`
+// "KOŞUM" kimliği olarak KULLANILABİLİR: flush'tan ÖNCE paylaşılan bir
+// "run-owner" anahtarı KONTROL EDİLİR — sahibi YOKSA veya BENİM ppid'imse
+// (AYNI koşumun BAŞKA bir dosyası) flush GÜVENLİDİR; sahibi BAŞKA bir ppid
+// İSE VE o ppid HÂLÂ YAŞIYORSA (`process.kill(pid, 0)`) flush GÜVENSİZDİR —
+// SESSİZCE silmek YERİNE LOUD fırlatılır (dosyanın MEVCUT iki fail-closed
+// kapısıyla AYNI felsefe). Sahibi ÖLÜ bir ppid İSE (önceki koşum çökmüş/
+// bitmiş) marker KALINTI sayılır ve SESSİZCE DEVRALINIR (yanlış-pozitif
+// ÖNLENİR) — TTL (120 sn, her çağrıda TAZELENİR) bu kalıntının EBEDİ
+// kalmasına karşı İKİNCİ bir savunma katmanıdır.
+//
+// ⚠ Bu, PROVEN mekanizmayı (aynı anda YAŞAYAN bir YABANCI koşum) SESSİZ
+// VERİ KAYBINDAN TEŞHİS EDİLEBİLİR bir HATAYA çevirir — sayaçların
+// KENDİSİNİ süreçler arası İZOLE ETMEZ (bu, production `rate-limit.
+// service.ts`'in anahtar biçimini değiştirmeyi gerektirir, yukarıdaki
+// gerekçeyle bu alt görevde YAPILMADI). ROADMAP:3095 EKSENİYLE İLİŞKİ
+// (Orkestratör'ün istediği rapor): O satır ÜRETİM `rate-limit.guard.ts`'in
+// sayaç SCOPE'unun (IP/hesap) port/origin/süreç bileşeni TAŞIMADIĞINI
+// anlatıyor — PRODUCTION kodu, GERÇEK trafik. BU düzeltme TEST HARNESS'İN
+// KENDİ flush mekanizmasına bir koşum kimliği ekliyor; AYNI EKSEN (scope'a
+// bir "hangi çalıştırma" bileşeni eklemek) ama FARKLI KOD YÜZEYİ (üretim
+// sayaç anahtarı DEĞİL, test flush'ının eşzamanlılık KORUMASI). Bu yüzden
+// ROADMAP:3095'in satırı bu düzeltmeyle KAPANMAZ — AYRI kalır (Orkestratör
+// kararı, bu Task'ın kapsamı değil).
+//
+// T-019 GATE TUR1 DÜZELTMESİ (solid, medium) — "ÜÇÜNCÜ fail-closed kapı"nın
+// KENDİSİ bir YARIŞ KOŞULU taşıyordu: `GET` (karar) → `SET` (yaz) İKİ AYRI
+// komuttu, aralarında başka bir koşum da AYNI `GET`i okuyup AYNI kararı
+// (`"sahip yok/ölü, devral"`) verebiliyordu — iki `SET` de yazılır ama
+// hiçbiri DİĞERİNİN varlığından haberdar OLMADAN "sahibim" sanır (tam olarak
+// bu kapının KORUMAK için var olduğu senaryo). Düzeltme — aşağıdaki
+// `assertSoleRunOwnership`: (1) ilk iddia artık TEK, ATOMİK `SET … NX`
+// komutu (Redis TEK İŞ PARÇACIKLIDIR — `NX` ile iki eşzamanlı çağırandan EN
+// FAZLA biri `'OK'` alabilir, DÖNÜŞ DEĞERİ kontrol edilerek bu garanti
+// KULLANILIR); (2) "sahip ÖLÜ/anahtar yok → devral" dalı artık bir
+// Lua CAS betiği (`TAKEOVER_IF_UNCHANGED_SCRIPT`) — yalnızca anahtarın
+// değeri BEN OKUDUĞUM hâliyle AYNIYSA yazar, aksi hâlde `'CONFLICT'` döner
+// ve çağıran YENİDEN dener; (3) "zaten BENİM" dalı `SET … XX` (yalnızca
+// anahtar VARSA güncelle) — ayrı bir `NX`/`CAS` gerektirmez, zararı en fazla
+// gereksiz bir no-op'tur.
+//
+// KALINTI RİSKLER (solid'in işaret ettiği İKİ ek kusur, ÖLÇÜLEMEYEN/TAM
+// ÇÖZÜMÜ orantısız karmaşıklık gerektiren, bu yüzden BİLİNÇLİ SINIRLANDIRMA
+// olarak kayda geçirilen): (a) PID YENİDEN KULLANIMI — `isForeignProcessAlive`
+// yalnızca "bu numaralı pid ŞU AN canlı mı" sorar, "bu pid HÂLÂ AYNI
+// koordinatör süreç mi" sorusuna cevap VEREMEZ; işletim sistemi önceki
+// koşumun ÖLÜ pid'ini TTL penceresi (120 sn) içinde İLGİSİZ, canlı bir
+// sürece YENİDEN ATARSA bu kapı YANLIŞ-POZİTİF (gürültülü, ama GÜVENLİ
+// YÖNDE — fazladan bir "sırayla çalıştır" fırlatması) üretebilir. Gerçek
+// çözüm (pid + süreç BAŞLANGIÇ ZAMANI fingerprint'i, `ps`/`/proc` ile
+// platformlar arası elde edilir) bu dosyanın KENDİSİNE yeni bir OS syscall
+// bağımlılığı ekler — ÖLÇÜLMEDİ, EKLENMEDİ; pencere TTL ile SINIRLI kalır.
+// (b) MARKER ÖMRÜ — `RUN_OWNER_TTL_SECONDS` (120) bir koşumun BİTTİĞİ anı
+// BİLEMEZ (tek bir `createTestApp()` çağrısının "son çağrı" olup olmadığını
+// gösteren bir sinyal YOKTUR, vitest `isolate: true` her dosyayı AYRI bir
+// alt süreçte koşturduğu için); marker en kötü durumda koşumdan 120 sn SONRA
+// hâlâ "sahipli" görünebilir. TTL'i düşürmek bu riski KÜÇÜLTMEZ, TERSİNE
+// yavaş bir test dosyasının iki `createTestApp()` çağrısı arasında marker'ın
+// ERKEN DOLMASI riskini BÜYÜTÜR (o durumda YENİ bir koşum "sahip yok" sanıp
+// AYNI ANDA devam eden eski koşumla ÇARPIŞIR — tam olarak önlenmek istenen
+// senaryo). Bu yüzden TTL DEĞİŞTİRİLMEDİ; kalıntı risk olarak kayda geçti
+// (backend T-019 gate tur1 raporu).
+const RUN_OWNER_KEY = 'platform:test-harness:run-owner'
+const RUN_OWNER_TTL_SECONDS = 120
+
+/**
+ * {@link assertSoleRunOwnership}'in "sahip ÖLÜ veya anahtar YOK → devral"
+ * dalının CAS (compare-and-swap) betiği — `GET` ile okunan `current`,
+ * `ARGV[1]`'de taşınan "son görülen değer" İLE AYNIYSA yazar (atomik: Redis
+ * `EVAL` TEK iş parçacıklı yürütülür). `ARGV[1]` boş dize İSE "anahtar YOK"
+ * beklentisini taşır (`redis.call('GET', …)` yoksa `false` döner, Lua'da
+ * `nil`'e eşdeğer — JS tarafındaki `null`'un Lua karşılığı). Eşleşmezse
+ * (biri BENDEN ÖNCE devraldı) `'CONFLICT'` döner, çağıran YENİDEN dener.
+ */
+const TAKEOVER_IF_UNCHANGED_SCRIPT = `
+local current = redis.call('GET', KEYS[1])
+if (current == false and ARGV[1] == '') or (current == ARGV[1]) then
+  redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+  return 'OK'
+end
+return 'CONFLICT'
+`
+
+/** `EVAL` sonucu dış kaynaklı (Redis) veridir — tip verilmeden GÜVENİLMEZ, `rate-limit.service.ts`'in BİREBİR deseni (Zod ile doğrulama). */
+const takeoverResultSchema = z.enum(['OK', 'CONFLICT'])
+
+/**
+ * T-019 GATE TUR 3 DÜZELTMESİ (Q-1, Orkestratör'ün bağımsız ölçümü + bu
+ * dosyanın KENDİ önceki raporu) — `assertSoleRunOwnership`'in "① başarısız →
+ * ② zaten benim → tazele" dalını TEK round-trip'e indirir. ÖNCESİ: `GET`
+ * (oku) + `SET … XX` (tazele) İKİ AYRI komuttu — Orkestratör'ün bağımsız
+ * ölçümünde (3 kök `pnpm test` koşumundan 1'i, `validation.test.ts` 1310/
+ * 1335ms ↔ 6151ms arası ~4.7× sıçrama, Vitest 5000ms timeout'uyla düştü) bu
+ * ek round-trip'in aritmetiği (`1500ms 'health' commandTimeout × round-trip
+ * sayısı ≈ 5s eşiği`) en güçlü aday olarak işaretlendi. Bu betik `GET`+
+ * (eşleşiyorsa) `SET … EX` kararını ATOMİK TEK komutla verir — ① ile AYNI
+ * atomiklik garantisini taşır (Redis `EVAL` tek iş parçacıklı), round-trip
+ * sayısını 3'ten (`SET-NX` başarısız + `GET` + `SET-XX`) 2'ye düşürür
+ * (`SET-NX` başarısız + bu betik). Dönüş: anahtar BENİMSE → `'MINE'`
+ * (TTL BU ÇAĞRIDA tazelenmiş olur, ayrı bir `SET` gerekmez); anahtar YOKSA
+ * → `''` (JS tarafı `null`'a eşler, "sahipsiz" anlamına gelir); aksi hâlde
+ * → anahtarın GÜNCEL değeri (yabancı sahip, çağıran `isForeignProcessAlive`
+ * ile karar verir — bu karar `process.kill` syscall'ı GEREKTİRDİĞİ için Lua
+ * içine TAŞINAMAZ, Node tarafında kalmak ZORUNDA).
+ *
+ * ⚠ ÖLÇÜLMÜŞ RİSK/FAYDA DENGESİ (dürüstçe kayda geçirilen): bu düzeltme
+ * Orkestratör'ün bağımsız gözlemiyle TUTARLI bir aritmetiğe dayanır, ama
+ * backend'in KENDİ enstrümantasyonu (TEŞHİS-T019-Q1, 11 ardışık enstrümante
+ * kök/izole koşum, HEPSİ yeşil, en yüksek tek-komut gecikmesi ~124ms) bu
+ * round-trip'lerin stalling YAPTIĞINI DOĞRUDAN YAKALAYAMADI — yani bu, kanıtlanmış
+ * bir kök neden düzeltmesi DEĞİL, Orkestratör'ün ölçümüyle TUTARLI, SIFIR
+ * davranış riski taşıyan (round-trip azaltımı mevcut ATOMİKLİK/fail-closed
+ * garantisini DEĞİŞTİRMEZ, SADECE komut sayısını azaltır) bir sertleştirmedir.
+ * Raporun KARARLAR bölümünde bu nüans AÇIKÇA işaretlendi.
+ */
+const REFRESH_IF_MINE_SCRIPT = `
+local current = redis.call('GET', KEYS[1])
+if current == ARGV[1] then
+  redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+  return 'MINE'
+end
+if current == false then
+  return ''
+end
+return current
+`
+
+/** `process.kill(pid, 0)` sinyal GÖNDERMEZ, yalnızca süreç VARLIĞINI/izin durumunu sınar. */
+function isForeignProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ESRCH') {
+      return false
+    }
+    // `EPERM` (süreç YAŞIYOR ama sinyal izni yok) veya TANINMAYAN bir hata —
+    // temkinli varsayım YAŞIYOR'dur: yanlış-pozitif FAIL (gereksiz durdurma)
+    // yanlış-negatif SESSİZ KİRLENMEden daha güvenlidir.
+    return true
+  }
+}
+
+/**
+ * Flush'tan ÖNCE çağrılır (Redis'e platform:auth:* DOKUNULMADAN ÖNCE).
+ * Yabancı VE YAŞAYAN bir koşum tespit edilirse fırlatır (LOUD, dosya başı
+ * yorumun gerekçesi) — aksi hâlde marker'ı KENDİ `process.ppid`'ime
+ * (TTL tazelenmiş) yazıp SESSİZCE devam eder.
+ *
+ * T-019 gate tur1 düzeltmesi (solid, medium) — dosya başı yorumu: atomik
+ * dallar, hiçbiri "oku → kararver → yaz" ARALIĞINDA Redis'e BAŞKA bir komut
+ * göndermez. T-019 GATE TUR 3 DÜZELTMESİ (Q-1) — `REFRESH_IF_MINE_SCRIPT`
+ * dosya başı yorumu: ② artık `GET`+`SET … XX` İKİLİSİ DEĞİL, TEK bir Lua
+ * çağrısı (round-trip azaltımı):
+ *   ① `SET … NX` — anahtar YOKSA tek komutla iddia et (atomik, DÖNÜŞ
+ *     DEĞERİ `'OK'`/`null` kontrol edilir).
+ *   ② `REFRESH_IF_MINE_SCRIPT` — anahtar BENİMSE TEK komutla oku+tazele
+ *     (`'MINE'` döner); anahtar YOKSA (`''`) veya YABANCI sahipliyse
+ *     (sahibin `ppid`'i) ③'e geçilir.
+ *   ③ sahip YABANCI ve ÖLÜ (veya ② ile ③ arasında TTL dolduysa YOK) —
+ *     `TAKEOVER_IF_UNCHANGED_SCRIPT` (Lua CAS) ile devral; biri BENDEN
+ *     ÖNCE devraldıysa (`'CONFLICT'`) YENİDEN dene.
+ */
+/** `REFRESH_IF_MINE_SCRIPT`'in dönüşü dış kaynaklı (Redis) veridir — serbest metin (anahtar yoksa `''`, benimse `'MINE'`, aksi hâlde yabancı `ppid` string'i), Zod `z.string()` ile tip DOĞRULANIR (diğer iki betiğin BİREBİR deseni). */
+const refreshIfMineResultSchema = z.string()
+
+async function assertSoleRunOwnership(redisService: RedisService): Promise<void> {
+  const myRunId = String(process.ppid)
+
+  const claimed = await redisService.client.set(
+    RUN_OWNER_KEY,
+    myRunId,
+    'EX',
+    RUN_OWNER_TTL_SECONDS,
+    'NX',
+  )
+
+  if (claimed === 'OK') {
+    return
+  }
+
+  // T-019 GATE TUR 3 DÜZELTMESİ (Q-1) — `REFRESH_IF_MINE_SCRIPT` dosya başı
+  // yorumu: ÖNCEKİ `GET` + `SET … XX` İKİLİSİ'nin TEK, atomik round-trip'e
+  // indirilmiş hâli. ② ve ③'ün "oku" adımını BİRLEŞTİRİR.
+  const currentOwnerRaw = await redisService.client.eval(
+    REFRESH_IF_MINE_SCRIPT,
+    1,
+    RUN_OWNER_KEY,
+    myRunId,
+    String(RUN_OWNER_TTL_SECONDS),
+  )
+  const refreshResult = refreshIfMineResultSchema.parse(currentOwnerRaw)
+
+  if (refreshResult === 'MINE') {
+    return
+  }
+
+  const currentOwner = refreshResult === '' ? null : refreshResult
+
+  if (currentOwner !== null) {
+    const foreignPid = Number.parseInt(currentOwner, 10)
+
+    if (Number.isInteger(foreignPid) && isForeignProcessAlive(foreignPid)) {
+      throw new Error(
+        `flushRateLimitCounters: BAŞKA BİR test koşumu (ppid=${currentOwner}) bu Redis'i ŞU ANDA kullanıyor — eşzamanlı 'pnpm test' / 'pnpm test:isolation' (veya iki ayrı 'pnpm --filter @arkesoft/api test') çalıştırması TESPİT EDİLDİ. 'platform:auth:*' flush'ı o koşumun sayaçlarını SİLERDİ (ÖLÇÜLMÜŞ çapraz-koşum kirlenmesi, T-019/S7/K7). Testleri SIRAYLA çalıştırın.`,
+      )
+    }
+    // Yabancı sahip ÖLÜ (önceki koşum çökmüş/bitmiş) — kalıntı marker,
+    // CAS ile SESSİZCE devral (yanlış-pozitif önlenir), ③'e devam.
+  }
+
+  const takeoverRaw = await redisService.client.eval(
+    TAKEOVER_IF_UNCHANGED_SCRIPT,
+    1,
+    RUN_OWNER_KEY,
+    currentOwner ?? '',
+    myRunId,
+    String(RUN_OWNER_TTL_SECONDS),
+  )
+  const takeoverResult = takeoverResultSchema.parse(takeoverRaw)
+
+  if (takeoverResult === 'CONFLICT') {
+    // Biri BENDEN ÖNCE devraldı (anahtar değişti) — YENİDEN oku/karar ver.
+    // Tek seviye özyineleme: eşzamanlı koşum sayısı pratikte TEKTİR (bu
+    // dosyanın KENDİSİ zaten çarpışmayı "sırayla çalıştır" fırlatmasıyla
+    // ÖNLÜYOR), sonsuz döngü riski YOK.
+    await assertSoleRunOwnership(redisService)
+  }
+}
+
 // `NODE_ENV` KAYNAĞI — `process.env` (ApiEnv DEĞİL), ÖLÇÜLEREK seçildi —
 // İLK denemede `ApiEnv.NODE_ENV` kullanıldı (`tenant-resolver.service.ts:11-13`
 // ve `auth-instance.ts:17-33`'ün AYNI kuralını taşıdığı düşünülerek: "NODE_ENV
@@ -92,6 +348,7 @@ import type { Writable } from 'node:stream'
 import { Module } from '@nestjs/common'
 import type { INestApplication, Type } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
+import type { Redis } from 'ioredis'
 import type { Logger } from 'pino'
 import { z } from 'zod'
 
@@ -104,8 +361,10 @@ import { HEALTH_CHECKS } from '../../health/health.tokens.js'
 import { ArkesoftNestLogger } from '../../logging/arkesoft-nest-logger.js'
 import { ROOT_LOGGER } from '../../logging/logging.tokens.js'
 import { createRootLogger } from '../../logging/root-logger.js'
+import { REDIS_CLIENT } from '../../redis/redis.tokens.js'
 import { RedisService } from '../../redis/redis.service.js'
 import { AuthPrismaClientResourceBootProbeFixture } from './auth-prisma-client-resource-boot-probe-fixture.js'
+import { createTestHarnessRedisConnection } from './create-test-redis-connection.js'
 
 /** `platform:auth:*` anahtarları `redisService.client.scanStream`'den TOPLU `del`'e geçer — `KEYS` KULLANILMAZ. */
 const RATE_LIMIT_KEY_SCAN_PATTERN = 'platform:auth:*'
@@ -147,6 +406,13 @@ async function flushRateLimitCounters(apiEnv: ApiEnv, redisService: RedisService
       `flushRateLimitCounters yalnızca loopback Redis'e (127.0.0.1/::1/localhost) karşı koşabilir — fail-closed kapı tetiklendi (çözülen host: ${redisHost})`,
     )
   }
+
+  // T-019/S7 EKLEMESİ (K7) — ÜÇÜNCÜ kapı: EŞZAMANLI KOŞUM TESPİTİ. Dosya başı
+  // GÜNCELLEME yorumuna bkz. İKİ ÖNCEKİ kapının AKSİNE bu kapı Redis'e İKİ
+  // komut gönderir (`GET`+`SET`, `platform:test-harness:run-owner` anahtarı)
+  // AMA bunlar `platform:auth:*` NAMESPACE'İNİN DIŞINDADIR — SCAN+DEL'DEN
+  // ÖNCE çalışır, yıkıcı adımdan ÖNCE fırlar.
+  await assertSoleRunOwnership(redisService)
 
   const stream = redisService.client.scanStream({ match: RATE_LIMIT_KEY_SCAN_PATTERN, count: 100 })
 
@@ -244,6 +510,31 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
       .overrideProvider(AuthPrismaClientResource)
       .useClass(AuthPrismaClientResourceBootProbeFixture)
   }
+
+  // T-019 DÜZELTME TURU 4 EKLEMESİ (Q-1, kullanıcı kararı — dosya başı
+  // yorumuna EKLENMEDİ, çünkü KOŞULSUZ: hiçbir opsiyon bayrağı YOK, HER
+  // `createTestApp()` çağrısı bunu alır. GEREKÇE: `REDIS_CLIENT`
+  // provider'ının ÜRETİM fabrikası (`redis.module.ts`) her zaman `'health'`
+  // profilini (1500ms `commandTimeout`, R-A4 pinli, BİLİNÇLİ fail-fast)
+  // seçer — bu PRODUCTION'da DOĞRUDUR ama test harness'ı bunu MİRAS ALINCA
+  // ÖLÇÜLMÜŞ bir flake üretir (bkz. `create-test-redis-connection.ts` dosya
+  // başı yorumu: `auth-flow.test.ts`/`rate-limit.test.ts`, İKİ AYRI yük
+  // altında koşum, İKİSİNDE de `RATE_LIMIT_STORE_UNAVAILABLE`/"Command
+  // timed out", `qa` tur 2'nin GERÇEK yük altında gözlediği İMZANIN BİREBİR
+  // AYNISI). Bu override `REDIS_CLIENT`'ı test-only, DAHA TOLERANSLI bir
+  // `commandTimeout`'a (4000ms, ÖLÇÜME DAYALI) sahip bir istemciyle
+  // DEĞİŞTİRİR — `'health'` profilinin KENDİSİ (`buildRedisConnectionOptions`)
+  // DEĞİŞMEDEN kalır, mekanik izolasyon `create-test-redis-connection.ts`'in
+  // dosya başı yorumunda (dört katman). `inject` DİZİSİ `redis.module.ts`'in
+  // KENDİ `redisClientProvider`'ıyla BİREBİR aynı (`API_ENV`, `ROOT_LOGGER`)
+  // — `apiEnv` override edilmişse (yukarıdaki `options.apiEnv` dalı) bu
+  // fabrika da O override edilmiş `REDIS_URL`'i okur, K-A4/AC6 deseniyle
+  // TUTARLI.
+  moduleBuilder.overrideProvider(REDIS_CLIENT).useFactory({
+    factory: (env: ApiEnv, logger: Logger): Redis =>
+      createTestHarnessRedisConnection(env.REDIS_URL, logger),
+    inject: [API_ENV, ROOT_LOGGER],
+  })
 
   const moduleRef = await moduleBuilder.compile()
   const app: INestApplication<Server> = moduleRef.createNestApplication()

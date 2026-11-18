@@ -38,6 +38,8 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { collectImportStatements } from './helpers/collect-import-statements.js'
+
 /** Depo kökü — bu dosya `apps/api/src/__tests__/` altında. */
 const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url))
 
@@ -228,51 +230,13 @@ describe('KAPI 2 — üretim kodunda kullanıcı SERT SİLME yolu yok (K-A12 mad
   })
 })
 
-/**
- * Bir TypeScript kaynağının `import` ifadelerini çıkarır ve her ifadeyi TEK
- * SATIRA indirger. SAF fonksiyon (dosya okumaz) — bu yüzden sentetik kaynakla
- * doğrudan ölçülebilir.
- *
- * ⚠ Yorumlar BİLEREK kapsam dışı ve bu ölçülmüş bir gerekliliktir: denetim
- * yazma kapısının dosya başı yorumu "logger" kelimesini zaten ANIYOR
- * (iddiasını yazıyor) — yorumları da tarayan bir kapı kendi gerekçe metnini
- * ihlal sanardı.
- *
- * ⚠⚠ NEDEN SATIR BAZLI SÜZME YETMİYOR — `qa` TUR 1'DE ÖLÇÜLMÜŞ KÖR NOKTA
- * (`solid` tur 1, L-4): bu kapının ilk biçimi yalnızca `import` ile BAŞLAYAN
- * satırları süzüyordu. TypeScript import'ları ÇOK SATIRLI yazılabilir ve o
- * biçimde jeton İKİNCİ/ÜÇÜNCÜ satıra düşer; birinci satır `import` ile başlar
- * ama jetonu TAŞIMAZ → kapı YEŞİL kalır. `qa` bunu varsaymadı, ÖLÇTÜ: denetim
- * yazma kapısına gerçek, çözülebilen ve TÜKETİLEN çok satırlı bir logger
- * import'u eklendiğinde `pnpm typecheck` EXIT 0 verdi ve KAPI 3 **7/7 yeşil**
- * geçti. Düzeltme: ifadeler kapanış tırnağına kadar BİRLEŞTİRİLİR.
- */
-export function collectImportStatements(source: string): string[] {
-  const statements: string[] = []
-  let pending: string | undefined
-
-  for (const rawLine of source.split('\n')) {
-    const line = rawLine.trim()
-
-    if (pending === undefined) {
-      if (!line.startsWith('import')) {
-        continue
-      }
-      pending = line
-    } else {
-      pending = `${pending} ${line}`
-    }
-
-    // Bir import ifadesi modül yolunun kapanış tırnağıyla (isteğe bağlı `;`)
-    // biter. Kapanmayan ifade SONRAKİ satırla birleşmeye devam eder.
-    if (/['"];?$/.test(pending)) {
-      statements.push(pending)
-      pending = undefined
-    }
-  }
-
-  return statements
-}
+// `collectImportStatements` (saf import-ifadesi tarayıcısı, çok satırlı
+// import birleştirme dahil) `./helpers/collect-import-statements.js`'e
+// TAŞINDI (ROADMAP v0.1.0, T-019 düzeltme turu 5, `solid` tur 2 M-B) — bu
+// dosya BİR TEST dosyasıydı ve `test-harness-redis-profile-isolation.
+// test.ts` onu doğrudan buradan import ettiğinde Vitest bu dosyanın KENDİ
+// `describe`/`it` bloklarını da İKİNCİ KEZ koşturuyordu. Fonksiyonun kendisi
+// ve kör nokta gerekçesi yardımcı dosyada DEĞİŞMEDEN duruyor.
 
 /** Logger/pino jetonu taşıyan import ifadeleri — jeton çalışma anında birleştirilir. */
 const LOGGER_IMPORT_PATTERN = new RegExp(['logging', 'logger', 'pino'].join('|'), 'i')

@@ -12,23 +12,30 @@ v0.0.9, T-010'da ilk içeriğini kazandı (v0.0.1'deki hâli boş bir iskeletti)
 
 ## Neden kapalı bir bağımlılık listesi
 
-`dependencies` alanı **tam olarak** `{ "zod": "catalog:" }` — ne daha az ne
-daha fazla. `@arkesoft/errors` **bilerek dahil edilmedi**: `AppError`
-`httpStatus` taşır, bu paket ise HTTP'yi hiç bilmez (bu paketin doğrulama
-fonksiyonları ayrımlı birleşim döner, bkz. `src/errors.ts` dosya başı
-yorumu — CLAUDE.md §4'ten bilinçli bir sapma, gerekçesi orada). Semver
-karşılaştırması (`packages/versioning`) de **dahil edilmedi** — bu paket
-`sdkRange`/`version` alanlarının yalnızca BİÇİMİNİ doğrular, bir sürümün bir
-aralığa UYUP uymadığını hesaplamaz.
+`dependencies` alanı **tam olarak** `{ "@arkesoft/versioning": "workspace:*",
+"zod": "catalog:" }` — ne daha az ne daha fazla (ADR-0020 Karar 2/B,
+v0.0.21'de `@arkesoft/versioning` eklendi). `@arkesoft/errors` **bilerek
+dahil edilmedi**: `AppError` `httpStatus` taşır, bu paket ise HTTP'yi hiç
+bilmez (bu paketin doğrulama fonksiyonları ayrımlı birleşim döner, bkz.
+`src/errors.ts` dosya başı yorumu — CLAUDE.md §4'ten bilinçli bir sapma,
+gerekçesi orada). Semver **karşılaştırması** (`parseSemver`/`compareSemver`/
+`satisfies`) hâlâ **dahil edilmedi** — bu paket `sdkRange`/`version`
+alanlarının yalnızca BİÇİMİNİ doğrular, bir sürümün bir aralığa UYUP
+uymadığını hesaplamaz; `@arkesoft/versioning`'den ithal edilen tek şey üç
+biçim ilkesidir (`SEMVER_CORE_PATTERN_SOURCE`, `SEMVER_FORMAT_PATTERN`,
+`extractMajor`).
 
 `src/__tests__/purity.test.ts` bu iddiayı iki yönden pinler:
 
 1. `src/` üretim kaynaklarında (`__tests__` hariç) Node built-in'leri
    (`node:fs`, `node:http` vb.), `fetch(`, `process.`, `@nestjs`, `express`,
-   `@prisma`, `@arkesoft/*` dizgilerinden hiçbiri geçemez (yorum satırları
-   hariç — grep kapsamı yalnızca gerçek kod satırlarıdır).
-2. `package.json`'daki `dependencies` **tam olarak** `{ zod: 'catalog:' }`
-   olmak zorunda.
+   `@prisma`, `@arkesoft/*` dizgilerinden hiçbiri geçemez — **istisna:**
+   `@arkesoft/versioning` (ADR-0020 Karar 2/B ile açılan TEK istisna; başka
+   hiçbir `@arkesoft/*` serbest değildir) — (yorum satırları hariç, grep
+   kapsamı yalnızca gerçek kod satırlarıdır).
+2. `package.json`'daki `dependencies` **tam olarak**
+   `{ zod: 'catalog:', '@arkesoft/versioning': 'workspace:*' }` olmak
+   zorunda.
 
 ## Hata ve mesaj sözleşmesi
 
@@ -51,9 +58,12 @@ bu tablonun eksiksiz olduğunu derleme zamanında zorlar.
 - `src/assert-never.ts` — paket-yerel `assertNever` (platformdaki BEŞİNCİ
   kopya, bilinçli karar — gerekçe dosya başı yorumunda, ROADMAP borç 1583
   ile çatışmaz, onu teyit eder).
-- `src/semver-format.ts` — tema sürüm/`sdkRange` biçimi için TEK kaynak
-  (`chain.ts` ve `manifest.ts` buradan besleniyor); yalnızca BİÇİM doğrular,
-  aralık karşılaştırması yapmaz (`packages/versioning`'in işi).
+- Tema sürüm/`sdkRange` biçimi için semver çekirdek desenini (`SEMVER_CORE_
+PATTERN_SOURCE`) artık bu paket TANIMLAMAZ — `@arkesoft/versioning`'den
+  ithal eder (`chain.ts` ve `manifest.ts` buradan besleniyor, ADR-0020 Karar
+  2/B). Bu paket yalnızca BİÇİM ilkesini kullanır; `parseSemver`/
+  `compareSemver`/`satisfies` İTHAL ETMEZ, aralık karşılaştırması o pakette
+  kalır.
 - `src/json-schema.ts` — `docs/theme-contract.schema.json`'ın **saf** üretici
   fonksiyonu; şema **nesnesi** döndürür, dosya YAZMAZ (I/O `scripts/`'te).
 - `src/define-theme.ts` — tema yazarının `theme.config.ts`'inden çağırdığı

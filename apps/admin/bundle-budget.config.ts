@@ -43,6 +43,14 @@ export const FIRST_PAINT_ENTRY_POINTS: readonly FirstPaintEntryPointDeclaration[
     label: 'kimliksiz ilk ekran (/sign-in)',
     routeModuleSrcPrefixes: ['src/routes/_auth.sign-in.tsx'],
   },
+  // ROADMAP v0.1.0 (T-019/S10) EKLEMESİ — `/kayit`, `/sign-in`'in BİREBİR
+  // kardeşi: kimliksiz bir kullanıcının (pazarlama bağlantısı, e-posta
+  // davet, doğrudan yazılan URL) İLK isteği olabilecek bir URL (docs/ui/
+  // T-019 KARAR 1, gerekçe madde 1).
+  {
+    label: 'kimliksiz ikinci ilk ekran (/kayit)',
+    routeModuleSrcPrefixes: ['src/routes/_auth.kayit.tsx'],
+  },
 ]
 
 /**
@@ -77,4 +85,15 @@ export const FIRST_PAINT_ENTRY_POINTS: readonly FirstPaintEntryPointDeclaration[
 // BÜYÜTMÜYOR. Satır KALDIRILIRSA (perf) FAIL-CLOSED B bunu yakalar.
 export const DELIBERATELY_LAZY_ROUTE_SRCS: readonly string[] = [
   'src/routes/_app.hesap.guvenlik.tsx?tsr-split=component',
+  // ROADMAP v0.1.0 (T-019/S10) EKLEMESİ, İKİ yeni satır — docs/ui/T-019
+  // KARAR 1, gerekçe madde 2: `/magaza-olustur` ve `/kurulum/{slug}`
+  // bookmarklanabilir/paylaşılabilir olmaları onları OTOMATİK ilk-boya
+  // yapmıyor (`/hesap/guvenlik` emsali ZATEN bunu kanıtlıyor — `_app`
+  // korumalı rotaların İKİ kanonik "ilk yükleme" deneyimi yalnızca `/` ve
+  // `/sign-in`). Derin bağlantıyla doğrudan gelindiğinde kabuk+ana paket
+  // ÖNCE yüklenir, SONRA bu rotanın kendi chunk'ı normal client-side lazy-
+  // import ile gelir — kabul edilebilir bir şelale (waterfall) maliyeti,
+  // "ilk içerikli rota" bütçesine SAYILMAZ.
+  'src/routes/_app.magaza-olustur.tsx?tsr-split=component',
+  'src/routes/_app.kurulum.$slug.tsx?tsr-split=component',
 ]

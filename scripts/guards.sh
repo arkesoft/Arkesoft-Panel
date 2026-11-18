@@ -385,6 +385,149 @@ check_ac4_guc_tokens() {
 }
 
 # ---------------------------------------------------------------------------
+# K8 — `.env` ↔ `.env.example` ANAHTAR ADI drift kontrolü (ROADMAP T-019/S12,
+# kullanıcı kararı 2026-11-12, T-018'den iliştirildi).
+#
+# AMAÇ: yalnızca ANAHTAR ADLARI (`=` solu) karşılaştırılır — DEĞERLER bu
+# fonksiyonun HİÇBİR satırında okunmaz/atanmaz/yazdırılmaz. Kanıt kodun
+# kendisi: `cut -d= -f1` her satırın SOLUNU alır, sağı (değeri) hiçbir
+# değişkene girmez ve `diff`/`echo` çağrılarının GİRDİSİ her zaman bu
+# kesilmiş anahtar listesidir, ham satır değil.
+#
+# `.env` YOKSA (CI'ın ephemeral ortamı) ATLA, FAIL ETME — AC12a'nın
+# gerekçesiyle AYNI sınıf (bkz. dosya başı yorumu, ":35-38"): CI'da gerçek
+# bir `.env` yoktur ve bu kontrolün amacı "yerel .env bayatladı" sınıfı bir
+# sapmayı yakalamaktır, CI'ın .env'siz çalışmasını değil.
+# ---------------------------------------------------------------------------
+check_k8_env_example_drift() {
+  local env_file=".env"
+  local example_file=".env.example"
+
+  if [ ! -f "$env_file" ]; then
+    echo "K8: $env_file bulunamadı — atlanıyor (CI'da normal, BLOKLAMAZ; AC12a ile aynı gerekçe)."
+    return 0
+  fi
+  if [ ! -f "$example_file" ]; then
+    echo "K8 taraması hata verdi: $example_file bulunamadı — fail-closed."
+    return 1
+  fi
+
+  local env_keys example_keys
+  env_keys="$(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$env_file" | cut -d= -f1 | sort -u)"
+  example_keys="$(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$example_file" | cut -d= -f1 | sort -u)"
+
+  local key_diff
+  if key_diff="$(diff <(printf '%s\n' "$example_keys") <(printf '%s\n' "$env_keys"))"; then
+    local key_count
+    key_count="$(printf '%s\n' "$example_keys" | grep -c .)"
+    echo "K8: .env ve .env.example anahtar ADLARI eşleşiyor ($key_count anahtar; değerler karşılaştırılmadı/okunmadı)."
+    return 0
+  fi
+  echo "K8 İHLALİ — .env ve .env.example ANAHTAR ADLARI sapmış (yalnızca ad, DEĞER gösterilmiyor/okunmuyor):"
+  printf '%s\n' "$key_diff"
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# Slug grameri tek-kaynak taraması (ROADMAP T-019/S12, architect KARAR 1,
+# R-A3). `TENANT_SLUG_PATTERN` `packages/tenancy/src/slug.ts`'e TAŞINDI
+# (kopyalanmadı) — bu kontrol o taşımanın GERİ KAYMADIĞINI (ikinci bir regex
+# literalinin doğmadığını) mekanik olarak zorlar.
+#
+# ⚠⚠ TAM DESEN aranır, ÖNEKİ DEĞİL (Orkestratör ölçümü, S2 üretim logu):
+# `^[a-z0-9]` öneki `apps/api/src/member/invitation-token.ts:74`'teki
+# `TENANT_ID_PATTERN` (cuid2 karakter kümesi kontrolü, slug grameri DEĞİL)
+# ile KALICI YANLIŞ POZİTİF üretir. Literal-jeton kuralı (AGENT_BASELINE.md
+# §5): bu kontrol bir regex literalinin TEKİLLİĞİNİ denetliyor, deseni
+# kendi metninde BİTİŞİK yazmaz — iki parçadan çalışma anında birleştirilir.
+# ---------------------------------------------------------------------------
+check_slug_grammar_single_source() {
+  local pattern_a='/^[a-z0-9](?:[a-z0-9-]{0,61}'
+  local pattern_b='[a-z0-9])?$/'
+  local pattern="${pattern_a}${pattern_b}"
+
+  local home_dir="packages/tenancy/src"
+  if [ ! -d "$home_dir" ]; then
+    echo "Slug grameri taraması hata verdi: $home_dir bulunamadı — fail-closed."
+    return 1
+  fi
+
+  local home_matches home_count
+  home_matches="$(grep -rnF -- "$pattern" "$home_dir" 2>/dev/null || true)"
+  home_count="$(printf '%s\n' "$home_matches" | grep -c . || true)"
+  if [ -z "$home_matches" ]; then
+    home_count=0
+  fi
+  if [ "$home_count" != "1" ]; then
+    echo "Slug grameri İHLALİ — $home_dir'de desen TAM BİR kez bekleniyordu, $home_count kez bulundu:"
+    printf '%s\n' "$home_matches"
+    return 1
+  fi
+
+  local other_dirs=("apps/api/src" "packages/trpc/src" "apps/admin/src")
+  local violation=false
+  local dir
+  for dir in "${other_dirs[@]}"; do
+    [ -d "$dir" ] || continue
+    local outside_matches
+    outside_matches="$(grep -rnF -- "$pattern" "$dir" 2>/dev/null || true)"
+    if [ -n "$outside_matches" ]; then
+      echo "Slug grameri İHLALİ — desen $dir İÇİNDE bulundu (tek kaynak ihlali):"
+      printf '%s\n' "$outside_matches"
+      violation=true
+    fi
+  done
+
+  if [ "$violation" = true ]; then
+    return 1
+  fi
+  echo "Slug grameri: desen yalnızca $home_dir'de tam bir kez (apps/api/src, packages/trpc/src, apps/admin/src'te sıfır)."
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# AC-16 — gerçek DNS çağrısı yokluğu taraması (ROADMAP T-019, `po`'nun
+# R-PO7'si). Kapsam kararı: v0.1.0 "wildcard DNS VARSAYIMI"dır; gerçek DNS
+# API yazımı v0.2.0'ın işi (`ROADMAP:1300`). Bu kontrol negatif bir kriteri
+# mekanik hale getirir.
+#
+# Literal-jeton kuralı (AGENT_BASELINE.md §5): yasaklanan jeton ("dns" /
+# "node:dns") bu kontrolün kendi metninde BİTİŞİK yazılmaz, çalışma anında
+# iki parçadan birleştirilir — AC4/AC8 ile AYNI disiplin (bu dosya .ts
+# taramasının hedefinde değil ama hedef küme genişlerse kendi kendini
+# eşletirmez).
+# ---------------------------------------------------------------------------
+check_ac16_no_real_dns_call() {
+  local dns_token_a='d'
+  local dns_token_b='ns'
+  local dns_token="${dns_token_a}${dns_token_b}"
+  local pattern="(from|require)[[:space:]]*\\(?[\"']((node:)?${dns_token}(/promises)?)[\"']"
+
+  local scan_targets
+  scan_targets="$(find apps/api/src packages -type f -name '*.ts' -path '*/src/*' -not -path '*/__tests__/*' 2>/dev/null)"
+  if [ -z "$scan_targets" ]; then
+    echo "AC-16 taraması hata verdi: tarama hedefi (apps/api/src + packages/**/src) üretilemedi — fail-closed."
+    return 1
+  fi
+
+  local target_array=()
+  while IFS= read -r scan_line; do
+    [ -z "$scan_line" ] && continue
+    target_array+=("$scan_line")
+  done <<<"$scan_targets"
+
+  local matches
+  matches="$(grep -nE -- "$pattern" "${target_array[@]}" 2>/dev/null || true)"
+  if [ -n "$matches" ]; then
+    echo "AC-16 İHLALİ — gerçek DNS modülü/SDK import jetonu bulundu (gerçek DNS yazımı v0.2.0'ın işi):"
+    printf '%s\n' "$matches"
+    return 1
+  fi
+  echo "AC-16: gerçek DNS modülü/SDK import jetonu bulunmadı (apps/api/src + packages/**/src)."
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # actionlint — yalnızca kurulu ise (indirme CI'a özgü, kapsam dışı — bkz.
 # dosya başı not). Yerelde yoksa BLOKLAMADAN uyarı verir.
 # ---------------------------------------------------------------------------
@@ -406,6 +549,9 @@ run_step "scripts/ ESLint (A4)" check_scripts_eslint
 run_step "Sahte yeşil dedektörü — test paket kümesi" check_fake_green_test_packages
 run_step "Sahte yeşil dedektörü — izolasyon paket kümesi" check_fake_green_isolation_packages
 run_step "AC4 — GUC jetonları yalnızca tenant-context.ts'te" check_ac4_guc_tokens
+run_step "K8 — .env ↔ .env.example anahtar adı drift kontrolü" check_k8_env_example_drift
+run_step "Slug grameri tek-kaynak taraması" check_slug_grammar_single_source
+run_step "AC-16 — gerçek DNS çağrısı yokluğu taraması" check_ac16_no_real_dns_call
 run_step "actionlint (yerelde kuruluysa)" check_actionlint_if_available
 
 echo ""

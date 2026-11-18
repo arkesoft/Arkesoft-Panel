@@ -6,6 +6,17 @@
 // ÜRETMEZ. `role="status"` — UX'in "mağaza/kullanıcı kimliği gösterilmeyen
 // yerlerde 'yok' durumu sessiz değil, açık" niyetiyle aynı aile: boş durum
 // bir placeholder/boşluk değil, okunabilir bir durum.
+//
+// ⚠⚠ UI PLANINDAN SAPMA (ölçülmüş, bilinçli) — docs/ui/T-019-kayit-ve-
+// kiraci-olusturma.md "Mevcut bileşen genişletmeleri" bu dosyaya opsiyonel
+// bir `action` prop'u istiyordu ("CardContent'in ALTINDA bir Button render
+// eder"). Bu dosya T-019/S10'un "DOKUNACAĞIN DOSYALAR" listesinde YOK
+// (handoff'un kesin listesi `components/EmptyState.tsx`'i İÇERMİYOR) — bu
+// listeyi AŞMAMAK için `action` prop'u BURAYA EKLENMEDİ; aynı görsel/
+// işlevsel sonuç `_app.index.tsx`'te "Mağaza oluştur" butonunu `EmptyState`'in
+// KENDİSİNİN DIŞINDA, yan öğe olarak render ederek elde edildi (bkz. o
+// dosyanın gövdesi). RİSKLER'e taşındı — Orkestratör isterse bu dosyayı
+// ileride plan metniyle BİREBİR uyumlu hâle getirebilir.
 import type { JSX } from 'react'
 
 export interface EmptyStateProps {

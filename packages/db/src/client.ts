@@ -262,10 +262,28 @@ export type AppPrismaDatabase = Pick<PrismaDatabase, 'tenant' | 'user' | 'tenant
  * ⚠ Bu ekleme `__tests__/type-pins/auth-model-narrowing.pin.ts`'teki jenerik
  * kapalı dünya pinini GERÇEKTEN kırdı (ölçüldü: `TS2322`, o dosyanın doc'unda
  * tsc çıktısı birebir yazılı) — karar bu yüzden iki yerde kayda geçti.
+ *
+ * GENİŞLETME (ROADMAP v0.1.0, T-019/S1, architect VERİ MODELİ — ADR-0021
+ * §4): `'subscription'` EKLENDİ, allowlist DÖRT üyeden BEŞE çıktı. Gerekçe
+ * `'job'`/`'auditLog'`/`'tenantInvitation'`'ın BİREBİR aynısı: `Subscription`
+ * kiracıya bağlı bir tablodur, RLS'i VAR + FORCE'ludur, ama ona erişim
+ * YALNIZCA kiracı kapsamlı yolda gereklidir. Üye EKLENDİĞİ için
+ * `withTenant()`/`withNewTenant()` callback'i içindeki `tx.subscription.*`
+ * çağrıları DERLENİR; `prisma.db.subscription.*` (yani `AppPrismaDatabase`
+ * üzerinden) **DERLENMEZ** — bu da `job`/`auditLog`/`tenantInvitation` ile
+ * ZIT yönde ilerleyen, AÇIK ve BAĞLAYICI bir mimari karardır. ⚠ Simetrik ve
+ * BAĞLAYICI karar: `AppPrismaDatabase`'e `'subscription'` EKLENMEZ. Mekanik
+ * kanıt: `__tests__/type-pins/auth-model-narrowing.pin.ts` →
+ * `pinAppPrismaDatabaseDropsSubscription`. ⚠ `'plan'` BU ALLOWLIST'E DE
+ * EKLENMEDİ — `Plan` platform seviyesi bir tablodur (`tenant_id` TAŞIMAZ,
+ * bkz. `tenancy.ts` → `PLATFORM_LEVEL_TABLES`); okunması
+ * `withNewTenant()`'ın platform callback'i (`PlatformTenantWriter`,
+ * `tenant-context.ts`) içinde yapılır, kiracı kapsamlı transaction'ın
+ * (`TenantTransactionClient`) İÇİNDE DEĞİL.
  */
 export type TenantTransactionClient = Pick<
   TransactionClient,
-  'tenantMembership' | 'job' | 'auditLog' | 'tenantInvitation'
+  'tenantMembership' | 'job' | 'auditLog' | 'tenantInvitation' | 'subscription'
 >
 
 /**

@@ -1,5 +1,28 @@
 # @arkesoft/trpc
 
+## 0.7.0
+
+### Minor Changes
+
+- Artık yeni müşteriler panelde kendi başlarına kayıt olup birkaç adımda (hesap →
+  mağaza adı → mağaza adresi → site tipi) kendi mağazalarını oluşturabiliyor.
+  Mağaza adresi (alt alan adı) seçilirken müsaitlik anında kontrol ediliyor;
+  alınmış, yasaklı (www, api, admin gibi) veya Türkçe karakter içeren adlar
+  doğru şekilde işleniyor ve kullanıcıya anlaşılır bir hata gösteriliyor.
+  Kayıt tamamlandığında mağaza "kurulum bekliyor" durumunda doğuyor ve panelde,
+  mağazanızı ziyaretçilere açmak için kalan adımları gösteren bir kurulum
+  kontrol listesi görünüyor. [v0.1.0]
+
+### Patch Changes
+
+- @arkesoft/errors@0.9.0
+
+## 0.6.1
+
+### Patch Changes
+
+- @arkesoft/errors@0.8.0
+
 ## 0.6.0
 
 ### Minor Changes
