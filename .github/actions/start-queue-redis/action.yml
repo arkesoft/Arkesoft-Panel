@@ -1,0 +1,90 @@
+name: Kuyruk-yetenekli Redis'i ayağa kaldır (AC10 kapısının gereği)
+description: >-
+  ROADMAP v0.0.11'in fail-closed kapısının ("assert-queue-capable-redis.ts")
+  gerektirdiği, "appendonly=yes" ve "maxmemory-policy=noeviction" ile
+  kalkmış bir Redis'i "docker run" ile ayağa kaldırır. "services:" bloğunda
+  DEĞİL — bu kararın üç ölçümlü gerekçesi (GitHub Actions'ın "services"
+  şemasının bu argümanları taşıyamaması) çağıran iş akışında (ör.
+  "ci.yml"deki "api" job'u) belgelidir, buraya tekrarlanmadı. Bu action
+  SAF ÇIKARIMLA (T-020/S2) oluşturuldu: gövde "ci.yml"deki "api" job'undan
+  BİREBİR taşındı — "e2e" job'u (T-020/S8) aynı Redis'e ihtiyaç duyduğu
+  için TEK TANIM YERİ ilkesiyle buraya alındı.
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Kuyruk-yetenekli Redis'i ayağa kaldır (AC10 kapısının gereği)
+      shell: bash
+      env:
+        # Etiket SABİT ("latest" yok) ve "infra/docker-compose.yml:51" ile AYNI.
+        REDIS_IMAGE: redis:8.10-alpine
+        REDIS_INSTANCE_NAME: arkesoft-ci-redis
+      run: |
+        set -euo pipefail
+
+        # Argüman listesi "infra/docker-compose.yml:54" ile BİREBİR aynı
+        # ("redis-server --appendonly yes --save 60 1") + "--maxmemory-policy
+        # noeviction" AÇIKÇA. Bugünkü Redis varsayılanı zaten "noeviction" —
+        # ama ÖRTÜK bırakmak bu sürümün kovaladığı kusur sınıfı (beyan ≠
+        # gerçeklik): kapı bu değeri ASSERT ediyor, dolayısıyla CI'ın onu
+        # BEYAN ETMESİ gerekiyor. (S1/S5 aynı gerekçeyle
+        # "TENANT_PROVISION_CONCURRENCY"yi örtük kütüphane varsayılanına
+        # bırakmadı.)
+        #
+        # Kalıcı volume BİLEREK YOK: CI koşumu efemer, her koşum TEMİZ bir
+        # Redis'le başlamalı. Yereldeki isimli "redis-data" volume'u ile bu
+        # BİLİNÇLİ bir fark — orada veri YAŞAMALI, burada YAŞAMAMALI.
+        # Port eşlemesi önceki servis tanımıyla AYNI (6379:6379) → okuyan
+        # taraf ("REDIS_URL=redis://localhost:6379", .env.example:54) için
+        # hiçbir davranış değişikliği yok.
+        docker run -d \
+          --name "$REDIS_INSTANCE_NAME" \
+          -p 6379:6379 \
+          "$REDIS_IMAGE" \
+          redis-server --appendonly yes --save 60 1 --maxmemory-policy noeviction
+
+        # Hazır olma beklemesi: runner'ın servis sağlık kapısı artık bu
+        # Redis'te geçerli değil, bu yüzden AÇIKÇA bekliyoruz. Yoklama komutu
+        # "infra/docker-compose.yml:60"taki healthcheck'in AYNISI
+        # ("redis-cli ping | grep -q PONG"). "localhost" yerine "docker exec"
+        # ile konteynerin İÇİNDEN soruluyor → IPv4/IPv6 çözümleme yüzeyi hiç
+        # açılmıyor (repo kuralı: HTTP healthcheck'lerde "localhost" yok).
+        redis_ready=false
+        for attempt in $(seq 1 24); do
+          if docker exec "$REDIS_INSTANCE_NAME" redis-cli ping 2>/dev/null | grep -q PONG; then
+            redis_ready=true
+            echo "Redis hazır (deneme $attempt)."
+            break
+          fi
+          sleep 2
+        done
+        if [ "$redis_ready" != true ]; then
+          echo "::error::Redis 48 saniye içinde PONG vermedi."
+          docker logs "$REDIS_INSTANCE_NAME" || true
+          exit 1
+        fi
+
+        # Erken teşhis, fail-closed. AC10 kapısı bunu testlerin İÇİNDE de
+        # ölçüyor (ve asıl otorite ORADA) — ama orada düşerse 7 hata birden
+        # çıkıyor ve kök neden gürültüye karışıyor. Burada TEK adım, TEK
+        # satırla söylüyor.
+        # ⚠ Yalnızca OKUMA: bu adım hiçbir Redis ayarını DEĞİŞTİRMİYOR.
+        redis_config_ok=true
+        for expectation in "appendonly=yes" "maxmemory-policy=noeviction"; do
+          parameter="${expectation%%=*}"
+          expected="${expectation#*=}"
+          measured="$(docker exec "$REDIS_INSTANCE_NAME" redis-cli CONFIG GET "$parameter" | tail -n 1)"
+          if [ "$measured" = "$expected" ]; then
+            echo "  $parameter = '$measured' (beklenen '$expected') ✔"
+          else
+            echo "::error::Redis yapılandırması beklenenden farklı: $parameter = '$measured', beklenen '$expected'."
+            redis_config_ok=false
+          fi
+        done
+        # "save" ASSERT EDİLMİYOR (kapı da etmiyor, S4 K6) — yalnızca teşhis
+        # için raporlanıyor; yerel/CI eşitliğinin görünür kanıtı: '60 1'.
+        measured_save="$(docker exec "$REDIS_INSTANCE_NAME" redis-cli CONFIG GET save | tail -n 1)"
+        echo "  save = '$measured_save' (ASSERT EDİLMEZ, yalnızca teşhis)"
+        if [ "$redis_config_ok" != true ]; then
+          exit 1
+        fi

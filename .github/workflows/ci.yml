@@ -50,6 +50,13 @@ jobs:
       # tire'li kimliği "theme-sdk" bundan ETKİLENMEZ, çünkü o yalnızca bir
       # YAML harita anahtarı/liste öğesi, ifade erişimi DEĞİL).
       themeSdk: ${{ steps.decide.outputs.themeSdk }}
+      # ROADMAP v0.0.19, T-020/S8 — "e2e" job'u için ayrı çıktı. Elle yazılan
+      # bir regex YOK: bu bayrak, AŞAĞIDA ZATEN türetilmiş olan api/admin/
+      # storefront/shared bayraklarının BİLEŞİMİ (api ∪ admin ∪ storefront ∪
+      # shared — "shared" packages/themes/** değişikliğini de kapsıyor,
+      # yukarıdaki "shared" tanımına bakın) — fail-open/kök-dosya kuralı
+      # dalında DİĞER ALTISIYLA BİRLİKTE true olur, aksi hâlde türetilir.
+      e2e: ${{ steps.decide.outputs.e2e }}
     steps:
       - name: Depoyu checkout et (tam geçmiş — affected hesaplaması için)
         uses: actions/checkout@v4
@@ -98,6 +105,7 @@ jobs:
           storefront=false
           shared=false
           theme_sdk=false
+          e2e=false
 
           root_rule=false
           root_rule_unresolved=false
@@ -279,7 +287,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$fail_open" = true ] || [ "$root_rule" = true ]; then
-            api=true; admin=true; superadmin=true; storefront=true; shared=true; theme_sdk=true
+            api=true; admin=true; superadmin=true; storefront=true; shared=true; theme_sdk=true; e2e=true
           else
             printf '%s\n' "$names" | grep -Fxq '@arkesoft/api' && api=true
             printf '%s\n' "$names" | grep -Fxq '@arkesoft/admin' && admin=true
@@ -295,6 +303,15 @@ jobs:
             if [ -n "$shared_names" ]; then
               shared=true
             fi
+            # ROADMAP v0.0.19, T-020/S8 — "e2e" job'u api/admin/storefront'un
+            # e2e spec'lerini VE (storefront'un "modern" teması üzerinden
+            # render ettiği) paylaşılan paketleri kapsıyor; "superadmin" ve
+            # "theme_sdk" BİLEREK kümede YOK (superadmin'in Playwright
+            # projesi v0.0.20'ye bırakıldı, kullanıcı kararı — T-020 brief;
+            # theme-sdk'ya workspace:* ile bağımlı hiçbir e2e akışı yok).
+            if [ "$api" = true ] || [ "$admin" = true ] || [ "$storefront" = true ] || [ "$shared" = true ]; then
+              e2e=true
+            fi
           fi
 
           {
@@ -304,6 +321,7 @@ jobs:
             echo "storefront=$storefront"
             echo "shared=$shared"
             echo "themeSdk=$theme_sdk"
+            echo "e2e=$e2e"
           } >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------
@@ -945,80 +963,7 @@ jobs:
       # ÖNCE: Redis kalkmazsa ~2 dakikalık kurulum/derleme harcanmadan, TEK bir
       # satırla kırmızı veriyoruz.
       - name: Kuyruk-yetenekli Redis'i ayağa kaldır (AC10 kapısının gereği)
-        shell: bash
-        env:
-          # Etiket SABİT ("latest" yok) ve "infra/docker-compose.yml:51" ile AYNI.
-          REDIS_IMAGE: redis:8.10-alpine
-          REDIS_INSTANCE_NAME: arkesoft-ci-redis
-        run: |
-          set -euo pipefail
-
-          # Argüman listesi "infra/docker-compose.yml:54" ile BİREBİR aynı
-          # ("redis-server --appendonly yes --save 60 1") + "--maxmemory-policy
-          # noeviction" AÇIKÇA. Bugünkü Redis varsayılanı zaten "noeviction" —
-          # ama ÖRTÜK bırakmak bu sürümün kovaladığı kusur sınıfı (beyan ≠
-          # gerçeklik): kapı bu değeri ASSERT ediyor, dolayısıyla CI'ın onu
-          # BEYAN ETMESİ gerekiyor. (S1/S5 aynı gerekçeyle
-          # "TENANT_PROVISION_CONCURRENCY"yi örtük kütüphane varsayılanına
-          # bırakmadı.)
-          #
-          # Kalıcı volume BİLEREK YOK: CI koşumu efemer, her koşum TEMİZ bir
-          # Redis'le başlamalı. Yereldeki isimli "redis-data" volume'u ile bu
-          # BİLİNÇLİ bir fark — orada veri YAŞAMALI, burada YAŞAMAMALI.
-          # Port eşlemesi önceki servis tanımıyla AYNI (6379:6379) → okuyan
-          # taraf ("REDIS_URL=redis://localhost:6379", .env.example:54) için
-          # hiçbir davranış değişikliği yok.
-          docker run -d \
-            --name "$REDIS_INSTANCE_NAME" \
-            -p 6379:6379 \
-            "$REDIS_IMAGE" \
-            redis-server --appendonly yes --save 60 1 --maxmemory-policy noeviction
-
-          # Hazır olma beklemesi: runner'ın servis sağlık kapısı artık bu
-          # Redis'te geçerli değil, bu yüzden AÇIKÇA bekliyoruz. Yoklama komutu
-          # "infra/docker-compose.yml:60"taki healthcheck'in AYNISI
-          # ("redis-cli ping | grep -q PONG"). "localhost" yerine "docker exec"
-          # ile konteynerin İÇİNDEN soruluyor → IPv4/IPv6 çözümleme yüzeyi hiç
-          # açılmıyor (repo kuralı: HTTP healthcheck'lerde "localhost" yok).
-          redis_ready=false
-          for attempt in $(seq 1 24); do
-            if docker exec "$REDIS_INSTANCE_NAME" redis-cli ping 2>/dev/null | grep -q PONG; then
-              redis_ready=true
-              echo "Redis hazır (deneme $attempt)."
-              break
-            fi
-            sleep 2
-          done
-          if [ "$redis_ready" != true ]; then
-            echo "::error::Redis 48 saniye içinde PONG vermedi."
-            docker logs "$REDIS_INSTANCE_NAME" || true
-            exit 1
-          fi
-
-          # Erken teşhis, fail-closed. AC10 kapısı bunu testlerin İÇİNDE de
-          # ölçüyor (ve asıl otorite ORADA) — ama orada düşerse 7 hata birden
-          # çıkıyor ve kök neden gürültüye karışıyor. Burada TEK adım, TEK
-          # satırla söylüyor.
-          # ⚠ Yalnızca OKUMA: bu adım hiçbir Redis ayarını DEĞİŞTİRMİYOR.
-          redis_config_ok=true
-          for expectation in "appendonly=yes" "maxmemory-policy=noeviction"; do
-            parameter="${expectation%%=*}"
-            expected="${expectation#*=}"
-            measured="$(docker exec "$REDIS_INSTANCE_NAME" redis-cli CONFIG GET "$parameter" | tail -n 1)"
-            if [ "$measured" = "$expected" ]; then
-              echo "  $parameter = '$measured' (beklenen '$expected') ✔"
-            else
-              echo "::error::Redis yapılandırması beklenenden farklı: $parameter = '$measured', beklenen '$expected'."
-              redis_config_ok=false
-            fi
-          done
-          # "save" ASSERT EDİLMİYOR (kapı da etmiyor, S4 K6) — yalnızca teşhis
-          # için raporlanıyor; yerel/CI eşitliğinin görünür kanıtı: '60 1'.
-          measured_save="$(docker exec "$REDIS_INSTANCE_NAME" redis-cli CONFIG GET save | tail -n 1)"
-          echo "  save = '$measured_save' (ASSERT EDİLMEZ, yalnızca teşhis)"
-          if [ "$redis_config_ok" != true ]; then
-            exit 1
-          fi
+        uses: ./.github/actions/start-queue-redis
 
       - name: Çalışma alanını hazırla
         uses: ./.github/actions/setup-workspace
@@ -1194,6 +1139,298 @@ jobs:
           run-isolation: 'false'
 
   # ---------------------------------------------------------------------
+  # e2e — Playwright uçtan uca + görsel regresyon (ROADMAP v0.0.19,
+  # T-020/S8, ADR-0022). "run-gates"e BİLEREK GİRMEZ: "shared" job'unun
+  # yukarıdaki yorumu "ikinci bir services: postgres, AYNI koşucu (Vitest)"
+  # senaryosunu K-E9'da reddetmişti (adımlar ZATEN sıralı, kazanç sıfırdı) —
+  # buradaki gerekçe FARKLI. Burada çoğaltılan Postgres + Redis + Mailpit +
+  # tarayıcı + iki geliştirme sunucusu; kazanç PAYLAŞILAN DEĞİŞKEN kaynağın
+  # (tek Postgres/Redis/Mailpit, tek IP oran-sınırı bütçesi) izolasyonu —
+  # Playwright "run-gates"in "turbo run <görev>" çağrılarının aldığı
+  # "assertSoleRunOwnership" kilidini HİÇ almıyor (po R-2). Bugün bu bir
+  # YARIŞ DEĞİL (her CI job'u zaten taze Redis/Postgres ile başlıyor — "pm"
+  # Ölçüm 1) — gerekçe yapısal kırılganlığın KALICI kapatılması.
+  # ---------------------------------------------------------------------
+  e2e:
+    name: e2e
+    needs: plan
+    if: needs.plan.outputs.e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      # "api" job'uyla BİREBİR aynı imaj/env/health (yukarıdaki "api"
+      # job'undaki Postgres notuna bakın — aynı üç ölçümlü gerekçe burada
+      # TEKRARLANMADI).
+      postgres:
+        image: postgres:17.11-alpine
+        env:
+          POSTGRES_USER: arkesoft
+          POSTGRES_PASSWORD: arkesoft_dev_only
+          POSTGRES_DB: arkesoft
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U arkesoft -d arkesoft"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      # Mailpit — admin e2e'nin ("apps/admin/e2e/helpers/verified-fixture-
+      # user.ts") e-posta doğrulama token'ını Mailpit'in HTTP API'sinden
+      # okuması gerekiyor; "api" job'undakiyle BİREBİR aynı imaj/sürüm/env/
+      # health (yukarıdaki "api" job'undaki Mailpit notuna bakın).
+      mailpit:
+        image: axllent/mailpit:v1.32
+        env:
+          MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+          MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
+          MP_MAX_MESSAGES: '2000'
+        ports:
+          - 1025:1025
+          - 8025:8025
+        options: >-
+          --health-cmd "wget -q -O /dev/null http://127.0.0.1:8025/readyz || exit 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - name: Depoyu checkout et
+        uses: actions/checkout@v4
+
+      # "api" job'uyla AYNI gerekçe (yukarıya bakın) — Redis "services:"
+      # bloğunda DEĞİL, "start-queue-redis" composite'i T-020/S2'de BUNUN
+      # İÇİN (bu job'un da aynı Redis'e ihtiyaç duyması için) TEK TANIM
+      # YERİNE taşındı.
+      - name: Kuyruk-yetenekli Redis'i ayağa kaldır (AC10 kapısının gereği)
+        uses: ./.github/actions/start-queue-redis
+
+      - name: Çalışma alanını hazırla
+        uses: ./.github/actions/setup-workspace
+
+      - name: Veritabanını hazırla (migration + tohumlama)
+        uses: ./.github/actions/prepare-db
+
+      # admin/storefront'un kendi "test:e2e" görevi "turbo.json"daki
+      # "dependsOn: [\"^build\", \"generate\"]" zinciri üzerinden kendi
+      # paylaşılan paket bağımlılıklarını OTOMATİK derler (bayat-dist
+      # tuzağı koruması, aynı mekanizma) — ama "@arkesoft/api" admin/
+      # storefront'un workspace bağımlılığı DEĞİL (ayrı bir dağıtılabilir
+      # uygulama), bu yüzden arka planda başlatılacak "dist/main.js" BURADA
+      # AÇIKÇA derlenir ("prepare-db"nin "@arkesoft/db..." için kullandığı
+      # AYNI teknik).
+      - name: apps/api'yi derle (e2e'nin arka planda başlatacağı süreç)
+        shell: bash
+        run: pnpm exec turbo run build --filter='@arkesoft/api...'
+
+      - name: Playwright tarayıcı önbelleğini geri yükle
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          # ⚠⚠ Gevşek "restore-keys" ÖNEĞİ BİLEREK YOK — "setup-workspace/
+          # action.yml:55-63"ün AYNI yazılı güvenlik gerekçesi: bir önek,
+          # kilit dosyasından BAĞIMSIZ herhangi bir eski tarayıcı önbelleğini
+          # geri yükleyip "pnpm exec playwright install" adımının HİÇBİR ŞEY
+          # YAPMADAN "başarılı" saydırmasına yüzey açardı.
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Playwright tarayıcısını kur (yalnızca chromium)
+        shell: bash
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: apps/api'yi arka planda başlat ve /health/ready'yi probla
+        shell: bash
+        run: |
+          set -euo pipefail
+          # storefront'un "e2e/global-setup.ts:17-30"u apps/api'nin ÇALIŞIYOR
+          # olmasını ÖN KOŞUL sayıyor (storefront SSR middleware'i her isteği
+          # sunucu taraflı tRPC çağrısıyla çözüyor) — aksi hâlde Türkçe
+          # teşhis hatası fırlatıp e2e süitini BAŞLAMADAN durduruyor.
+          # "exec": alt kabuğun PROCESS İMAJI "node" ile DEĞİŞTİRİLİR —
+          # "run-visual.sh"ın (T-020/S6) ölçtüğü "subshell pid, GERÇEK node
+          # pid DEĞİL" tuzağının AYNISI burada da geçerli olurdu.
+          (cd apps/api && exec node --env-file-if-exists=../../.env dist/main.js) \
+            >/tmp/arkesoft-e2e-api.log 2>&1 &
+          api_pid=$!
+          echo "apps/api arka planda başlatıldı (pid $api_pid)."
+
+          ready=false
+          for attempt in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:3000/health/ready" >/dev/null 2>&1; then
+              ready=true
+              echo "apps/api hazır (deneme $attempt)."
+              break
+            fi
+            if ! kill -0 "$api_pid" >/dev/null 2>&1; then
+              echo "::error::apps/api süreci (pid $api_pid) beklenmedik şekilde erken sonlandı."
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" != true ]; then
+            echo "::error::apps/api 60 saniye içinde /health/ready üzerinden 2xx döndürmedi."
+            cat /tmp/arkesoft-e2e-api.log
+            exit 1
+          fi
+
+      # ROADMAP v0.0.19 (T-020/S9'un ölçeceği "AC-12 yük altında koşum"
+      # şartı) — VARSAYILAN KAPALI, bir depo değişkeniyle açılır/kapanır.
+      #
+      # ⚠⚠ MEKANİZMA S9d'DE DEĞİŞTİ (ÖLÇÜLMÜŞ ARIZA). ÖNCEKİ tasarım (T-019
+      # düzeltme turu 4'ten taşınan "redis-cli EVAL" busy-loop, 40 eşzamanlı
+      # SONSUZ döngü) gerçek yük koşumunda ("ARKESOFT_E2E_SYNTHETIC_LOAD=1"
+      # ile tetiklenen koşum) "test:e2e"de 4 testi düşürdü — ÜÇÜ aynı satırda
+      # ("expect(signUpResponse.ok()).toBe(true)"). Kök neden burada ÖLÇÜLDÜ
+      # (devops S9d, yerel ölçüm — "arkesoft-load-test-redis" adlı geçici
+      # konteyner, redis:8.10-alpine, port 16380, Docker Desktop/macOS):
+      # Redis TEK İŞ PARÇACIKLI; 8 eşzamanlı SONSUZ EVAL busy-loop'u ALTINDA
+      # TEK bir PING 15339 ms sürdü (yüksüz PING: 76-111 ms). "apps/api/src/
+      # redis/create-redis-connection.ts:60"taki "'health'" profilinin
+      # "HEALTH_COMMAND_TIMEOUT_MS = 1500" sabiti bu süre AŞILINCA
+      # "apps/api/src/auth/rate-limit/rate-limit.service.ts:154-158"
+      # "RateLimitStoreUnavailableError" (503, FAIL-CLOSED — BİLİNÇLİ,
+      # security tur2 S-7, "apps/api/src/**" BU TURDA DEĞİŞTİRİLMEDİ) FIRLATIR.
+      # Yani sign-up DOĞRU şekilde REDDEDİLDİ; kusur ÜRÜNDE değil, YÜK
+      # ÜRETECİNDEYDİ — "makine meşgul" yerine "Redis TAMAMEN YOK" simüle
+      # ediyordu (AC-12'nin niyeti BU DEĞİL).
+      #
+      # DÜZELTME — yön (C), CPU/IO + Redis'e DOKUNAN-ama-BLOKE-ETMEYEN
+      # trafiğin BİRLEŞİMİ:
+      #   (A) CPU yükü Redis'e HİÇ DOKUNMADAN — "nproc" kadar sıkı döngü
+      #       işçisi runner'ın CPU'sunu doyurur (genel rekabet/yavaşlama).
+      #       T-019'un "yes ile CPU yüklemek KANIT DEĞİLDİ" dersiyle (AGENT_
+      #       BASELINE §4 ders 2) ÇELİŞMEZ — o ders KÖK NEDENİ TEŞHİS ETMEK
+      #       (I/O beklemesi) içindi; burada amaç GENEL makine yükü.
+      #   (B) disk I/O yükü — "ionice -c3" (DÜŞÜK öncelik; Postgres/
+      #       Playwright'ın disk erişimini AÇ BIRAKMAZ, tamamen BOĞMAZ) ile
+      #       tekrarlanan "dd" yazması + "conv=fsync" (sayfa önbelleğinde
+      #       KALMAZ, gerçek diske YAZDIRILIR).
+      #   (C) Redis KOMUT trafiği KALDI ama "EVAL" busy-loop YOK — düz SET/
+      #       GET (her komut mikrosaniye mertebesinde, uzun BLOKE EDEN tek
+      #       komut YOK). Yerel ölçüm (yukarıdaki not — aynı geçici konteyner):
+      #       8 CPU işçisi + 20 eşzamanlı SET/GET işçisi ALTINDA 10 ardışık
+      #       PING ortalama 283 ms / maksimum 362 ms — "HEALTH_COMMAND_
+      #       TIMEOUT_MS = 1500"ün ÇOK altında; 1 dakikalık load average
+      #       3.03'ten 8.87'ye ÇIKTI (gerçek yük KANITI, "adım koştu" DEĞİL).
+      #
+      # "vars." İFADESİ BİLEREK YALNIZCA "if:" İÇİNDE — "run:" bloğunun
+      # İÇİNDE KULLANILMADI (guards'ın "run bloğu içi şablon ifadesi
+      # yasağı" adımını kırardı).
+      - name: Sentetik makine yükü (varsayılan KAPALI — AC-12 yük koşumu)
+        if: ${{ vars.ARKESOFT_E2E_SYNTHETIC_LOAD == '1' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          {
+            echo '## Sentetik makine yükü — ölçüm'
+            echo
+            echo "Yük ÖNCESİ load average: $(cat /proc/loadavg)"
+            echo "Yük ÖNCESİ çalışan konteyner sayısı: $(docker ps -q | wc -l)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # (A) CPU yükü — Redis'e DOKUNMADAN.
+          # ⚠⚠ YARI DOYGUNLUK, TAM DOYGUNLUK DEĞİL (T-020/S9e, Orkestratör
+          # ölçümü — CI koşumu 43720424701). "nproc" kadar işçi, 4 çekirdekli
+          # runner'da %100 doygunluk üretti ve Chromium/Node/Astro/API'ye CPU
+          # BIRAKMADI: süit 22 sn'den 6.0 DAKİKAYA çıktı (~16×) ve zamanlamaya
+          # duyarlı iki assert düştü. Bu "yük altında" değil STRES TESTİdir;
+          # AC-12'nin niyeti GERÇEKÇİ REKABET (bkz. AGENT_BASELINE §4 ders 2),
+          # kaynak reddi değil. "nproc/2" (en az 1) yarım çekirdek bırakır.
+          # ⚠ Bu sayıyı "nproc"a geri çevirmek, ölçülmüş bir sahte-kırmızı
+          # kaynağını geri getirir — yapmayın.
+          cpu_workers="$(( $(nproc) / 2 ))"
+          [ "$cpu_workers" -lt 1 ] && cpu_workers=1
+          for _ in $(seq 1 "$cpu_workers"); do
+            ( while :; do :; done ) &
+          done
+
+          # (B) disk I/O yükü — düşük öncelik, tekrarlanan GERÇEK yazma
+          # ("conv=fsync" — sayfa önbelleğinde kalmaz).
+          (
+            while :; do
+              ionice -c3 dd if=/dev/zero of=/tmp/arkesoft-synthetic-io bs=1M count=32 conv=fsync >/dev/null 2>&1 || true
+            done
+          ) &
+          rm -f /tmp/arkesoft-synthetic-io 2>/dev/null || true
+
+          # (C) Redis KOMUT trafiği — EVAL busy-loop YOK, düz SET/GET.
+          # ⚠ 20 → 5 (T-020/S9e): her işçi bir "docker exec" SÜRECİ doğuruyor;
+          # 20 işçi CPU rekabetine (A)'nın üstüne ikinci bir yük bindiriyordu.
+          # Beş işçi Redis'te gözlenebilir rekabet üretmeye yetiyor (S9d'nin
+          # yerel ölçümü: 20 işçi PING'i 283 ms'e çıkardı — eşik 1500 ms, yani
+          # dörtte bire düşürmek bile eşiğin çok altında anlamlı rekabet bırakır).
+          for worker in $(seq 1 5); do
+            (
+              while :; do
+                docker exec arkesoft-ci-redis redis-cli SET "arkesoft:synthetic-load:$worker" "$(date +%s%N)" >/dev/null 2>&1 || true
+                docker exec arkesoft-ci-redis redis-cli GET "arkesoft:synthetic-load:$worker" >/dev/null 2>&1 || true
+              done
+            ) &
+          done
+
+          disown -a 2>/dev/null || true
+
+          # Yükün RAMPA olması için kısa bekleme, sonra gerçek ölçüm —
+          # "adım koştu" YETMEZ, aşağıdaki sayılar kanıt.
+          sleep 3
+
+          ping_total_ms=0
+          {
+            echo
+            echo "Yük ALTINDA load average: $(cat /proc/loadavg)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for attempt in $(seq 1 5); do
+            ping_start_ns="$(date +%s%N)"
+            docker exec arkesoft-ci-redis redis-cli PING >/dev/null 2>&1 || true
+            ping_end_ns="$(date +%s%N)"
+            ping_ms=$(( (ping_end_ns - ping_start_ns) / 1000000 ))
+            echo "Redis PING örnek $attempt (yük altında): ${ping_ms} ms" >> "$GITHUB_STEP_SUMMARY"
+            ping_total_ms=$(( ping_total_ms + ping_ms ))
+          done
+          echo "Redis PING ortalaması (yük altında, 5 örnek): $(( ping_total_ms / 5 )) ms — HEALTH_COMMAND_TIMEOUT_MS (1500 ms) ile karşılaştırılmalı." >> "$GITHUB_STEP_SUMMARY"
+
+          # GATE DÜZELTME (Orkestratör, T-020 gate fix turu 1, İŞ ④,
+          # 2026-11-15): bu satır "20" diyordu ama S9e döngüyü ("seq 1 5")
+          # 20'den 5'e düşürmüştü (yukarıdaki (C) bloğu) — log satırı
+          # GÜNCELLENMEMİŞTİ. Bu satır ÖLÇÜM KOŞULUNU raporlayan kanıt
+          # olduğu için yanlış sayı yanıltıcıydı; `solid` tur 1 `low` bulgu.
+          echo "Sentetik makine yükü başlatıldı ($cpu_workers CPU işçisi + 1 disk I/O döngüsü + 5 Redis SET/GET işçisi; EVAL busy-loop YOK)."
+
+      - name: E2E süitini çalıştır (pnpm test:e2e)
+        shell: bash
+        run: pnpm test:e2e
+
+      - name: Görsel regresyonu çalıştır (pnpm test:visual)
+        shell: bash
+        env:
+          # R-11 (po/architect, T-020) — görsel projenin ÜRETİM sunucusu
+          # "astro dev"in AKSİNE kök ".env"i OKUMUYOR
+          # ("createRootEnvIntegration()" yalnızca "dev" dalında yükleniyor,
+          # "astro.config.ts:46-49"). Bu yüzden bu iki değer BURADA AÇIKÇA
+          # verilir — "scripts/run-visual.sh"ın KENDİ
+          # "STOREFRONT_API_BASE_URL_OVERRIDE" varsayılanı (3100) bu job'un
+          # "apps/api"yi dinlettiği portla (3000 — ".env.example"in
+          # kendisiyle TUTARLI) UYUŞMUYOR; örtük bırakmak TAM OLARAK bu
+          # sürümün kovaladığı "beyan ≠ gerçeklik" sınıfı olurdu.
+          APP_BASE_DOMAIN: arkesoft.localhost
+          STOREFRONT_API_BASE_URL_OVERRIDE: http://127.0.0.1:3000
+        run: pnpm test:visual
+
+      # R-9 (po, T-020) — trace/video/screenshot OTURUM ÇEREZİ ve
+      # "Authorization" BAŞLIĞI taşır; "scripts/playwright/base.ts" (S4)
+      # "trace:'on-first-retry'" + "video:'retain-on-failure'" ile bunu
+      # AZALTTI, "retention-days" zincirin SON halkası. "if: always()":
+      # başarısız koşumda artefakt EN DEĞERLİ olduğu an.
+      - name: Playwright artefaktlarını yükle (trace + video + screenshot)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-playwright-artifacts
+          path: |
+            apps/*/test-results
+            apps/*/playwright-report
+          retention-days: 7
+
+  # ---------------------------------------------------------------------
   # ci-gate — TEK toplayıcı (aggregate) check (AC9). Varsayılan-reddet:
   # izinli küme {success, skipped}, dışındaki HER DEĞER (failure,
   # cancelled, ileride eklenecek yeni bir değer) başarısızlık sayılır.
@@ -1204,7 +1441,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [plan, repo, guards, api, admin, superadmin, storefront, shared, theme-sdk]
+    needs: [plan, repo, guards, api, admin, superadmin, storefront, shared, theme-sdk, e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

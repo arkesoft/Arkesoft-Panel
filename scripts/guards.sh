@@ -528,6 +528,436 @@ check_ac16_no_real_dns_call() {
 }
 
 # ---------------------------------------------------------------------------
+# AC-1 — kök `test:e2e` / `test:visual` / `test:visual:update` script
+# VARLIĞI (ROADMAP T-020/S7, İŞ ①).
+#
+# AMAÇ: `S3` ve `S6` bu üç script'i kök `package.json`'a ekledi; BUGÜNE
+# KADAR hiçbir mekanizma varlıklarını KORUMUYORDU — biri silinse `pnpm
+# guards` YEŞİL kalırdı ve CLAUDE.md §6'nın belgelediği komut sessizce
+# "özlem" hâline dönerdi (AGENT_BASELINE.md §6'nın "kök `test:e2e` YOK"
+# notuyla AYNI sınıf regresyon, bu sürüm tam o boşluğu kapatıyor). `jq`
+# BURADA `.scripts["<ad>"]` anahtarını OKUR, DEĞERİN İÇERİĞİNİ
+# yorumlamaz/çalıştırmaz — yalnızca BOŞ/YOK olmadığını doğrular (sahte
+# yeşil dedektörlerinin KULLANDIĞI jq zaten bu script'te MEVCUT bağımlılık).
+# ---------------------------------------------------------------------------
+check_ac1_root_e2e_visual_scripts() {
+  local package_json="package.json"
+  if [ ! -f "$package_json" ]; then
+    echo "AC-1 taraması hata verdi: $package_json bulunamadı — fail-closed."
+    return 1
+  fi
+
+  local required_scripts=("test:e2e" "test:visual" "test:visual:update")
+  local violation=false
+  local script_name value
+  for script_name in "${required_scripts[@]}"; do
+    if ! value="$(jq -r --arg key "$script_name" '.scripts[$key] // ""' "$package_json")"; then
+      echo "AC-1 taraması hata verdi: $package_json jq ile okunamadı — fail-closed."
+      return 1
+    fi
+    if [ -z "$value" ]; then
+      echo "AC-1 İHLALİ — kök $package_json 'scripts.$script_name' tanımlı değil (boş veya yok)."
+      violation=true
+    fi
+  done
+
+  if [ "$violation" = true ]; then
+    return 1
+  fi
+  echo "AC-1: kök $package_json üçünü de tanımlıyor — test:e2e, test:visual, test:visual:update."
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Bütçe pin tazeliği — `apps/admin/e2e/auth-budget.ts`'in BAĞIMSIZ
+# `AUTH_IP_LIMITS` pin'i ↔ `rate-limit.policy.ts`'in gerçek sabitleri
+# (ROADMAP T-020/S7, İŞ ②, AC-4'ün DÖRDÜNCÜ ayağı).
+#
+# `auth-budget.ts`'in dosya başı yorumu BİREBİR şunu söylüyor: "dördüncü
+# değişmez (pin tazeliği) BU alt görevin kapsamı DIŞINDA — guards.sh'e
+# gidiyor (T-020/S7)". `AUTH_IP_LIMITS = { signIn: 20, signUp: 10 }`
+# `apps/admin`'in `apps/api`'ye KAYNAK bağımlılığı OLMADIĞI için BAĞIMSIZ
+# (ithal edilmeden) yazılmış bir kopyadır — kaynak sabitlerin (`LOGIN_IP_LIMIT`,
+# `EMAIL_IP_LIMIT`) ADI veya DEĞERİ değişirse bu kopya SESSİZCE bayatlar.
+#
+# Emsal (okunup uygulandı): `apps/storefront/e2e/storefront-theme.spec.ts`'in
+# "bağımsız pin + tutarlılık pini" deseni (`EXPECTED_COLOR_PRIMARY_HEX`
+# hardcoded, AYRI bir assertion onu kaynaktan türeyen değerle karşılaştırır).
+# Buradaki fark: karşılaştırma bir e2e test'i İÇİNDE DEĞİL, bu mekanik
+# kapıda yapılıyor — çünkü iki dosya da (`auth-budget.ts`/`rate-limit.
+# policy.ts`) birbirini İTHAL EDEMEZ, bağımsız bir üçüncü gözlemci gerekir.
+#
+# `sign_in_pin`/`sign_up_pin` `auth-budget.ts`'TEN DİNAMİK OKUNUR (BURADA
+# TEKRAR HARDCODE EDİLMEZ) — aksi hâlde bu kontrolün KENDİSİ üçüncü,
+# koordinesiz bir pin olurdu ve amacını (tazelik denetimi, kopyalama DEĞİL)
+# kaybederdi.
+# ---------------------------------------------------------------------------
+check_auth_budget_pin_freshness() {
+  local admin_pin_file="apps/admin/e2e/auth-budget.ts"
+  local api_policy_file="apps/api/src/auth/rate-limit/rate-limit.policy.ts"
+
+  if [ ! -f "$admin_pin_file" ] || [ ! -f "$api_policy_file" ]; then
+    echo "Bütçe pin tazeliği taraması hata verdi: $admin_pin_file veya $api_policy_file bulunamadı — fail-closed."
+    return 1
+  fi
+
+  local sign_in_pin sign_up_pin
+  sign_in_pin="$(grep -oE 'signIn:[[:space:]]*[0-9]+' "$admin_pin_file" | grep -oE '[0-9]+' | head -n 1)"
+  sign_up_pin="$(grep -oE 'signUp:[[:space:]]*[0-9]+' "$admin_pin_file" | grep -oE '[0-9]+' | head -n 1)"
+
+  if [ -z "$sign_in_pin" ] || [ -z "$sign_up_pin" ]; then
+    echo "Bütçe pin tazeliği taraması hata verdi: $admin_pin_file'te AUTH_IP_LIMITS.signIn/signUp sayısal değeri okunamadı — fail-closed."
+    return 1
+  fi
+
+  local violation=false
+  if ! grep -nE "LOGIN_IP_LIMIT[[:space:]]*=[[:space:]]*${sign_in_pin}\\b" "$api_policy_file" >/dev/null; then
+    echo "Bütçe pin tazeliği İHLALİ — $admin_pin_file'in AUTH_IP_LIMITS.signIn (${sign_in_pin}) değeri $api_policy_file'teki LOGIN_IP_LIMIT ile UYUŞMUYOR (ad veya değer değişmiş olabilir)."
+    violation=true
+  fi
+  if ! grep -nE "EMAIL_IP_LIMIT[[:space:]]*=[[:space:]]*${sign_up_pin}\\b" "$api_policy_file" >/dev/null; then
+    echo "Bütçe pin tazeliği İHLALİ — $admin_pin_file'in AUTH_IP_LIMITS.signUp (${sign_up_pin}) değeri $api_policy_file'teki EMAIL_IP_LIMIT ile UYUŞMUYOR (ad veya değer değişmiş olabilir)."
+    violation=true
+  fi
+
+  if [ "$violation" = true ]; then
+    return 1
+  fi
+  echo "Bütçe pin tazeliği: AUTH_IP_LIMITS.signIn/signUp (${sign_in_pin}/${sign_up_pin}) $api_policy_file'teki LOGIN_IP_LIMIT/EMAIL_IP_LIMIT ile UYUŞUYOR."
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# ADR-0022 Karar 1(d) — "fabrika sızma yasağı" + po'nun allowlist kararı
+# (ROADMAP T-020/S7, İŞ ③; GATE DÜZELTME: devops, T-020 gate fix turu 1,
+# 2026-11-15, `solid`+`security` tur 1'in bağımsız ölçtüğü S-2/İŞ ②).
+#
+# ADR-0022 Karar 1(d) BİREBİR: "`apps/*/src/**` içinden `child_process`+
+# `psql` kullanımı `pnpm guards` taramasıyla YASAKLANIR — fabrika üretim
+# koduna SIZAMAZ." Bugün İKİ MEŞRU fixture var (ikisi de `e2e/` altında,
+# `src/` DEĞİL): `apps/storefront/e2e/fixtures/custom-domain-tenant.ts`
+# (v0.0.8'den beri) ve `apps/admin/e2e/fixtures/tenant-cleanup.ts` (S5
+# yazdı). Bu fonksiyon ÜÇ alt kontrol yapar (TEK `run_step` altında — İŞ
+# ①/②/③ "üç yeni adım" sayısını KORUR, dörde ÇIKARMAZ):
+#
+#   1. `apps/*/src/**` (her `apps/<ad>/src` ağacı, İSTİSNASIZ — `__tests__`
+#      DAHİL, bkz. gate fix notu altta) İÇİNDE "docker exec"/"psql"
+#      jetonlarından BİRİ bile görünürse İHLAL.
+#   2. `apps/**` + `packages/**` + `scripts/**` (`.ts`, `node_modules`/
+#      `dist`/`generated`/`.turbo` hariç) genelinde GERÇEK kabuk-çağrısı
+#      MEKANİZMASINI (aşağıya bkz.) taşıyan dosya KÜMESİNİN tam olarak
+#      yukarıdaki İKİ fixture'a eşit olduğunu doğrular (po kararı, bağlayıcı
+#      — "üçüncü kopya SESSİZCE doğamaz").
+#   3. Yukarıdaki İKİ allowlist dosyasının HER İKİSİ de ADR-0022 K1'in (a)
+#      ve (b) korumalarını (`assertDockerHostIsLoopback`/
+#      `assertTestEnvironment`) GERÇEKTEN ÇAĞIRDIĞINI (ad geçişi değil) ve
+#      İKİ dosyadaki gövdelerin (normalize edilmiş) BİREBİR eşit olduğunu
+#      doğrular (aşağıya, GATE DÜZELTME S-8/İŞ ② bkz.).
+#
+# ⚠⚠⚠ GATE DÜZELTME (S-2, İŞ ②) — ALT KONTROL 2 ARTIK DÜZYAZIYI DEĞİL
+# MEKANİZMAYI EŞLİYOR: önceki sürüm "docker exec" (bitişik, tek dizge)
+# jetonunu arıyordu — ama GERÇEK çağrı `execFileSync('docker', ['exec', …,
+# 'psql', …])`'dür, dizi öğeleri AYRI satırlardadır ve "docker exec" hiçbir
+# zaman bitişik GEÇMEZ. `security` tur 1 ÖLÇTÜ: depodaki HER "docker exec"
+# geçişi bir YORUM ya da bir hata mesajı METNİYDİ — tarama korumak istediği
+# ÇAĞRIYI değil, YANINDAKİ AÇIKLAMA metnini eşliyordu; jetonu içermeyen
+# ÜÇÜNCÜ bir kopya (gerçek mekanizmayı taşıyan ama yorumunda "docker exec"
+# bitişik metni OLMAYAN) bu yüzden SESSİZCE doğabilirdi (sandbox'ta
+# kanıtlandı, S-2 raporu). Düzeltme: artık dizi ÖĞESİ biçimindeki tek
+# tırnaklı literalleri ('exec' VE 'psql' birlikte — bu, gerçek
+# `execFileSync` dizi argümanının İKİ öğesidir) arıyor; `security`'nin
+# ÖLÇTÜĞÜ hata-mesajı metinlerinde ("Denenen komut: docker exec … psql …")
+# bu literaller TIRNAKSIZ geçtiği için ORADA EŞLEŞMEZ — tarama artık GERÇEK
+# ÇAĞRIYI eşliyor, yanındaki METNİ değil (ölçüldü: `grep` bu literalleri
+# yalnızca GERÇEK `execFileSync` dizilerinde buluyor, iki allowlist
+# dosyasının HİÇBİR yorum/hata-mesajı satırında DEĞİL).
+#
+# ⚠⚠ GATE DÜZELTME (S-7, İŞ ①, devops, T-020 gate fix turu 2, 2026-11-15) —
+# ALT KONTROL 2'NİN NEEDLE'I DÜZYAZIYI KAYBETMİŞTİ: gate fix turu 1 alt
+# kontrol 2'yi düzyazıdan mekanizmaya ÇEVİRDİ ama düzyazı needle'larını
+# (`$shellout_needle`/`$psql_needle`) alt kontrol 2'den TAMAMEN ÇIKARDI —
+# onlar artık YALNIZCA alt kontrol 1'de (apps/*/src/**) kullanılıyordu.
+# Sonuç (security tur 2, S-7, sandbox'ta ÖLÇÜLDÜ): `e2e/` altında
+# `execSync` + şablon dizgiyle ("docker exec ${c} psql …") yazılmış
+# ÜÇÜNCÜ bir kopya ne mekanizma needle'ını (dizi-öğesi literalleri hiç
+# YOK) ne de düzyazı needle'ını (artık alt kontrol 2'nin ARADIĞI küme
+# DIŞINDA) taşıyormuş gibi davranıyordu — iki kontrolün KESİŞİMİ dışında
+# kalan bir kör nokta. Düzeltme: alt kontrol 2'nin İKİ grep deseni artık
+# BİRLEŞİM — `"${exec_array_needle}|${shellout_needle}"` ve
+# `"${psql_array_needle}|${psql_needle}"` — hem mekanizmayı hem düzyazıyı
+# ARAR; bugünkü iki allowlist dosyası ikisini de taşıdığı için küme
+# DEĞİŞMEZ (ölçüldü), ama `execSync`+şablon-dizgi kopyası artık "actual
+# dosya kümesi" içine GİRER ve beklenen iki fixture'dan SAPTIĞI için
+# İHLAL verir. Ek fayda: bu yazım biçimi `sql`'i kabuğa enterpole ettiği
+# için (komut enjeksiyonu yüzeyi) bu düzeltme o sınıfı da YAKALAR.
+#
+# `scripts/**` KAPSAMA ALINDI (`solid` tur 1 bulgusu) — ADR-0022 Karar 6
+# `scripts/`'i birinci sınıf bir TypeScript alanı yaptı (`scripts/
+# playwright/base.ts`); allowlist taraması önceden bu dizini GÖRMÜYORDU.
+#
+# ALT KONTROL 1'İN `__tests__` İSTİSNASI KALDIRILDI (`solid` tur 1 bulgusu —
+# önceki `--exclude-dir=__tests__` bu yorumun "HİÇBİR istisna dosya YOK"
+# iddiasıyla ÇELİŞİYORDU). ÖLÇÜLDÜ (gate fix turu 1): `apps/*/src` altında
+# `__tests__` DAHİL hiçbir dosyada "docker exec"/"psql" jetonu YOK — istisna
+# kaldırmak bugün DAVRANIŞ DEĞİŞTİRMİYOR, yalnızca yorumla kodu HİZALIYOR.
+#
+# ⚠⚠ GATE DÜZELTME (S-8, İŞ ②, devops, T-020 gate fix turu 2, 2026-11-15) —
+# ALT KONTROL 3 ADA DEĞİL MEKANİZMAYA BAĞLANDI: önceki sürüm `grep -q
+# "assertDockerHostIsLoopback"` idi — dosyanın HER YERİNİ (yorumlar DAHİL)
+# tarıyordu. `solid`+`security` tur 2 BAĞIMSIZ ÜÇ kaçış yolu ölçtü: (i)
+# tanım+çağrıları SİL, dosya başı yorumunu BIRAK → ad hâlâ geçer → YEŞİL;
+# (ii) tanımlar dursun, ÇAĞRILAR silinsin → ad hâlâ geçer → YEŞİL; (iii)
+# adlar aynı kalsın, GÖVDE sapsın (ör. birinin allowlist'ine
+# `host.docker.internal` eklensin) → YEŞİL. Üçü de alt kontrol 3'ün
+# "S-1'in tekrarını MEKANİKLEŞTİRİR" iddiasıyla ÇELİŞİYORDU. Düzeltme ÜÇ
+# ayrı mekanizma ekliyor (üçü BİRLİKTE üç kaçış yolunun ÜÇÜNÜ de kapatır):
+#   (i)/(ii) → `^function <ad>(): void {` ANKORLU tanım araması (yorum
+#     metni bu TAM biçimde geçmiyor) VE çağrı-biçimi sayımı
+#     (`^\s*<ad>\(\)$`, en az 2 — bugünkü iki dosyanın ORTAK alt sınırı:
+#     storefront 2/2, admin 3/3 çağrı noktası taşıyor).
+#   (iii) → iki dosyadaki `assertDockerHostIsLoopback`/`assertTestEnvironment`
+#     fonksiyon GÖVDELERİ (ve `DOCKER_HOST_ALLOWED_HOSTNAMES` Set'i) satır
+#     satır çıkarılıp (awk, imzadan kapanış `}`'a kadar) backtick şablon
+#     dizgelerinin İÇERİĞİ (tek legitimate fark — dosyaya özgü hata metni
+#     öneki, ör. "e2e fixture:" ↔ "tenant-cleanup:") bir yer tutucuyla
+#     NORMALİZE edilip (`sed`) karşılaştırılıyor; normalize edilmiş metin
+#     SAPARSA İHLAL. Bu, `solid`'in önerdiği `shasum` yaklaşımının
+#     (AGENT_BASELINE §5 yasak jeton disiplinine aykırı değil, şifreleme
+#     DEĞİL) metinsel eşdeğeri — ek bağımlılık (örn. `shasum`'un her
+#     platformda bulunması) GEREKTİRMİYOR.
+#
+# ⚠ DÜRÜST SINIR (DARALTILMIŞ KAPSAM, ADR'de YAZILI, burada TEKRARLANIYOR):
+# iki `runSql`/`querySqlRows` gövdesinin METİNSEL SAPMASI (ör. `maxBuffer`,
+# admin'in EK `querySqlRows`'u, farklı biçim regexleri) bu kontrolle HÂLÂ
+# YAKALANMAZ — bu, `solid` tur 2'nin ÖLÇTÜĞÜ ve deponun bu sınıfta ZATEN
+# KABUL ETTİĞİ, gerekçeli bir borçtur (ADR-0022, "iki kopya" kararı).
+# Yukarıdaki (iii) düzeltmesi SADECE (a)+(b) koruma fonksiyonlarının VE
+# allowlist Set'inin sapmasını kapatır — `runSql` gibi dosyaya özgü,
+# GEREKÇELİ olarak farklılaşan kodu KAPSAMAZ (kapsasaydı iki dosyanın
+# zaten MEŞRU farkını İHLAL sayardı). Bu tarama (a)/(b) EKSENİNDE
+# ÇOĞALMAYI VE SAPMAYI kapatıyor; (c)/`runSql` EKSENİNDE yalnızca
+# ÇOĞALMAYI kapatıyor, SAPMAYI değil.
+#
+# Literal-jeton kuralı (AGENT_BASELINE.md §5): bu fonksiyonun aradığı
+# jetonlar KENDİ metninde (yorumlarda) BİTİŞİK/TIRNAKLI YAZILMAZ — AC8/AC16
+# ile AYNI disiplin. Hedef küme `scripts/**`'i de kapsadığı için bu `.sh`
+# dosyası `--include='*.ts'` yüzünden KENDİSİNİ asla eşlemez (yalnızca
+# `.ts` dosyaları taranıyor), ama disiplin AYNI gerekçeyle sürdürülüyor.
+# ---------------------------------------------------------------------------
+check_adr22_k1d_shellout_boundary() {
+  local token_a1='dock' token_a2='er exec'
+  local shellout_needle="${token_a1}${token_a2}"
+  local token_b1='ps' token_b2='ql'
+  local psql_needle="${token_b1}${token_b2}"
+  # Mekanizma jetonları (S-2 düzeltmesi) — GERÇEK execFileSync dizi
+  # öğeleri: tek tırnaklı "exec" ve "psql" literalleri, parçalardan
+  # kurulur (yukarıdaki AYNI literal-jeton disiplini).
+  local token_c1="'ex" token_c2="ec'"
+  local exec_array_needle="${token_c1}${token_c2}"
+  local token_d1="'ps" token_d2="ql'"
+  local psql_array_needle="${token_d1}${token_d2}"
+
+  local violation=false
+
+  # --- Alt kontrol 1: apps/*/src/** içinde SIFIR, İSTİSNASIZ ---
+  local src_dirs
+  src_dirs="$(find apps -maxdepth 2 -type d -name src 2>/dev/null)"
+  if [ -z "$src_dirs" ]; then
+    echo "ADR-0022 K1(d) taraması hata verdi: apps/*/src dizini bulunamadı — fail-closed."
+    return 1
+  fi
+  local src_dir_array=()
+  while IFS= read -r src_dir_line; do
+    [ -z "$src_dir_line" ] && continue
+    src_dir_array+=("$src_dir_line")
+  done <<<"$src_dirs"
+
+  local src_matches
+  src_matches="$(grep -rnE --include='*.ts' -- \
+    "${shellout_needle}|${psql_needle}" "${src_dir_array[@]}" 2>/dev/null || true)"
+  if [ -n "$src_matches" ]; then
+    echo "ADR-0022 K1(d) İHLALİ — apps/*/src/** içinde fabrika üretim koduna sızmış bir kabuk-çağrısı jetonu bulundu:"
+    printf '%s\n' "$src_matches"
+    violation=true
+  fi
+
+  # --- Alt kontrol 2: GERÇEK execFileSync mekanizmasını ('exec'+'psql' dizi
+  #     öğeleri) KULLANAN dosya kümesi TAM OLARAK bu ikisi (po kararı —
+  #     üçüncü kopya sessizce doğmasın); hedef apps+packages+scripts ------
+  local allowed_file_1='apps/storefront/e2e/fixtures/custom-domain-tenant.ts'
+  local allowed_file_2='apps/admin/e2e/fixtures/tenant-cleanup.ts'
+
+  # S-7 düzeltmesi (gate fix turu 2): needle'lar BİRLEŞİM — mekanizma
+  # (dizi-öğesi literalleri) ∪ düzyazı (bitişik "docker exec"/"psql" metni)
+  # — tek biçimi arayan bir tarama diğerini yazan bir kopyayı KAÇIRIRDI.
+  local exec_candidate_needle="${exec_array_needle}|${shellout_needle}"
+  local psql_candidate_needle="${psql_array_needle}|${psql_needle}"
+
+  local exec_array_file_matches actual_files expected_files
+  exec_array_file_matches="$(grep -rlE --include='*.ts' \
+    --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=generated --exclude-dir=.turbo \
+    -- "$exec_candidate_needle" apps packages scripts 2>/dev/null || true)"
+  actual_files="$(printf '%s\n' "$exec_array_file_matches" | grep -v '^$' \
+    | xargs -r grep -lE -- "$psql_candidate_needle" 2>/dev/null | sort)"
+  expected_files="$(printf '%s\n' "$allowed_file_1" "$allowed_file_2" | sort)"
+
+  if [ "$actual_files" != "$expected_files" ]; then
+    echo "ADR-0022 K1(d) allowlist İHLALİ — gerçek kabuk-çağrısı mekanizmasını (execFileSync 'exec'+'psql') VEYA düzyazı (docker exec/psql) kalıbını kullanan dosya kümesi beklenen İKİ fixture'dan SAPTI (üçüncü bir kopya doğmuş olabilir):"
+    echo "Beklenen:"; printf '%s\n' "$expected_files"
+    echo "Gerçek:"; printf '%s\n' "$actual_files"
+    violation=true
+  fi
+
+  # --- Alt kontrol 3 (S-8/İŞ ② düzeltmesi): her allowlist dosyası
+  #     ADR-0022 K1'in (a)+(b) koruma fonksiyonlarını GERÇEKTEN tanımlıyor
+  #     VE ÇAĞIRIYOR olmalı (ad geçişi YETERSİZ) VE iki dosyadaki gövdeler
+  #     (normalize edilmiş) BİREBİR eşit olmalı. --------------------------
+  local guard_fn_names=("assertDockerHostIsLoopback" "assertTestEnvironment")
+  local min_call_sites=2
+
+  # Belirtilen fonksiyonun imzadan (`function <ad>(): void {`) kapanış
+  # `}`'a (sütun 0, dahil) kadar GÖVDESİNİ yazdırır. Yoksa boş çıktı verir.
+  extract_guard_function_body() {
+    local body_file="$1" body_fn="$2"
+    awk -v sig="function ${body_fn}(): void {" '
+      $0 == sig { capture = 1 }
+      capture { print }
+      capture && $0 == "}" { exit }
+    ' "$body_file"
+  }
+
+  # Backtick şablon dizgelerinin İÇERİĞİNİ bir yer tutucuyla değiştirir —
+  # tek legitimate fark (dosyaya özgü hata metni öneki) burada ELENİR.
+  normalize_guard_body_text() {
+    sed -E 's/`[^`]*`/<TEMPLATE_LITERAL>/g'
+  }
+
+  local allowed_file
+  for allowed_file in "$allowed_file_1" "$allowed_file_2"; do
+    if [ ! -f "$allowed_file" ]; then
+      echo "ADR-0022 K1(d) İHLALİ — beklenen allowlist dosyası bulunamadı: $allowed_file"
+      violation=true
+      continue
+    fi
+
+    local guard_fn
+    for guard_fn in "${guard_fn_names[@]}"; do
+      if ! grep -qE "^function ${guard_fn}\\(\\): void \\{\$" "$allowed_file"; then
+        echo "ADR-0022 K1(d) İHLALİ — $allowed_file içinde koruma $guard_fn TANIM olarak (imza biçiminde) bulunamadı (ad bir yorumda geçmesi YETERLİ değil)."
+        violation=true
+        continue
+      fi
+      local call_count
+      call_count="$(grep -cE "^[[:space:]]*${guard_fn}\\(\\)\$" "$allowed_file" || true)"
+      if [ "$call_count" -lt "$min_call_sites" ]; then
+        echo "ADR-0022 K1(d) İHLALİ — $allowed_file içinde koruma $guard_fn en az $min_call_sites ÇAĞRI noktası ile beklenirdi, $call_count bulundu (tanım var ama çağrılmıyor olabilir)."
+        violation=true
+      fi
+    done
+  done
+
+  # Gövde eşitliği (iki dosya arasında, normalize edilmiş) — SAPMA ekseni.
+  for guard_fn in "${guard_fn_names[@]}"; do
+    local body_1 body_2
+    body_1="$(extract_guard_function_body "$allowed_file_1" "$guard_fn" | normalize_guard_body_text)"
+    body_2="$(extract_guard_function_body "$allowed_file_2" "$guard_fn" | normalize_guard_body_text)"
+    if [ -z "$body_1" ] || [ -z "$body_2" ]; then
+      # Tanım yoksa yukarıdaki döngü zaten İHLAL bastı — burada tekrar
+      # BASMA, yalnızca anlamsız bir boş-boş "eşit" sonucunu ATLA.
+      continue
+    fi
+    if [ "$body_1" != "$body_2" ]; then
+      echo "ADR-0022 K1(d) İHLALİ — $guard_fn gövdesi $allowed_file_1 ile $allowed_file_2 arasında (normalize edilmiş, şablon dizgesi metni hariç) SAPMIŞ:"
+      diff <(printf '%s\n' "$body_1") <(printf '%s\n' "$body_2") || true
+      violation=true
+    fi
+  done
+
+  # Allowlist Set'inin (DOCKER_HOST_ALLOWED_HOSTNAMES) iki dosya arasında
+  # BİREBİR eşit olduğu doğrulanır — (iii)'ün somut örneği bu Set'e bir
+  # host eklemekti.
+  extract_allowlist_set_block() {
+    local set_file="$1"
+    awk '
+      /^const DOCKER_HOST_ALLOWED_HOSTNAMES/ { capture = 1 }
+      capture { print }
+      capture && $0 == "])" { exit }
+    ' "$set_file"
+  }
+  local allowlist_1 allowlist_2
+  allowlist_1="$(extract_allowlist_set_block "$allowed_file_1")"
+  allowlist_2="$(extract_allowlist_set_block "$allowed_file_2")"
+  if [ -z "$allowlist_1" ] || [ -z "$allowlist_2" ]; then
+    echo "ADR-0022 K1(d) taraması hata verdi: DOCKER_HOST_ALLOWED_HOSTNAMES bloğu $allowed_file_1 veya $allowed_file_2 içinde bulunamadı — fail-closed."
+    violation=true
+  elif [ "$allowlist_1" != "$allowlist_2" ]; then
+    echo "ADR-0022 K1(d) İHLALİ — DOCKER_HOST_ALLOWED_HOSTNAMES allowlist'i $allowed_file_1 ile $allowed_file_2 arasında SAPMIŞ:"
+    diff <(printf '%s\n' "$allowlist_1") <(printf '%s\n' "$allowlist_2") || true
+    violation=true
+  fi
+
+  if [ "$violation" = true ]; then
+    return 1
+  fi
+  echo "ADR-0022 K1(d): apps/*/src/** istisnasız temiz; gerçek kabuk-çağrısı mekanizmasını/düzyazısını kullanan dosya kümesi TAM OLARAK beklenen iki fixture ($allowed_file_1, $allowed_file_2); ikisi de (a)+(b) korumalarını TANIMLIYOR+ÇAĞIRIYOR ve gövdeleri (+allowlist Set'i) birebir eşit."
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Playwright `retries` tek-kaynak taraması (S-11, İŞ ④, devops, T-020 gate
+# fix turu 2, 2026-11-15).
+#
+# AMAÇ: `scripts/playwright/base.ts`'in `retries: overrides.retries ?? 0`
+# pini yalnızca ÜST SEVİYEDE etkili — Playwright `projects[].retries`'i
+# de destekler ve o, üst seviyeyi PROJE BAZINDA EZER. `security`+`solid`
+# tur 2 BAĞIMSIZ ölçtü: `base.ts`'e DOKUNMADAN `apps/admin/
+# playwright.config.ts`'in `projects:` dizisine `retries: 2` eklemek
+# `pnpm guards`'ı (bu kontrol EKLENMEDEN önce) YEŞİL bırakırdı ve
+# başarısız bir koşumun `on-first-retry` trace'ini (oturum çerezi +
+# `Authorization` başlığı taşır) PUBLIC bir Actions artefaktına
+# yükleyebilirdi (R-9). BUGÜN ÖLÇÜLDÜ: `retries` jetonu `apps/**`/
+# `packages/**`/`scripts/**` genelindeki TÜM `.ts` dosyalarında YALNIZCA
+# `scripts/playwright/base.ts`'te geçiyor — bu kontrol o durumu MEKANİK
+# olarak KORUR: jeton `base.ts` DIŞINDA (bir `projects[]` girdisi DAHİL)
+# bir yerde görünürse İHLAL.
+# ---------------------------------------------------------------------------
+check_playwright_retries_single_source() {
+  local home_file="scripts/playwright/base.ts"
+  if [ ! -f "$home_file" ]; then
+    echo "Playwright retries tek-kaynak taraması hata verdi: $home_file bulunamadı — fail-closed."
+    return 1
+  fi
+
+  local scan_targets
+  scan_targets="$(find apps packages scripts -type f -name '*.ts' \
+    -not -path '*/node_modules/*' -not -path '*/dist/*' \
+    -not -path '*/generated/*' -not -path '*/.turbo/*' 2>/dev/null)"
+  if [ -z "$scan_targets" ]; then
+    echo "Playwright retries tek-kaynak taraması hata verdi: tarama hedefi (apps/**, packages/**, scripts/**) üretilemedi — fail-closed."
+    return 1
+  fi
+
+  local outside_matches
+  outside_matches="$(printf '%s\n' "$scan_targets" \
+    | grep -Fv "$home_file" \
+    | xargs -r grep -ln "retries" 2>/dev/null || true)"
+
+  if [ -n "$outside_matches" ]; then
+    echo "Playwright retries tek-kaynak İHLALİ — 'retries' jetonu $home_file DIŞINDA bulundu (üst seviye PİN'i bir projects[] girdisi veya başka bir yapılandırma PROJE/DOSYA BAZINDA ezebilir, S-11):"
+    printf '%s\n' "$outside_matches"
+    return 1
+  fi
+
+  if ! grep -q "retries" "$home_file"; then
+    echo "Playwright retries tek-kaynak taraması hata verdi: $home_file artık 'retries' jetonunu taşımıyor — pin kaybolmuş olabilir, fail-closed."
+    return 1
+  fi
+
+  echo "Playwright retries tek-kaynak: jeton yalnızca $home_file içinde geçiyor — üst seviye PİN hiçbir projects[]/çağıran yapılandırma tarafından EZİLMİYOR."
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # actionlint — yalnızca kurulu ise (indirme CI'a özgü, kapsam dışı — bkz.
 # dosya başı not). Yerelde yoksa BLOKLAMADAN uyarı verir.
 # ---------------------------------------------------------------------------
@@ -552,6 +982,10 @@ run_step "AC4 — GUC jetonları yalnızca tenant-context.ts'te" check_ac4_guc_t
 run_step "K8 — .env ↔ .env.example anahtar adı drift kontrolü" check_k8_env_example_drift
 run_step "Slug grameri tek-kaynak taraması" check_slug_grammar_single_source
 run_step "AC-16 — gerçek DNS çağrısı yokluğu taraması" check_ac16_no_real_dns_call
+run_step "AC-1 — kök test:e2e/test:visual/test:visual:update script varlığı" check_ac1_root_e2e_visual_scripts
+run_step "Bütçe pin tazeliği — AUTH_IP_LIMITS ↔ rate-limit.policy.ts" check_auth_budget_pin_freshness
+run_step "ADR-0022 K1(d) — fabrika sızma yasağı + allowlist" check_adr22_k1d_shellout_boundary
+run_step "Playwright retries tek-kaynak taraması (S-11)" check_playwright_retries_single_source
 run_step "actionlint (yerelde kuruluysa)" check_actionlint_if_available
 
 echo ""

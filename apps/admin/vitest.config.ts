@@ -18,7 +18,15 @@ export default defineConfig({
     // `check-bundle-budget.ts`'in artık dışa açık, saf fail-closed
     // assertion'larının (`assertDeclaredPrefixesExist`/
     // `assertEveryDynamicEntryIsAccountedFor`) birim testi burada yaşar.
-    include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
+    //
+    // ⚠⚠ T-020/S5 EKLEMESİ (`po`'nun `R-C` bulgusu, Orkestratör doğruladı):
+    // `e2e/**` EKLENDİ — eski liste `e2e/__tests__/auth-budget.test.ts`'i
+    // (Playwright `*.spec.ts` DEĞİL, saf Vitest `*.test.ts`) KAPSAMIYORDU ⇒
+    // `AC-4`'ün fail-closed bütçe değişmezi `pnpm test` YEŞİLKEN HİÇ
+    // KOŞMAZDI (sessiz sahte yeşil). Desen `*.test.ts` İLE SINIRLI —
+    // Playwright'ın `*.spec.ts` dosyaları bu `include`'a UYMAZ, ikisi
+    // çakışmaz.
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.ts', 'e2e/**/*.test.ts'],
     fsModuleCachePath: 'node_modules/.vitest-cache',
   },
 })

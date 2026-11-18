@@ -99,6 +99,94 @@
     },
     "clean": {
       "cache": false
+    },
+    // GEREKÇE (T-020/S3, po'nun R-B bulgusu — Orkestratör doğruladı) — bu
+    // görev tanımında "concurrency" ALANI YOK, çünkü turbo.json'ın task
+    // şeması eşzamanlılık ayarı taşımıyor; eşzamanlılık SADECE bir CLI
+    // bayrağıdır (`--concurrency=1`) ve kök `package.json`'daki "test:e2e"
+    // script'inin İÇİNE sabitlenmiştir — SİLİNMESİN. Neden: `turbo run
+    // test:e2e`, varsayılan eşzamanlılıkla admin ve storefront'u PARALEL
+    // planlar; ikisi de AYNI Postgres/Redis/Mailpit'e VE AYNI IP oran-sınırı
+    // bütçesine (EMAIL_IP_LIMIT=10/saat) aynı anda yüklenir ⇒ 429 ⇒ "flaky
+    // gibi görünen" sahte kırmızı (AC-12'yi sahte yeşile çevirir). `pnpm
+    // test`/`test:isolation`'ı bugün koruyan şey run-gates'in AYRI `turbo
+    // run` çağrıları — e2e'de o koruma YOK, bu yüzden pin BURADA zorunlu.
+    // `cache: false`: e2e dış altyapıya (Postgres/Redis/Mailpit/API) bağımlı,
+    // önbelleklenemez. `dependsOn: ["^build", "generate"]`: bayat-dist
+    // tuzağını kapatır (T-019'da beş kez önlendi; ROADMAP:1250'nin dersi) —
+    // KALDIRILAMAZ.
+    // DÜZELTME (T-020/S9c, devops — İŞ ②'nin ÖLÇÜMÜ): `test:visual`'ı kıran
+    // AYNI SINIF ("turbo bildirilmeyen env'i siler") bu görevi de
+    // etkiliyor — ÖLÇÜLDÜ: `apps/admin/package.json`'ın `test:e2e`
+    // script'i geçici olarak `process.env.ARKESOFT_PANEL_DEV_API_TARGET`'ı
+    // yazdıran bir proba çevrilip kökten `pnpm test:e2e` ile çağrıldığında
+    // (düzeltme ÖNCESİ) `(tanımsız)` bastı — `apps/admin/vite.config.ts:61`
+    // bu yüzden kendi varsayılanına (`http://127.0.0.1:3000`) düşer. CI'da
+    // bu SESSİZCE "doğru" sonuç verir çünkü CI'da API ZATEN 3000'de —
+    // ⚠ TESADÜF, KANIT DEĞİL. Yerelde API 3100'de olduğundan, bu değişken
+    // bildirilmeden kökten `pnpm test:e2e` çağrıldığında tRPC çağrıları
+    // kullanıcının `demo-site` projesine (3000) sessizce kayar.
+    // `passThroughEnv` (ENV DEĞİL): bu görev de `cache: false`, hash'leme
+    // konusuz — `test:visual`'daki aynı gerekçe (yukarı bak) burada da
+    // geçerli.
+    "test:e2e": {
+      "dependsOn": ["^build", "generate"],
+      "cache": false,
+      "passThroughEnv": ["ARKESOFT_PANEL_DEV_API_TARGET"]
+    },
+    // GEREKÇE (T-020/S6, ADR-0022 Karar 4/5) — `AC-2`'nin ŞART KOŞTUĞU
+    // `dependsOn: ["^build", "generate"]` BURADA DA TUTULUYOR (kaldırma
+    // yetkisi `devops`'ta DEĞİL): çağrı grafiğindeki UPSTREAM paketlerin
+    // (`@arkesoft/themes-modern` dahil) derlemesini `test:visual`'dan ÖNCE
+    // garanti eder — bayat-dist tuzağının (T-019'da beş kez önlenen sınıf)
+    // AYNI korunması.
+    // ⚠⚠ R-G (po) ÖLÇÜLDÜ VE ÇÜRÜTÜLDÜ (devops, bu alt görev) — `po`'nun
+    // beklediği "çift `astro build`" riski `npx turbo run test:visual
+    // --dry=json` ile GERÇEK görev grafiği üzerinde DOĞRUDAN ölçüldü:
+    // `"^build"` yalnızca BAĞIMLI paketlerin `build` görevini çalıştırır
+    // (`@arkesoft/config`/`db`/`errors`/`tenancy`/`theme-sdk`/`themes-
+    // modern`/`trpc`/`ui`); graf `@arkesoft/storefront#build` ADLI BİR
+    // GÖREV TAŞIMAZ (Astro'nun KENDİ `build` script'i yalnızca `scripts/
+    // run-visual.sh`'in İÇİNDE, TEK SEFER çağrılır). ⇒ `pnpm test:visual`
+    // tek koşumda `astro build`'i YALNIZCA BİR KEZ çalıştırır — "çift
+    // derleme" GERÇEKLEŞMİYOR, `po`'nun çıkarımı bağımlılık grafiğinin
+    // `dependsOn`'ı PAKETİN KENDİ `build`'İNE de uyguladığı YANLIŞ
+    // varsayımına dayanıyordu.
+    // DÜZELTME (T-020/S9c, devops — ÖLÇÜLMÜŞ KÖK NEDEN, CI koşumu
+    // `43717369561`, HTTP 503): `ci.yml:1318`in verdiği
+    // `STOREFRONT_API_BASE_URL_OVERRIDE=http://127.0.0.1:3000` buraya HİÇ
+    // ULAŞMIYORDU — `scripts/run-visual.sh:191` kendi varsayılanına (3100)
+    // düşüyor, storefront yanlış porta bağlanıyor, API 503 dönüyordu.
+    // `passThroughEnv` (ENV DEĞİL) SEÇİLDİ — ÖLÇÜLEREK: bu iki görev ZATEN
+    // `cache: false` (yukarıda), yani hash'leme KONUSUZ; `passThroughEnv`
+    // hash'e HİÇ GİRMEZ (yalnızca çalışma zamanına GEÇİRİR), bu yüzden
+    // hash kirlenmesi YOK ve `turbo.json:5-11`'in `globalEnv`'i DAR TUTMA
+    // kaygısıyla (ADR-0014 karar 1) TUTARLI — aynı kaygı burada `env`
+    // yerine `passThroughEnv` seçmeyi GEREKTİRİR. Üç değişken
+    // `scripts/run-visual.sh`'in OKUDUĞU TÜM kabuk değişkenleri taranarak
+    // çıkarıldı (dosya başı yorum + satır 189-191, 297): `VISUAL_PORT`
+    // (`ARKESOFT_STOREFRONT_VISUAL_PORT`, S6'nın eklediği), `APP_BASE_
+    // DOMAIN_FOR_VISUAL` (`APP_BASE_DOMAIN`), `STOREFRONT_API_BASE_URL_
+    // FOR_VISUAL` (`STOREFRONT_API_BASE_URL_OVERRIDE`) — `CI` ZATEN
+    // `globalEnv`'de, tekrar eklenmedi. ⚠ BU YORUMU "gereksiz" SANIP
+    // SİLME — kaldırırsan AYNI 503 sınıfı CI'da GERİ GELİR.
+    "test:visual": {
+      "dependsOn": ["^build", "generate"],
+      "cache": false,
+      "passThroughEnv": [
+        "STOREFRONT_API_BASE_URL_OVERRIDE",
+        "APP_BASE_DOMAIN",
+        "ARKESOFT_STOREFRONT_VISUAL_PORT"
+      ]
+    },
+    "test:visual:update": {
+      "dependsOn": ["^build", "generate"],
+      "cache": false,
+      "passThroughEnv": [
+        "STOREFRONT_API_BASE_URL_OVERRIDE",
+        "APP_BASE_DOMAIN",
+        "ARKESOFT_STOREFRONT_VISUAL_PORT"
+      ]
     }
   }
 }

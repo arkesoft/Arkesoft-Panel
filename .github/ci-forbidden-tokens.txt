@@ -19,9 +19,12 @@
 #    silinir" diyor, aşağıdaki "GEÇİCİ KAPSAM BOŞLUĞU İŞARETLERİ" bölümünden
 #    ilgili satır kaldırıldı; `ci.yml`/`run-gates` artık bu yeteneği
 #    literal olarak taşıyor, AC13'ün taraması bunu artık ARAMIYOR)
-#   test:e2e         → v0.0.19 (script bugün yok)
+#   test:e2e         → v0.0.19'da silindi (T-020): script artık apps/admin VE
+#                      apps/storefront'ta var (ikisinde de v0.0.7'den beri; bu
+#                      sürümde kök toplayıcı da eklendi — docs, T-020/S10: önceki
+#                      yorum "yalnızca apps/admin'de" diyordu, BAYATTI)
 #   test:contract    → v0.0.22
-#   tarayıcı uçtan uca test aracı (satırdaki jetonun kendisi aşağıda) → v0.0.19
+#   tarayıcı uçtan uca test aracı (jetonun kendisi aşağıda) → v0.0.19'da silindi (T-020)
 #   docker build     → v0.18.0 (gerçek imaj/registry hedefi henüz yok)
 #   TURBO_TOKEN      → v0.18.0 (remote cache kapsam dışı — K0b)
 #   TURBO_TEAM       → v0.18.0 (remote cache kapsam dışı — K0b)
@@ -122,9 +125,7 @@ db push --force-reset
 # hiçbir yerde geçmeyen bir metin olurdu) — o yüzden vade NOTU yukarıda, AYRI
 # satırlarda tutuluyor. ===
 pnpm audit
-test:e2e
 test:contract
-playwright
 docker build
 TURBO_TOKEN
 TURBO_TEAM

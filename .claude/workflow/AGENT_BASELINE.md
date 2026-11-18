@@ -227,9 +227,19 @@ pnpm typecheck       # tsc --noEmit
 pnpm build           # tüm paketler
 pnpm test            # Vitest (v0.0.3'ten itibaren)
 pnpm test:isolation  # tenant izolasyon süiti (v0.0.13'ten itibaren)
+pnpm test:e2e        # Playwright — KÖK TOPLAYICI (v0.0.19'dan itibaren, T-020/S3;
+                     # `turbo run test:e2e --concurrency=1` — eşzamanlılık pini
+                     # `R-B`: iki uygulamanın aynı Postgres/Redis/Mailpit ve aynı
+                     # IP oran-sınırı bütçesine paralel yüklenmesini önler, SİLİNMESİN).
 pnpm --filter @arkesoft/<app> test:e2e   # Playwright — PAKET BAZINDA (v0.0.7'den itibaren)
-                     # KÖK `pnpm test:e2e` script'i YOK (pm T-009'da ölçtü, R6).
-                     # Bugün yalnızca apps/admin'de var; borç: devops/docs.
+                     # ⚠ DÜZELTME (T-020, pm ölçtü): bu dosyanın önceki hâli "bugün
+                     # yalnızca apps/admin'de var" diyordu — BAYATTI. `test:e2e`
+                     # v0.0.7'den beri İKİ uygulamada da var (apps/admin/package.json:12
+                     # VE apps/storefront/package.json:12); kök toplayıcı artık da var
+                     # (yukarıdaki satır).
+pnpm test:visual     # Görsel regresyon — KÖK TOPLAYICI (v0.0.19'dan itibaren, T-020/S6;
+                     # pinli Playwright Docker imajı İÇİNDE koşar, bkz. docs/testing.md §3).
+pnpm test:visual:update   # Referans görüntüleri günceller (v0.0.19'dan itibaren, T-020/S6).
 pnpm format:check    # Prettier
 pnpm env:check       # ortam değişkeni şeması
 pnpm infra:up        # yerel altyapı (Postgres, Redis, Meilisearch, SeaweedFS, Mailpit)

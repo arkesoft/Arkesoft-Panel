@@ -1,11 +1,17 @@
-// @arkesoft/admin — Playwright yapılandırması (ROADMAP v0.0.7, T-008/S5,
-// architect "Test yapılandırması", PO "AC17 mekanik")
+// @arkesoft/admin — Playwright yapılandırması (ROADMAP v0.0.7, T-008/S5;
+// v0.0.19, T-020/S5, ADR-0022 Karar 3 (K3) — proje matrisi RESMÎLEŞTİ)
 //
-// v0.0.7 ASGARİ (AC17 bağlayıcı — v0.0.19'da RESMÎLEŞİR, bu sürümde YASAK
-// olanlar aşağıda işaretli): `projects` **1** (chromium, masaüstü, TEK
-// viewport) · `workers: 1` · `toHaveScreenshot`/`toMatchSnapshot` BU
-// DOSYADA/spec'te YOK · kök `test:e2e`/`test:visual` script'i EKLENMEDİ ·
-// `turbo.json`'a görev EKLENMEDİ · CI job'u EKLENMEDİ.
+// v0.0.19 İKİ DEĞİŞİKLİK (AC17'nin eski "TEK proje" asgarisinin YERİNE):
+// (1) İKİ ADLANDIRILMIŞ proje, DİZİN TABANLI ayrım — `--grep` KULLANILMADI
+//     (ADR Karar 3: "başlık düzenlemesi kapsamı sessizce kaydırır"). `admin-
+//     desktop` (`testDir: './e2e'`, `testIgnore: ['**/responsive/**']`) ve
+//     `admin-mobile` (`testDir: './e2e/responsive'`) — kullanıcı kararı 2
+//     ("çoklu viewport" DARALTILDI): auth tüketen DÖRT spec SADECE masaüstü
+//     projesinde koşar, mobil proje auth TÜKETMEYEN bir yerleşim spec'i
+//     taşır (`e2e/responsive/sign-in-layout.spec.ts`).
+// (2) Bütçe BURADAN `e2e/auth-budget.ts`'e TAŞINDI (tek doğruluk kaynağı
+//     ARTIK O DOSYA, `auth-budget.test.ts`'in fail-closed değişmezleriyle
+//     korunuyor) — bu dosya yalnızca ONA işaret eder, sayıları TEKRARLAMAZ.
 //
 // A-A9 (ÖLÇÜLDÜ, frontend+qa): `vite preview`'un varsayılan portu **4173**
 // — `AUTH_BASE_URL` `:5173` ile eşleşmez, her giriş SESSİZCE 403 alırdı
@@ -16,79 +22,35 @@
 // bkz.) — `vite preview` DEĞİL. Port ÇAKIŞIRSA `--strictPort` GÜRÜLTÜLÜ
 // kırılır (sessizce başka porta kaymaz).
 //
-// AC18 (bütçe, bağlayıcı — DÜZELTME TURU 2: `solid` tur 2 M-N1, yorum
-// düzeltildi; qa tur 2/DAR İŞ ①: ÜÇÜNCÜ spec dosyası eklendi; T-019/S11
-// (v0.1.0 kayıt akışı): DÖRDÜNCÜ spec dosyası eklendi, toplam AŞAĞIDA
-// yeniden hesaplandı): `workers: 1` + HER SPEC dosyasının KENDİSİ
-// `test.describe.serial` kullanıyor — `/auth/sign-in/email` IP bazlı
-// `platform:auth:*` sayacını (gerçek sınır `LOGIN_IP_LIMIT` = 20 deneme /
-// 15 dk, `rate-limit.policy.ts:127` — BAŞARILI istekler DE sayılıyor,
-// SIFIRLANMAZ) paylaşan DÖRT spec dosyası var (`panel-flow.spec.ts` +
-// `qa-blind-spot-and-negative-scenarios.qa.spec.ts` + `session-security-
-// dialog-focus.qa.spec.ts` + `registration-flow.spec.ts`), paralel koşum
-// bu sayacı YARIŞTIRMAZ ama DÖRDÜ AYNI IP'den aynı pencereyi TÜKETİR.
-//
-// TEK doğruluk kaynağı (architect Risk 5 — bağlayıcı) BURASI: koşum
-// başına (TÜM spec dosyalarının TOPLAMI, TEK dosya DEĞİL) gerçek sınıra
-// (20/pencere) GÜVENLİ bir pay bırakılması — bu dosyanın kendi KARARI
-// "güvenli pay" için SABİT bir tavan sayı DEĞİL, ÖLÇÜLEN gerçek toplamın
-// 20'nin ÇOK altında kalması (bugün 8/20, %60 pay) VE hesap bazlı sınırın
-// (`LOGIN_ACCOUNT_LIMIT`, aynı dosya) her testin KENDİ fixture kullanıcısı
-// İÇİN tek haneli denemede kalmasıdır. Yeni bir spec dosyası `/auth/
-// sign-in/email` veya `/auth/sign-up/email`'e GERÇEK bir çağrı eklerse bu
-// toplam BURADA güncellenmek ZORUNDA — her spec dosyası kendi PAYINI kendi
-// başında yorumlar (bkz. `panel-flow.spec.ts` + ilgili `qa` dosyaları),
-// TOPLAMI TEKRAR ETMEZ.
-//
-// Bugünkü ÖLÇÜLMÜŞ toplam (T-019/S11, v0.1.0 kayıt akışı —
-// `registration-flow.spec.ts` EKLENDİ; gerçek sınıra göre KARŞILAŞTIRMALI):
-//   sign-in: panel-flow.spec.ts (3) + qa-blind-spot-…qa.spec.ts (1) +
-//            session-security-dialog-focus.qa.spec.ts (3) +
-//            registration-flow.spec.ts (1 — `beforeAll`'daki TEK
-//            `/auth/sign-in/email` çağrısı, dosyanın KENDİ koduyla) = 8/20
-//   sign-up: panel-flow.spec.ts (3) + qa-blind-spot-…qa.spec.ts (0) +
-//            session-security-dialog-focus.qa.spec.ts (2) +
-//            registration-flow.spec.ts (1 — spec dosyası kendi başına
-//            `/auth/sign-up/email` ÇAĞIRMAZ; `beforeAll`'da BİR kez
-//            çağırdığı ORTAK yardımcı `e2e/helpers/verified-fixture-
-//            user.ts`'in `createVerifiedFixtureUser`'ı içindeki TEK
-//            `sign-up/email` çağrısından gelir) = 6
-// (ÖNCEKİ tur: sign-in 7, sign-up 5 — üç dosyayla; bu turda DÖRDÜNCÜ dosya
-// +1 sign-in + 1 sign-up ekledi, gerçek 20/pencere sınırına göre HÂLÂ
-// büyük pay var — kalan 12/20.)
-//
-// ⚠⚠ İKİ EKSİK UYARI (`docs`, T-019, 2026-11-15 — `qa` tur 2'nin ölçtüğü
-// `Q-1` kök nedeninin yan bulgusu):
-// (a) Bu blok BUGÜN YALNIZCA bu dizindeki spec dosyalarının payını sayıyor.
-//     `pnpm test` DE AYNI sayaçları tüketiyor — test harness'ı (`apps/api`)
-//     ile canlı dev API AYNI Redis'i paylaşıyor, yani kök `pnpm test` bir
-//     e2e koşumundan ÖNCE veya SONRA çalışırsa sign-up/sign-in IP sayaçlarına
-//     KENDİ katkısını ekler. Bu blok o katkıyı HİÇ SAYMIYOR — toplam yukarıda
-//     yazılı sayılardan DAHA YÜKSEK olabilir.
-// (b) `/auth/sign-up/email` için gerçek sınır sign-in'den FARKLI: `EMAIL_IP_
-//     LIMIT = 10`/saat (`rate-limit.policy.ts:134`), 15 dk DEĞİL. ⇒ tam e2e
-//     süiti (yukarıdaki sign-up 6 + `pnpm test`'in katkısı) **saatte
-//     yalnızca BİR KEZ** güvenle koşturulabilir; art arda iki tam koşum
-//     aynı saat içinde sign-up'ı 429'a düşürebilir.
-//
-// MEKANİK bir çapraz-dosya toplam denetimi (DEĞERLENDİRİLDİ, KURULMADI):
-// statik regex taraması "gerçek ağ çağrısı" ile "page.route() ile taklit
-// edilen aynı metinsel örüntü"yü GÜVENİLİR AYIRT EDEMİYOR — ÖLÇÜLDÜ, bu
-// dosyanın KENDİ (D) ve (G) testleri BİREBİR AYNI `getByRole('button',
-// { name: 'Giriş yap' }).press('Enter')` örüntüsünü taşıyor, biri taklit
-// (sıfır maliyet) biri gerçek (G); `panel-flow.spec.ts`'in alan-doğrulama
-// testi de AYNI örüntüyü istemci tarafı Zod reddiyle (sıfır ağ çağrısı)
-// taşıyor. Güvenilir bir çapraz-dosya mekanizması Redis sayaç delta'sını
-// `globalSetup`/`globalTeardown`'da okumayı gerektirirdi — bu, e2e
-// koşumuna YENİ bir altyapı bağımlılığı (Redis bağlantısı) ve yeni bir
-// kırılganlık kaynağı (CI'da farklı `REDIS_URL`, paylaşılan ortamda
-// eşzamanlı başka süreçler) eklerdi; bugünkü kazanç (bir yorumun
-// doğruluğu) bu riske değmedi. Toplam bu yüzden BURADA, TEK yerde, elle
-// tutuluyor — yeni bir spec dosyası ekleyen HER ajan bu bloğu
-// GÜNCELLEMEK ZORUNDA.
-import { defineConfig, devices } from '@playwright/test'
-
+// AC18 bütçesinin TEK doğruluk kaynağı artık `e2e/auth-budget.ts`
+// (`AUTH_IP_LIMITS`/`SPEC_AUTH_COST`) — gerçek sınırlar (`LOGIN_IP_LIMIT=20`/
+// 15dk, `EMAIL_IP_LIMIT=10`/saat, `rate-limit.policy.ts:127,134`) ve beş
+// spec'in payı O DOSYADA tutulur, `auth-budget.test.ts` kapsam/çarpan/
+// toplam değişmezlerini MEKANİK doğrular. Burada yalnızca İTHAL EDİLİP
+// `workers`/`fullyParallel` kararının GEREKÇESİ olarak kullanılıyor —
+// sayılar BURADA TEKRARLANMAZ (tek yerde elle tutulan sayı disiplini,
+// eski yorumun AYNI gerekçesi).
+import {
+  createPlaywrightBaseConfig,
+  desktopDevice,
+  mobileDevice,
+} from '../../scripts/playwright/base.js'
+import { AUTH_IP_LIMITS, SPEC_AUTH_COST } from './e2e/auth-budget.js'
 import { resolvePanelDevPort } from './src/app/panel-config.js'
+
+// T-020/S5 — ADR-0022 K1(b): `fixtures/tenant-cleanup.ts`'in fail-closed
+// `NODE_ENV=test` kapısı için BURADA sabitleniyor (`playwright test`
+// NODE_ENV'i KENDİSİ AYARLAMAZ, ÖLÇÜLDÜ:
+// `node -e "console.log(process.env.NODE_ENV)"` → `undefined`; emsal
+// Vitest'in KENDİLİĞİNDEN ayarladığı bir bağlamda yazılmıştı, bu BAĞLAM
+// FARKLI). `??=` — zaten `test` İSE (örn. bir üst katman ayarlamışsa)
+// DOKUNULMAZ. `webServer.command` AŞAĞIDA bu değeri vite'ın ÇOCUK
+// sürecinden `env NODE_ENV=development` İLE AÇIKÇA GERİ ALIR (storefront'un
+// `env -u …` ÖN EKİYLE AYNI utility, ters yönde kullanım) — NODE_ENV=test'in
+// dev sunucusuna SIZMASI riske değmez (admin'in uygulama kodu `NODE_ENV`'e
+// BAKMIYOR, ÖLÇÜLDÜ — `grep` sıfır eşleşme — ama bu YİNE DE savunma amaçlı
+// bir izolasyon, storefront'un "dedektör temizliği" disipliniyle AYNI sınıf).
+process.env['NODE_ENV'] ??= 'test'
 
 // devops (gate paralelliği): `ARKESOFT_PANEL_E2E_PORT` VERİLMEZSE davranış
 // birebir ESKİSİ GİBİDİR. `vite.config.ts` AYNI fonksiyonu AYNI env
@@ -102,25 +64,93 @@ import { resolvePanelDevPort } from './src/app/panel-config.js'
 const PORT = resolvePanelDevPort(process.env['ARKESOFT_PANEL_E2E_PORT'])
 const BASE_URL = `http://panel.arkesoft.localhost:${String(PORT)}`
 
-export default defineConfig({
+// İKİNCİ, BAĞIMSIZ fail-closed kapı (T-020/S5) — `auth-budget.test.ts`'in
+// "toplam" assertion'ıyla AYNI hesabı burada TEKRARLAR, ama config YÜKLENİR
+// YÜKLENMEZ fırlar (Vitest'i ÇALIŞTIRMAYI beklemez). Biri bu dosyadaki
+// `SPEC_AUTH_COST`'u sınırın ÜSTÜNE çıkaracak şekilde değiştirip `pnpm test`
+// koşturmadan DOĞRUDAN `playwright test` koşturursa BİLE yakalanır.
+const declaredAuthTotals = Object.values(SPEC_AUTH_COST).reduce(
+  (accumulator, cost) => ({
+    signIn: accumulator.signIn + cost.signIn,
+    signUp: accumulator.signUp + cost.signUp,
+  }),
+  { signIn: 0, signUp: 0 },
+)
+if (
+  declaredAuthTotals.signIn > AUTH_IP_LIMITS.signIn ||
+  declaredAuthTotals.signUp > AUTH_IP_LIMITS.signUp
+) {
+  throw new Error(
+    `playwright.config.ts: auth-budget.ts toplamı sınırı aşıyor (signIn ${String(declaredAuthTotals.signIn)}/${String(AUTH_IP_LIMITS.signIn)}, signUp ${String(declaredAuthTotals.signUp)}/${String(AUTH_IP_LIMITS.signUp)}) — yeni bir spec eklenmiş olabilir, e2e/auth-budget.ts güncellenmeli.`,
+  )
+}
+
+export default createPlaywrightBaseConfig({
   testDir: './e2e',
-  // AC18: oran sınırı bütçesi dar (gerçek sınırın 20'nin altında güvenli
-  // pay) — testler SIRALI koşmak ZORUNDA, aksi hâlde aynı IP'den paralel
-  // giriş denemeleri sayacı beklenenden hızlı tüketir (`test.describe.
-  // serial` spec İÇİNDE de var, bu BAĞIMSIZ bir ikinci güvence).
+  // ⚠⚠ T-020/S5 ÖLÇÜMÜ (negatif kanıt sırasında bulundu): Playwright'ın
+  // VARSAYILAN `testMatch`'i `*.test.ts`'i DE eşleştirir (`*.spec.ts`
+  // KADAR) — `e2e/__tests__/auth-budget.test.ts` (Vitest testi, `describe`/
+  // `it` Playwright'ın DEĞİL) BU YÜZDEN Playwright TARAFINDAN da yükleniyor
+  // ve `Cannot read properties of undefined (reading 'config')` ile
+  // ÇÖKÜYORDU (ÖLÇÜLDÜ: `playwright test --list` bu hatayla "Total: 0 tests"
+  // döndü). `testMatch` BURADA AÇIKÇA `.spec.ts`'e SABİTLENDİ — Vitest'in
+  // `include`'u (`vitest.config.ts`) `.test.ts`'e, Playwright'ınki `.spec.
+  // ts`'e; ikisi KESİŞMEZ.
+  testMatch: '**/*.spec.ts',
+  // T-020/S5 — ADR-0022 K1, "+ globalTeardown (idempotent önek süpürmesi)":
+  // her spec'in KENDİ `afterAll`'ı kendi sızıntısını kapatır; bu güvenlik
+  // AĞI bir çökme/timeout yüzünden `afterAll`'ın HİÇ çalışmadığı satırları
+  // temizler (bkz. `e2e/global-teardown.ts` dosya başı notu).
+  globalTeardown: './e2e/global-teardown.ts',
+  // AC18: oran sınırı bütçesi dar (gerçek sınırın altında güvenli pay) —
+  // testler SIRALI koşmak ZORUNDA, aksi hâlde aynı IP'den paralel giriş
+  // denemeleri sayacı beklenenden hızlı tüketir (`test.describe.serial`
+  // spec İÇİNDE de var, bu BAĞIMSIZ bir ikinci güvence).
   fullyParallel: false,
-  workers: 1,
-  // v0.0.19'a kadar TEK proje, TEK viewport (AC17) — masaüstü varsayılanı
-  // (mobil/responsive davranış bu sürümde görsel regresyonla DEĞİL, UX'in
-  // planıyla doğrulandı).
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  // T-020/S5 — ADR-0022 K3: İKİ adlandırılmış proje, DİZİN tabanlı ayrım
+  // (`--grep` YASAK). `admin-desktop` auth tüketen DÖRT spec'i taşır;
+  // `admin-mobile` SADECE auth tüketMEYEN yerleşim spec'ini
+  // (`e2e/responsive/sign-in-layout.spec.ts`) — kullanıcı kararı 2'nin
+  // mekanik karşılığı ("çoklu viewport"un amacı duyarlı render, auth
+  // akışını İKİNCİ kez koşmak DEĞİL).
+  projects: [
+    {
+      name: 'admin-desktop',
+      testDir: './e2e',
+      testIgnore: ['**/responsive/**'],
+      use: { ...desktopDevice },
+    },
+    {
+      name: 'admin-mobile',
+      testDir: './e2e/responsive',
+      use: { ...mobileDevice },
+    },
+  ],
   use: {
     baseURL: BASE_URL,
   },
   webServer: {
-    command: `vite --port ${String(PORT)} --strictPort`,
+    // T-020/S5 — dosya başı NODE_ENV notu: vite'ın ÇOCUK süreci `NODE_ENV=
+    // development`'a AÇIKÇA PİNLİ (storefront'un `env -u …` deseniyle AYNI
+    // utility, ters yönde) — ebeveynin `NODE_ENV=test`'i (tenant-cleanup
+    // fixture'ının fail-closed kapısı İÇİN) buraya SIZMAZ.
+    command: `env NODE_ENV=development vite --port ${String(PORT)} --strictPort`,
     url: BASE_URL,
-    reuseExistingServer: !process.env['CI'],
+    // ⚠⚠ T-020/S3 ÖLÇÜMÜ (devops, bağlayıcı): `reuseExistingServer: !process.
+    // env['CI']` yerelde 5173'te ZATEN koşan bir vite'ı SESSİZCE yeniden
+    // KULLANIYORDU — o süreç `ARKESOFT_PANEL_DEV_API_TARGET` TAŞIMIYORSA
+    // proxy varsayılana (`vite.config.ts:60` → `http://127.0.0.1:3000`)
+    // DÜŞÜYOR ve HER tRPC çağrısı kullanıcının `demo-site` Next.js
+    // projesine GİDİYOR (ÖLÇÜLDÜ: env YOKKEN `/trpc/session.me` → 404 ·
+    // `x-nextjs-cache: HIT` · `<!DOCTYPE html>`; env VARKEN → 401 ·
+    // `{"code":"UNAUTHENTICATED"}`) — T-020/S3'te BU TUZAK DÖRT testi
+    // düşürdü (`demo-site` port 3000 tuzağının İKİNCİ kapısı). ÇÖZÜM EMSALİ
+    // ZATEN REPODA: `apps/storefront/playwright.config.ts` BİLEREK
+    // `reuseExistingServer: false` kullanıyor (T-011 "halka 3" gerekçesi) —
+    // admin BURADA onunla HİZALANDI. ⚠ DAVRANIŞ DEĞİŞİKLİĞİ: her koşum
+    // KENDİ vite'ını başlatır (biraz yavaş, ama DETERMİNİSTİK) — bir SONRAKİ
+    // ajan bunu "gereksiz yavaşlık" sanıp GERİ ALMASIN.
+    reuseExistingServer: false,
     timeout: 30_000,
   },
 })
