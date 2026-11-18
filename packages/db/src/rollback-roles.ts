@@ -1,6 +1,11 @@
-// @arkesoft/db — rol ayrımı GERİ ALMA koşturucusu, kademe 3 + kademe 4
-// (ROADMAP v0.0.13 kademe 3 borcu + v0.0.14.1 kademe 4, T-015/ST-G,
-// architect KARAR A1)
+// @arkesoft/db — rol ayrımı GERİ ALMA koşturucusu, kademe 3 + kademe 4 +
+// kademe 5 (ROADMAP v0.0.13 kademe 3 borcu + v0.0.14.1 kademe 4 +
+// v0.0.20.2 kademe 5, T-015/ST-G + T-023/S6, architect KARAR A1)
+//
+// DÜZELTME (T-023 SON TEMİZLİK, `solid` tur 3 [low] bulgusu — `solid` tur
+// 2'de de raporlanmış, o turda KAPANMAMIŞTI): başlık ve aşağıdaki liste
+// KADEME 5'i (v0.0.20.2, `docs/development.md`'nin "Beş kademeli geri
+// alma" başlığı — gerçek sıra **5 → 4 → 1 → 2 → 3**) EKSİK sayıyordu.
 //
 // `pnpm db:rollback-roles` → bu dosya (derlenmiş, `dist/rollback-roles.js`)
 // `--target roles` ile `sql/rollback-roles.sql`'i çalıştırır (KADEME 3 — V0.0.13'ten
@@ -8,6 +13,9 @@
 // `pnpm db:rollback-auth-role` → AYNI dosya `--target auth-role` ile
 // `sql/rollback-auth-role.sql`'i çalıştırır (KADEME 4 — v0.0.14.1'in deltasını
 // tersler).
+// `pnpm db:rollback-audit-append-only` → AYNI dosya `--target
+// audit-append-only` ile `sql/rollback-audit-append-only.sql`'i çalıştırır
+// (KADEME 5 — v0.0.20.2'nin `bootstrap-roles.sql` §9 deltasını tersler).
 //
 // TASARIM KARARI (A1-b, bağlayıcı): "ayrı dosya, ayrı script" — bu koşturucu
 // TEK TypeScript dosyasıdır ama İKİ SQL dosyasını ASLA AYNI ÇAĞRIDA
@@ -56,6 +64,7 @@ import { fileURLToPath } from 'node:url'
 
 import { readDatabaseBootstrapEnv } from './env.js'
 import { evaluateTargetDatabase } from './guard-policy.js'
+import { isRollbackTarget, type RollbackTarget } from './rollback-target.js'
 
 // DÜZELTME (prisma.config.ts/vitest.config.ts/bootstrap-roles.ts deseniyle
 // AYNI sebep): CI runner'ında kök `.env` yok (git izlemiyor); `existsSync`
@@ -69,16 +78,22 @@ if (existsSync(rootEnvUrl)) {
 // paket kökünün İKİ değil ÜÇ dizin altında durur.
 const PACKAGE_ROOT = fileURLToPath(new URL('../', import.meta.url))
 
-/** Kademe 3/4'ün hedef SQL dosyasını seçen CLI argümanı. */
-type RollbackTarget = 'roles' | 'auth-role'
+// DÜZELTME (T-023 SON TEMİZLİK, `solid` tur 3 [low] bulgusu): bu konumda
+// eskiden `RollbackTarget` tipini ve kademe 5 ("audit-append-only") GENİŞLETME
+// gerekçesini anlatan bir jsdoc bloğu vardı — tip `rollback-target.ts`'e
+// taşındığında (DÜZELTME, FIX turu 2, M1) o bloğun İÇERİĞİ oraya İTHAL
+// edilmedi, burada YETİM kaldı (hiçbir sembole bağlanmıyordu). `RollbackTarget`
+// tipinin kendisi ve GENİŞLETME tarihçesi artık `rollback-target.ts:33-34`'te
+// (tip tanımı) yaşıyor — bu dosya onu yalnızca İTHAL eder (aşağıdaki import).
 
 /**
- * `RollbackTarget` → `sql/*.sql` yolu. İKİ ayrı DOSYA (A1-b) — bu nesne
- * yalnızca BİR isim seçer, DDL'leri birleştirmez.
+ * `RollbackTarget` → `sql/*.sql` yolu. Her üye AYRI bir DOSYA (A1-b) — bu
+ * nesne yalnızca BİR isim seçer, DDL'leri birleştirmez.
  */
 const SQL_PATHS: Readonly<Record<RollbackTarget, string>> = {
   roles: join(PACKAGE_ROOT, 'sql', 'rollback-roles.sql'),
   'auth-role': join(PACKAGE_ROOT, 'sql', 'rollback-auth-role.sql'),
+  'audit-append-only': join(PACKAGE_ROOT, 'sql', 'rollback-audit-append-only.sql'),
 }
 
 /** Hatayı Türkçe mesajla stderr'e yazar ve exit 1 ile süreci sonlandırır. */
@@ -90,16 +105,20 @@ function fail(message: string): never {
 /**
  * `process.argv.slice(2)`'nin ilk elemanını `RollbackTarget`'a daraltır.
  * Bilinmeyen/boş argüman → anlamlı hatayla `exit 1` (A-E7 DoD'unun aynı
- * deseni: "yoksa anlamlı hata").
+ * deseni: "yoksa anlamlı hata"). Doğrulama `isRollbackTarget`
+ * (`./rollback-target.js`) ÜZERİNDEN yapılır — `Object.hasOwn` tabanlı,
+ * prototip zincirini TARAMAZ (DÜZELTME, FIX turu 2, M1).
  */
 function resolveTarget(argv: readonly string[]): RollbackTarget {
   const [target] = argv
-  if (target === 'roles' || target === 'auth-role') {
+  if (target !== undefined && isRollbackTarget(target)) {
     return target
   }
   return fail(
-    `İlk argüman "roles" (kademe 3, sql/rollback-roles.sql) veya "auth-role" ` +
-      `(kademe 4, sql/rollback-auth-role.sql) olmalı — alınan: "${target ?? '(boş)'}".`,
+    `İlk argüman "roles" (kademe 3, sql/rollback-roles.sql), "auth-role" ` +
+      `(kademe 4, sql/rollback-auth-role.sql) veya "audit-append-only" ` +
+      `(v0.0.20.2 deltası, sql/rollback-audit-append-only.sql) olmalı — ` +
+      `alınan: "${target ?? '(boş)'}".`,
   )
 }
 

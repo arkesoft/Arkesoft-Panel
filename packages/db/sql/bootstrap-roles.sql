@@ -407,3 +407,93 @@ $do_app_user_auth_privileges$;
 -- İDEMPOTENT: `REVOKE … FROM PUBLIC` sıfır fonksiyonla da hatasız (hiçbir şey
 -- yapmaz).
 REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;
+
+-- =============================================================================
+-- 9) Denetim izi — EKLE-SAL (append-only) sertleştirme (ROADMAP v0.0.20.2,
+--    T-023/S6, architect K2/K-A17 adım ③, kullanıcı kararı 2026-11-17)
+-- =============================================================================
+--
+-- `audit_log` ve `platform_audit_log` — `arkesoft_app`'ten `UPDATE`, `DELETE`,
+-- `TRUNCATE` çekilir; `SELECT`/`INSERT` KALIR (bölüm 4'ün blanket GRANT'inin
+-- bu iki tabloda daraltılmış hâli, `tenancy.ts`'teki
+-- `APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS`'ın canlı karşılığı). Yazıcılar tek
+-- ve yalnızca `create` (`audit-log.writer.ts`/`impersonation.service.ts`) —
+-- bu `REVOKE` hiçbir üretim yolunu KIRMAZ (pm/architect ölçümü,
+-- T-023 task dosyası).
+--
+-- ⚠⚠ ASİMETRİ KASITLI (T-023/FIX turu 2, `docs`'un sorduğu, bu bölümün
+-- KARŞILIĞI `sql/rollback-audit-append-only.sql:51-67`): bu `REVOKE` ÜÇ fiil
+-- taşır (`UPDATE, DELETE, TRUNCATE`) ama geri alma dosyasındaki `GRANT`
+-- yalnızca İKİ fiil verir (`UPDATE, DELETE`) — bu bir YAZIM HATASI DEĞİL.
+-- `arkesoft_app` sertleştirme ÖNCESİ (bölüm 4'ün blanket GRANT'i, yukarıda —
+-- yalnızca DÖRT fiil: SELECT/INSERT/UPDATE/DELETE) `TRUNCATE`'i HİÇ
+-- TAŞIMADI (ampirik ÖLÇÜM, M3/M3b: `public`teki 20 tablonun 0'ında
+-- `arkesoft_app` TRUNCATE taşıyor). Geri alma betiği "BAŞLANGIÇ DURUMUNA
+-- DÖN" sözleşmesini taşır — bu yüzden `TRUNCATE`'i GERİ VERMEZ, çünkü o hiç
+-- VERİLMEMİŞTİ. `REVOKE TRUNCATE` burada SAVUNMA DERİNLİĞİ olarak KALICI
+-- bırakılır (`pg_default_acl`, bölüm 4'ün `ALTER DEFAULT PRIVILEGES`'i
+-- yüzünden, YENİ eklenecek her tabloyu `arkesoft_app`e `arwd` ile
+-- DOĞURUYOR — DÜZELTME (T-023 SON TEMİZLİK, `solid` tur 3 [⚠⚠ olgusal hata]
+-- bulgusu, bu cümlenin ÖNCEKİ hâli `arwd` = TRUNCATE DAHİL diyordu, bu
+-- YANLIŞ: `arwd` yalnızca INSERT/SELECT/UPDATE/DELETE'tir, TRUNCATE Postgres
+-- ACL harfinde `D` [büyük] ile ayrı taşınır ve BURADA HİÇ VERİLMEZ): `arwd`
+-- TRUNCATE İÇERMEZ, bu yüzden bu `REVOKE TRUNCATE` BUGÜN NO-OP'tur; tablo
+-- yeniden yaratılsa bile `pg_default_acl` yine `arwd` verir ve TRUNCATE
+-- ZATEN gelmez — ama bu `REVOKE` açık bir BEYAN olarak KALICI durur
+-- (ADR-0017:417-418 ve `docs/development.md:519-521` ile BİREBİR aynı
+-- gerekçe, üç kopyanın İKİSİ zaten DOĞRUYDU — bu üçüncüsü onlarla
+-- HİZALANDI). ⚠⚠ ***BU ASİMETRİYİ "simetriye
+-- geri döndürmek" (örn. `rollback-audit-append-only.sql`'e `GRANT TRUNCATE`
+-- eklemek VEYA buradan `REVOKE TRUNCATE`'i çıkarmak) BİR GÜVENLİK AÇIĞI
+-- AÇAR*** — `security`'nin T-023 tur 1 `F1`/FIX turu 1 `high` bulgusu tam
+-- bunu YAKALAMIŞTI (geri alma betiği eskiden `GRANT ... TRUNCATE` veriyordu,
+-- bu da ele geçirilmiş bir uygulama kimliğinin geri alma betiğini
+-- çalıştırarak TÜM kiracıların denetim kaydını tek `TRUNCATE` ile silmesine
+-- izin verirdi). Bu asimetri `append-only-tables-sql-consistency.test.ts`
+-- tarafından MEKANİK olarak pinlidir (FIX turu 2, M2 — bootstrap REVOKE
+-- fiil listesi TAM "UPDATE, DELETE, TRUNCATE", rollback GRANT fiil listesi
+-- TAM "UPDATE, DELETE" VE TRUNCATE'siz; her ikisi de ayrı `it`'te bayt
+-- düzeyinde karşılaştırılır) — bu yorum testin NEDENİNİ anlatır, test
+-- DAVRANIŞI zorlar.
+--
+-- SIRA KISITI (K-A17, bu dosyanın §7'siyle BİREBİR aynı gerekçe): bu bölüm
+-- `catalog-lint.ts`'in `APP_ROLE_MISSING_EXPECTED_PRIVILEGE`/
+-- `APP_ROLE_UNEXPECTED_PRIVILEGE` kurallarından VE `tenancy.ts`'teki beyanın
+-- İKİ satırından SONRA, AYNI commit'te uygulanır — sıra ters olsaydı linter
+-- bu REVOKE'u uyguladığı AN (DDL ile beyan arasındaki pencerede) bulgu
+-- üretir ve CI kırmızıya döner (§10 md 6 — "linteri gevşetme baskısı",
+-- R-PO4'ün bağlayıcı uyarısı).
+--
+-- IF EXISTS ZORUNLU (§6/§7'nin BİREBİR aynı iskeleti, bu dosyada İKİ KEZ
+-- yaşanan tuzak): bootstrap `migrate deploy`'dan ÖNCE koşar, taze bir
+-- veritabanında bu iki tablo HENÜZ YOKTUR — koşulsuz `REVOKE`
+-- "relation does not exist" ile PATLAR. CI zaten İKİ GEÇİŞLİ
+-- (`.github/actions/prepare-db/action.yml`) — ikinci geçişte bu tablolar
+-- `migrate deploy` tarafından OLUŞTURULMUŞ olur ve blok GERÇEKTEN uygulanır.
+-- Yerel TEK geçişli `pnpm db:bootstrap` bunu bu çalıştırmada uygulamaz —
+-- ama idempotent olduğu için bir SONRAKİ `pnpm db:bootstrap` koşusunda
+-- (tablolar artık VAR) uygulanır.
+--
+-- F-NEW-3 (architect, mekanik tuzak): bu dış döngünün değişkeni BİLEREK
+-- `secret_table_name` DEĞİL — `auth-secret-tables-sql-consistency.test.ts`
+-- her SQL dosyasında bu literal için TAM 1 eşleşme şart koşuyor; aynı adı
+-- burada da kullanmak o testin "TAM 1" sayımını BOZARDI. Bu yüzden ayrı bir
+-- isim (`append_only_table_name`) ve ayrı bir drift testi
+-- (`append-only-tables-sql-consistency.test.ts`) kullanılır.
+DO $do_audit_append_only$
+DECLARE
+  append_only_table_name text;
+BEGIN
+  FOREACH append_only_table_name IN ARRAY ARRAY['audit_log', 'platform_audit_log']
+  LOOP
+    IF EXISTS (
+      SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = append_only_table_name
+    ) THEN
+      EXECUTE format(
+        'REVOKE UPDATE, DELETE, TRUNCATE ON public.%I FROM arkesoft_app',
+        append_only_table_name
+      );
+    END IF;
+  END LOOP;
+END
+$do_audit_append_only$;

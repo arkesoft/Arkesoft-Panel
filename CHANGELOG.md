@@ -25,6 +25,14 @@ pnpm changeset
 
 <!-- Changesets bu çizginin altına yazar. Elle girdi eklemeyin. -->
 
+## 0.10.2 — 2026-11-17
+
+- Platform denetim izi tablolarında (`audit_log`, `platform_audit_log`) uygulamanın çalışma zamanı rolünün (`arkesoft_app`) `UPDATE`/`DELETE`/`TRUNCATE` yetkisi veritabanı seviyesinde çekildi; katalog linter'ı artık tablo başına beklenen yetki kümesini kapalı küme olarak zorunlu tutuyor (fazla yetki de, eksik yetki de bulgu üretir). Denetim kaydı veritabanı seviyesinde yalnızca eklenebilir hâle geldi; uygulamanın çalışma zamanı rolünün güncelleme, silme ve `TRUNCATE` yetkisi yok.
+
+⚠ Bu "tamper-evident" (bütünlük kanıtlı) olduğu anlamına gelmez — hash zinciri veya imza yok, ayrı ve vadesiz bir borç olarak kaydedildi. Ayrıca `audit_log`'un kiracı (`tenant`) tablosuna bağlı FK cascade'i hem `ON DELETE` hem `ON UPDATE` eksenlerinde hâlâ dolaylı bir yol bırakıyor: bir kiracı tamamen silindiğinde bağlı denetim kayıtları da cascade ile gidiyor, bir kiracının kimliği değiştirildiğinde ise bağlı denetim kayıtları cascade ile yeniden yazılıp kiracının görüş alanından yetim düşüyor. Bu, tek bir kiracının kendi kapsamıyla sınırlı değil — `tenant` tablosu RLS taşımadığı için herhangi bir kiracı bağlamındaki uygulama rolü herhangi bir kiracının denetim izini bu yoldan silebilir/değiştirebilir; bu bilinen sınırlama `medium` önemde bir borç olarak kaydedildi ve ayrı bir sürümde ele alınacak.
+
+[v0.0.20.2]
+
 ## 0.10.1 — 2026-11-17
 
 - İki faktörlü kimlik doğrulama kurulum sihirbazında sayfa yeniden yüklendiğinde

@@ -199,7 +199,13 @@ Yönetici başına IP kuralı ve yönetim arayüzü **kapsam dışıdır** (v0.1
   impersonation'ın tek tüketicisi düşer — kapsam maddesi bu yüzden bağlayıcıdır.
 - **`platform_audit_log` tamper-evident DEĞİLDİR** ve bu sürüm sorunu büyütmektedir:
   `arkesoft_app` yeni tabloda da dört DML yetkisiyle doğar (katalog linter'ının kuralı).
-  Kullanıcı kararıyla **v0.0.20.1**.
+  Kullanıcı kararıyla **v0.0.20.1**. ⚠⚠ **GÜNCELLEME (v0.0.20.2, T-023):** rol yetkisi
+  daraltması `arkesoft_app`'i bu tabloda `{SELECT, INSERT}`'e indirdi (ADR-0017 Ek) —
+  "tamper-evident" iddiası hâlâ **yanlıştır** (bütünlük kanıtı/hash zinciri yok, bu borç
+  `D3` olarak ayrı kaldı) ama dürüst cümle artık doğrudur: **denetim kaydı veritabanı
+  seviyesinde yalnızca eklenebilir.** `audit_log`'un aksine bu tabloda FK cascade ekseni
+  **yoktur** (platform seviyesi, `tenant`'a bağlı değil) — `D2`'nin kapsadığı boşluk bu
+  tabloyu etkilemiyor.
 - **`platform.tenantList` yapısal olarak 1+N transaction üretir**; sayfa boyutu şema
   seviyesinde 50 ile sınırlandı.
 - **`TrpcPorts`'a iki zorunlu üye eklemek** nesneyi elle kuran her yeri derleme hatasına
@@ -207,9 +213,11 @@ Yönetici başına IP kuralı ve yönetim arayüzü **kapsam dışıdır** (v0.1
 
 ### Etkilenen sonraki kararlar
 
-- **v0.0.20.1:** tamper-evidence artık **iki** denetim tablosunu (kiracı + platform)
-  kapsamak zorundadır; linter kuralına "tablo başına beklenen yetki kümesi" kavramı
-  eklenirken platform tablosu da öznedir.
+- **v0.0.20.1 → v0.0.20.2 (gerçekleşen):** rol yetkisi daraltması **iki** denetim
+  tablosunu (kiracı + platform) birlikte kapsadı; linter kuralına "tablo başına
+  beklenen yetki kümesi" kavramı eklenirken platform tablosu da öznedi (ADR-0017 Ek,
+  T-023). "Tamper-evidence" sözcüğü **kullanılmadı** — teslim edilen, rol yetkisi
+  daraltmasıdır, bütünlük kanıtı değildir.
 - **v0.0.22 (API sürümleme):** `@RequirePermission()` borcu (`ROADMAP:3075`) bu sürüme
   kaydırıldı — REST iş yüzeyi (`/api/v1/*`) ilk kez orada açılıyor. Ayrıca sözleşme
   snapshot'ı ADR-0011:94'ün dediği gibi **erişilebilirlik matrisini** de pinlemelidir:

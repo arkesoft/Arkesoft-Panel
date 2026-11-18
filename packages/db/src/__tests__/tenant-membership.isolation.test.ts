@@ -75,6 +75,12 @@ async function createMembershipRow(tx: TransactionClient, tenantId: string): Pro
 const tenantMembershipProbe: TenantScopedProbe = {
   tableName: 'tenant_membership',
 
+  // ⚠⚠ T-023/S5 — `mutationRejection` ZORUNLU alan (po/R-PO1: bu, `helpers/`
+  // GLOB'una GİRMEYEN YEDİNCİ probdur — INLINE). `tenant_membership` `REVOKE`
+  // kapsamı DIŞINDA (K2: yalnızca `audit_log`/`platform_audit_log`) → her
+  // zaman `'record-not-found'`.
+  mutationRejection: 'record-not-found',
+
   insertRow: (tx, tenantId) => createMembershipRow(tx, tenantId),
 
   findRowById: async (tx, rowId) => {

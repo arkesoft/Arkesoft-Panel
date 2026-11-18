@@ -113,6 +113,11 @@ async function createSubscriptionRow(tx: TransactionClient, tenantId: string): P
 export const subscriptionProbe: TenantScopedProbe = {
   tableName: 'subscription',
 
+  // ⚠ T-023/S5 — `mutationRejection` ZORUNLU alan. `subscription` `REVOKE`
+  // kapsamı DIŞINDA (K2: yalnızca `audit_log`/`platform_audit_log`) →
+  // her zaman `'record-not-found'`.
+  mutationRejection: 'record-not-found',
+
   insertRow: (tx, tenantId) => createSubscriptionRow(tx, tenantId),
 
   findRowById: async (tx, rowId) => {

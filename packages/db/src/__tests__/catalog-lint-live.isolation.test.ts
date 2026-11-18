@@ -28,7 +28,11 @@ import { lintCatalog, type LintFinding } from '../catalog-lint.js'
 import { readCatalogSnapshot } from '../catalog-snapshot.js'
 import type { TransactionClient } from '../client.js'
 import { TENANT_CONTEXT_SETTING } from '../tenant-context.js'
-import { PLATFORM_LEVEL_TABLES, TENANT_SCOPED_TABLES } from '../tenancy.js'
+import {
+  APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS,
+  PLATFORM_LEVEL_TABLES,
+  TENANT_SCOPED_TABLES,
+} from '../tenancy.js'
 import { getTestAuthPrisma, testAppPrisma, testMigrationPrisma } from './helpers/test-client.js'
 
 /** AC3 probunun tablo adlarının ORTAK öneki — DoD'un yetim-tablo kontrolü bunu kullanır. */
@@ -105,6 +109,21 @@ describe('catalog-lint — canlı katalog (AC2/AC3)', () => {
       },
       tenantContextSetting: TENANT_CONTEXT_SETTING,
       appRoleName,
+      // GÜNCELLEME (T-023/S6, K-A17 adım ③): bu TEK test "sağlıklı durum"
+      // iddiası taşıyor (`toEqual([])`) — S6'nın §9 DDL'i uygulandıktan
+      // SONRA sağlıklı durum artık GERÇEK beyanı GEÇİRMEYİ gerektiriyor,
+      // aksi halde `audit_log`/`platform_audit_log`'un (artık GERÇEKTEN
+      // azaltılmış) yetkisi eski dört-DML kuralını YANLIŞ SEBEPLE ateşler.
+      // DÜZELTME (FIX turu 2, `solid` tur 2 [low] — bu paragraf BAYATLAMIŞTI):
+      // aşağıdaki `vaka (a)-(d)` testleri `[]` İLE KALMADI — FIX turu 1
+      // kuyruğunda (`solid` [low] bulgusu) DÖRDÜ de BURADAKİYLE AYNI, GERÇEK
+      // beyanı geçirecek şekilde GÜNCELLENDİ (bkz. her `vaka`'nın kendi
+      // `appRoleTablePrivilegeExpectations` satırının yanındaki yorum). Sebep:
+      // `.some()` tabanlı spesifik-kural assert'leri YANLIŞ girdiden
+      // ETKİLENMEZDİ ama eski dört-DML kuralının bu iki tablo için ürettiği
+      // SAHTE `APP_ROLE_MISSING_DML_PRIVILEGE` bulgusu gürültü üretiyordu —
+      // dördü de sağlıklı durumla AYNI, GERÇEK beyanı kullanır.
+      appRoleTablePrivilegeExpectations: APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS,
     })
     expect(findings).toEqual([])
   })
@@ -132,6 +151,14 @@ describe('catalog-lint — canlı katalog (AC2/AC3)', () => {
           },
           tenantContextSetting: TENANT_CONTEXT_SETTING,
           appRoleName,
+          // GEREKÇE TEKRARLANMADI (FIX turu 2, D16/`solid` tur 2 — eskiden bu
+          // blok dört vaka'da BİREBİR, 8 satır tekrarlanıyordu; biri
+          // güncellenip üçü unutulursa dosya kendi içinde ÇELİŞİRDİ): bkz.
+          // dosya başındaki "sağlıklı durum" testinin yorumu (yukarıda) — bu
+          // vaka AYNI, GERÇEK beyanı AYNI sebeple (eski dört-DML kuralının
+          // `audit_log`/`platform_audit_log` için ürettiği SAHTE bulgu
+          // gürültüsünü önlemek) kullanır.
+          appRoleTablePrivilegeExpectations: APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS,
         })
       })
 
@@ -166,6 +193,14 @@ describe('catalog-lint — canlı katalog (AC2/AC3)', () => {
           },
           tenantContextSetting: TENANT_CONTEXT_SETTING,
           appRoleName,
+          // GEREKÇE TEKRARLANMADI (FIX turu 2, D16/`solid` tur 2 — eskiden bu
+          // blok dört vaka'da BİREBİR, 8 satır tekrarlanıyordu; biri
+          // güncellenip üçü unutulursa dosya kendi içinde ÇELİŞİRDİ): bkz.
+          // dosya başındaki "sağlıklı durum" testinin yorumu (yukarıda) — bu
+          // vaka AYNI, GERÇEK beyanı AYNI sebeple (eski dört-DML kuralının
+          // `audit_log`/`platform_audit_log` için ürettiği SAHTE bulgu
+          // gürültüsünü önlemek) kullanır.
+          appRoleTablePrivilegeExpectations: APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS,
         })
       })
 
@@ -192,6 +227,14 @@ describe('catalog-lint — canlı katalog (AC2/AC3)', () => {
           },
           tenantContextSetting: TENANT_CONTEXT_SETTING,
           appRoleName,
+          // GEREKÇE TEKRARLANMADI (FIX turu 2, D16/`solid` tur 2 — eskiden bu
+          // blok dört vaka'da BİREBİR, 8 satır tekrarlanıyordu; biri
+          // güncellenip üçü unutulursa dosya kendi içinde ÇELİŞİRDİ): bkz.
+          // dosya başındaki "sağlıklı durum" testinin yorumu (yukarıda) — bu
+          // vaka AYNI, GERÇEK beyanı AYNI sebeple (eski dört-DML kuralının
+          // `audit_log`/`platform_audit_log` için ürettiği SAHTE bulgu
+          // gürültüsünü önlemek) kullanır.
+          appRoleTablePrivilegeExpectations: APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS,
         })
       })
 
@@ -241,6 +284,14 @@ describe('catalog-lint — canlı katalog (AC2/AC3)', () => {
           },
           tenantContextSetting: TENANT_CONTEXT_SETTING,
           appRoleName,
+          // GEREKÇE TEKRARLANMADI (FIX turu 2, D16/`solid` tur 2 — eskiden bu
+          // blok dört vaka'da BİREBİR, 8 satır tekrarlanıyordu; biri
+          // güncellenip üçü unutulursa dosya kendi içinde ÇELİŞİRDİ): bkz.
+          // dosya başındaki "sağlıklı durum" testinin yorumu (yukarıda) — bu
+          // vaka AYNI, GERÇEK beyanı AYNI sebeple (eski dört-DML kuralının
+          // `audit_log`/`platform_audit_log` için ürettiği SAHTE bulgu
+          // gürültüsünü önlemek) kullanır.
+          appRoleTablePrivilegeExpectations: APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS,
         })
       })
 

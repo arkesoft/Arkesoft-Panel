@@ -46,6 +46,7 @@ import { readCatalogSnapshot, type CatalogSnapshot } from '../catalog-snapshot.j
 import type { TransactionClient } from '../client.js'
 import { TENANT_CONTEXT_SETTING } from '../tenant-context.js'
 import {
+  APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS,
   AUTH_ROLE_TABLE_PRIVILEGE_EXPECTATIONS,
   AUTH_SECRET_BEARING_TABLES,
   PLATFORM_LEVEL_TABLES,
@@ -176,6 +177,15 @@ describe('arkesoft_auth — canlı kanıtlar (T-015/ST-E: AC1 2×2, AC2 Yön A/B
       },
       tenantContextSetting: TENANT_CONTEXT_SETTING,
       appRoleName,
+      // GÜNCELLEME (T-023/S6, K-A17 adım ③): S2'de (adım ①) bu alan BİLEREK
+      // `[]` idi (`tenancy.ts`'teki beyan henüz boştu). S6 beyanı iki satırla
+      // doldurduğu VE canlı §9 DDL'ini uyguladığı için bu dosya artık GERÇEK
+      // beyanı taşımak ZORUNDA — aksi halde bu dosyanın `arkesoft_auth`
+      // odaklı "0 bulgu"/"TAM VE BİREBİR" assert'leri `audit_log`/
+      // `platform_audit_log`'un (artık GERÇEKTEN eksik olan) dört-DML
+      // bulgusuyla YANLIŞ SEBEPLE kırmızı verirdi — bu dosyanın konusu
+      // `arkesoft_auth`, `arkesoft_app`'in append-only sertleştirmesi DEĞİL.
+      appRoleTablePrivilegeExpectations: APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS,
       authRole: {
         roleName: authRoleName,
         secretBearingTables: AUTH_SECRET_BEARING_TABLES,

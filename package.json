@@ -1,6 +1,6 @@
 {
   "name": "arkesoft",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "private": true,
   "type": "module",
   "description": "Arkesoft — çok kiracılı SaaS e-ticaret ve kurumsal web sitesi platformu",
@@ -33,6 +33,7 @@
     "db:bootstrap": "pnpm --filter @arkesoft/db run bootstrap",
     "db:rollback-roles": "pnpm --filter @arkesoft/db run rollback-roles",
     "db:rollback-auth-role": "pnpm --filter @arkesoft/db run rollback-auth-role",
+    "db:rollback-audit-append-only": "pnpm --filter @arkesoft/db run rollback-audit-append-only",
     "db:generate": "pnpm --filter @arkesoft/db run generate",
     "db:migrate": "pnpm --filter @arkesoft/db run migrate && pnpm db:bootstrap",
     "db:deploy": "pnpm --filter @arkesoft/db run deploy && pnpm db:bootstrap",

@@ -28,6 +28,24 @@
 //      Bu, 2. maddenin "platform seviyesi olduğu için" davranışının
 //      KEYFİ olmadığını, FORCE RLS'in gerçekten çalıştığını kanıtlar — iki
 //      tablo sınıfı arasındaki fark TESADÜF değil, mekanizma farkıdır.
+//
+// GÜNCELLEME (ROADMAP v0.0.20.2, T-023/S6, architect F-NEW-2): `sql/
+// bootstrap-roles.sql`'in §9'u `arkesoft_app`'ten `platform_audit_log`
+// tablosunda `UPDATE, DELETE, TRUNCATE` yetkisini çektiği için bu dosyanın
+// `platform_audit_log` probunun temizliği artık `testAppPrisma` İLE
+// ÇALIŞAMAZ (42501 — "permission denied"). Düzeltme: temizlik
+// `testMigrationPrisma` (tabloların sahibi, bu REVOKE'tan ETKİLENMEZ) ile
+// yapılır VE bu kırılma "app rolü SİLEMİYOR" POZİTİF bir assert'e çevrilir
+// (aşağıdaki dördüncü `it`) — kırılmayı sessizce atlamak yerine KANITA
+// dönüştürüyoruz.
+//
+// FIX turu 1 (M2, `solid` [medium] bulgusu): `isPrivilegeDeniedError`
+// (+ `driverAdapterErrorMetaSchema`/`POSTGRES_INSUFFICIENT_PRIVILEGE_
+// SQLSTATE`) ARTIK BURADA YENİDEN BİLDİRİLMİYOR — `tenant-isolation-
+// suite.ts`'ten `export`landı ve İTHAL EDİLİYOR. Eski gerekçe ("o dosya bu
+// alt görevin dosya listesi dışında — DOKUNMA") bir SÜREÇ kısıtıydı, TASARIM
+// kararı DEĞİLDİ — iki kopya AYNI sebeple değişir (Prisma driver-adapter hata
+// şekli, T-023/S5'te BİR KEZ ölçülmüş).
 
 import { randomUUID } from 'node:crypto'
 
@@ -35,7 +53,8 @@ import { describe, expect, it } from 'vitest'
 
 import { PlatformAuditAction, UserStatus } from '../index.js'
 import { PLATFORM_LEVEL_TABLES, TENANT_SCOPED_TABLES } from '../tenancy.js'
-import { testAppPrisma } from './helpers/test-client.js'
+import { isPrivilegeDeniedError } from './helpers/tenant-isolation-suite.js'
+import { testAppPrisma, testMigrationPrisma } from './helpers/test-client.js'
 
 describe('platform_admin / platform_audit_log — PLATFORM SEVİYESİ kanıtı (ADR-0023 Karar 1/3)', () => {
   it('taksonomi: iki yeni tablo PLATFORM_LEVEL_TABLES içinde (12), TENANT_SCOPED_TABLES YEDİDE kaldı', () => {
@@ -98,7 +117,44 @@ describe('platform_admin / platform_audit_log — PLATFORM SEVİYESİ kanıtı (
       expect(found?.action).toBe(PlatformAuditAction.tenant_impersonation_started)
       expect(found?.subject).toBe('tenant_list')
     } finally {
-      await testAppPrisma.platformAuditLog.delete({ where: { id: entry.id } })
+      // F-NEW-2 (architect): `arkesoft_app` bu tabloda DELETE taşımıyor
+      // (`sql/bootstrap-roles.sql` §9) — temizlik tabloların SAHİBİ
+      // (`testMigrationPrisma`) ile yapılır, bu REVOKE'tan ETKİLENMEZ.
+      await testMigrationPrisma.platformAuditLog.delete({ where: { id: entry.id } })
+    }
+  })
+
+  it("F-NEW-2 POZİTİF: arkesoft_app platform_audit_log'u SİLEMİYOR (REVOKE DELETE'in canlı kanıtı)", async () => {
+    const entry = await testAppPrisma.platformAuditLog.create({
+      data: {
+        actorUserId: `probe-actor-${randomUUID()}`,
+        action: PlatformAuditAction.tenant_impersonation_started,
+        subject: 'tenant_list',
+        detail: { tenantIds: ['probe-tenant-a'] },
+      },
+    })
+
+    try {
+      let caughtError: unknown
+      try {
+        await testAppPrisma.platformAuditLog.delete({ where: { id: entry.id } })
+      } catch (error) {
+        caughtError = error
+      }
+
+      expect(
+        caughtError,
+        'arkesoft_app ile platformAuditLog.delete HATA FIRLATMADI — §9 REVOKE DELETE etkisiz mi?',
+      ).toBeDefined()
+      expect(isPrivilegeDeniedError(caughtError)).toBe(true)
+
+      // Satır GERÇEKTEN silinmedi — delete reddedildi, "bulunamadı" DEĞİL.
+      const stillExists = await testMigrationPrisma.platformAuditLog.findUnique({
+        where: { id: entry.id },
+      })
+      expect(stillExists?.id).toBe(entry.id)
+    } finally {
+      await testMigrationPrisma.platformAuditLog.delete({ where: { id: entry.id } })
     }
   })
 

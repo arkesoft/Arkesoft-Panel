@@ -63,6 +63,11 @@ async function createJobRow(tx: TransactionClient, tenantId: string): Promise<st
 export const jobProbe: TenantScopedProbe = {
   tableName: 'job',
 
+  // ⚠ T-023/S5 — `mutationRejection` ZORUNLU alan (`tenant-isolation-suite.ts`
+  // `MutationRejectionKind`). Bu tabloda `REVOKE` kapsamı YOK (K2'nin kapsamı
+  // yalnızca `audit_log`/`platform_audit_log`) → her zaman `'record-not-found'`.
+  mutationRejection: 'record-not-found',
+
   insertRow: (tx, tenantId) => createJobRow(tx, tenantId),
 
   findRowById: async (tx, rowId) => {

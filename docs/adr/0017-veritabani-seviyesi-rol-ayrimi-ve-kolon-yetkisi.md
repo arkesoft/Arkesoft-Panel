@@ -359,3 +359,111 @@ tabloda aynı regresyonu tekrar üretirdi); taklit üretim SQL'iyle **yeniden hi
 Bu üç aynanın tek bir kaynaktan (örn. `AUTH_SECRET_BEARING_TABLES` üzerinde döngüyle)
 üretilmesi **ayrı bir teknik borç** olarak kayıtlıdır (bkz. ROADMAP → Teknik Borç →
 Vadesi v0.1.0).
+
+---
+
+## Ek (v0.0.20.2, T-023) — Denetim tablolarının ekle-sal (append-only) sertleştirmesi
+
+> **Not:** Bu bölüm append-only eklenmiştir. Yukarıdaki madde numaralandırması ve
+> metni **değişmemiştir**. Bu ek, `audit_log`/`platform_audit_log` için
+> `arkesoft_app`'in yetkisini `{SELECT, INSERT}`'e daraltan kararı kayda geçirir.
+
+⚠⚠ **Başlık düzeltmesi (kullanıcı onayı, 2026-11-17):** bu teslimin kapsandığı ROADMAP
+sürümünün önceki başlığı _"tamper-evidence"_ diyordu — bu **yanlıştı**. Şemada bütünlük
+kanıtı (hash zinciri, imza, monoton sıra) **yoktur**, yalnızca `createdAt` vardır
+(`schema.prisma:553-569`, `:1060-1073`). Dürüst cümle: **denetim kaydı veritabanı
+seviyesinde yalnızca eklenebilir; uygulamanın çalışma zamanı rolünün güncelleme, silme
+ve `TRUNCATE` yetkisi yoktur.** Gerçek tamper-evidence (hash zinciri/imza) bu teslimin
+**reddettiği** bir alternatiftir (aşağıda) ve ayrı, tanımsız bir sürüme borçtur (ROADMAP
+`D3`).
+
+### Karar
+
+`arkesoft_app`'in bir tablo üzerindeki **beklenen** yetkisi için, bu ADR'nin Karar 1'inin
+emsal aldığı `AuthRoleTablePrivilegeExpectation`'ın **ayrı bir kardeşi** tanımlandı:
+`AppRoleTablePrivilegeExpectation` (`packages/db/src/tenancy.ts:298-304`) — beş fiili
+(`canSelect`/`canInsert`/`canUpdate`/`canDelete`/`canTruncate`) **birebir** karşılaştıran
+**kapalı küme** bir beyan (`AuthRoleTablePrivilegeExpectation`'ın kolon yetkisi için
+kullandığı "en az" semantiği **yok**). İki tip **tek bir tipe sıkıştırılmadı** — farklı rol,
+farklı semantik; `columnLevel`'ı iki anlamda kullanmaya zorlamamak bilinçli bir tasarım
+kararıdır.
+
+Beyan `APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS` (`tenancy.ts:333-350`) iki satır taşır
+(`audit_log`, `platform_audit_log`; ikisi de `{canSelect: true, canInsert: true,
+canUpdate: false, canDelete: false, canTruncate: false}`) ve **`as const satisfies
+readonly AppRoleTablePrivilegeExpectation[]`** ile bildirildi — açık bir tip bildirimi
+(`: readonly AppRoleTablePrivilegeExpectation[]`) **değil**. Bu fark kozmetik değildir: açık
+bildirim `tableName`'i `string`'e genişletir ve modül sınırını geçen her `Exclude<>` pin'ini
+(`__tests__/type-pins/app-role-privilege-expectations.pin.ts`) kalıcı olarak kırmızı yapardı
+(S3'ün ampirik ölçtüğü sınıf); `satisfies` şekli doğrular ama çıkarılan tipi değiştirmez, pin
+bu yüzden bir aynaya değil **gerçek sabite** bağlanır.
+
+DDL (`bootstrap-roles.sql` §9, `IF EXISTS` korumalı, bu ADR'nin §6/§7'siyle **birebir aynı
+iskelet**) iki tablodan `REVOKE UPDATE, DELETE, TRUNCATE` çeker. Geri alma **ayrı dosyadadır**
+(`sql/rollback-audit-append-only.sql`) — bu ADR'nin Karar 3'ünün "ayrı dosya, ayrı script"
+kararının **birebir aynısı**; `rollback-auth-role.sql`'in "yalnızca v0.0.14.1 deltasını
+tersler" sözleşmesi bozulmadı.
+
+⚠⚠ **§9'un `REVOKE`'u ile geri almanın `GRANT`'i KASITLI OLARAK ASİMETRİKTİR — bu bir
+hata değildir, "simetriyi düzeltme" girişimine karşı kayıtlı bir uyarıdır.** §9'un
+`REVOKE`'u **üç** fiil taşır (`UPDATE, DELETE, TRUNCATE`); `rollback-audit-append-only.sql`'in
+`GRANT`'i yalnızca **iki** fiil taşır (`UPDATE, DELETE`) — `TRUNCATE` **bilerek** geri
+verilmez. Gerekçe: sertleştirme öncesi `arkesoft_app` `TRUNCATE` yetkisini **hiç
+taşımıyordu** (canlı ölçüm, T-023/`db` M3/M3b: `public` şemasındaki **20 tablonun 0'ında**
+`arkesoft_app` `TRUNCATE` taşıyor); `TRUNCATE`'i geri vermek geri almayı başlangıç
+durumunun **üstüne** çıkarır ve `TRUNCATE` RLS'e tabi **olmadığı** için ele geçirilmiş bir
+uygulama kimliğinin tek bir `TRUNCATE` komutuyla **tüm kiracıların** denetim kaydını
+silmesine yol açardı. §9'un `REVOKE TRUNCATE`'i bu yüzden bu geri almadan **sonra da
+kalıcı** kalır — `pg_default_acl` `arkesoft_migrator`'ın doğurduğu yeni tabloları `arwd`
+(`TRUNCATE` içermez) ile doğurduğu için bu savunma bugün yük taşımasa da (no-op)
+**savunma derinliği** olarak bilerek korunur. Bu asimetriyi "düzeltip" `GRANT`'e
+`TRUNCATE`'i eklemek, bu Ek'in kapattığı `high` güvenlik bulgusunu **yeniden açar** — bkz.
+`security` T-023 tur 1 bulgusu F1 ve `rollback-audit-append-only.sql:51-67`.
+
+**Eski kural `APP_ROLE_MISSING_DML_PRIVILEGE` tadil edildi — TEK satır:** beyanda yer alan
+tabloyu `continue` ile atlar (bu ADR'nin AC4 düzeltmesindeki `columnGoverned` deseninin birebir
+aynısı). Bu, **tamamlayıcı kural tasarımının** özüdür: yeni `APP_ROLE_MISSING_EXPECTED_PRIVILEGE`
+ve `APP_ROLE_UNEXPECTED_PRIVILEGE` kuralları beyanı **okurken**, eski kural beyanı **es geçer**.
+Beyan satırı silinirse yeni kurallar sessizleşir **ama eski kural o tabloyu tekrar görür** ve
+katalog artık dört DML'in ikisini taşımadığı için `APP_ROLE_MISSING_DML_PRIVILEGE` **ateşlenir**.
+Bu, kodda yazılmış bir testle kanıtlandı (`catalog-lint.test.ts`, AC-12(c): beyandan `audit_log`
+satırını sil → canlı bulgu kümesi eski kuralın bulgusunu üretir).
+
+⚠⚠ **İddia daraltıldı (`solid`/`security`, FIX turu 1, M4) — "beşinci liste" tuzağının genel
+olarak yapısal olarak oluşamayacağı iddiası YANLIŞTI.** Doğrusu üç parçalı: **(1)** bugünkü iki
+satır (`audit_log`, `platform_audit_log`) için tamamlayıcılık **çalışıyor** — iki gate bağımsız
+doğruladı; **(2)** **silme** yönünde asıl yakalayıcı üç listenin birbirine bağlanması **değil**,
+katalogun kalıcı durumudur ("dördüncü tanık" canlı veritabanı — `REVOKE` kalıcı olduğu için
+katalog hâlâ eksik yetkiyi gösterir ve eski kural bu yüzden yeniden silahlanır); **(3)**
+**ekleme** yönü (yeni bir append-only tablo beyan + §9 dizisi + rollback dizisinin **hiçbirine**
+yazılmazsa) tamamen **açıktır** — §9 hiç `REVOKE` etmediği için katalog dört DML'i tam gösterir,
+eski kural "eksik" bulamaz ve yeni kurallar beyanda olmayan tabloyu hiç dolaşmaz; `TRUNCATE`
+ekseni bu yolla **hiç okunmaz**. Bu boşluk borç `D11` olarak kayıtlıdır.
+
+### Reddedilen alternatifler
+
+| # | Alternatif | Neden seçilmedi |
+| - | ---------- | --------------- |
+| 1 | **`AuthRoleTablePrivilegeExpectation`'a birleştirmek** (ayrı tip yerine) | Farklı rol (`arkesoft_app` ↔ `arkesoft_auth`), farklı semantik (beş fiil birebir ↔ kolon yetkisi "en az"); tek tipe sıkıştırmak `columnLevel`'ı iki anlamda kullanmaya zorlardı |
+| 2 | **Hash zinciri / imza (gerçek tamper-evidence, `D3`)** | Bu teslimin kapsamı değil — kullanıcı kararıyla (R1) ayrı, tanımsız bir sürüme bırakıldı; bugünkü sertleştirme **yalnızca** rol yetkisi daraltmasıdır |
+| 3 | **FK cascade'i kapatmak** (`AuditLog.tenant`'ın `onDelete: Cascade, onUpdate: Cascade`'ini kaldırmak, `D2`) | Canlı doğrulandı, **iki eksen** (`security` tur 1, F2/F3): `REVOKE DELETE ON audit_log` çekildikten **sonra da** `arkesoft_app` tek satırlık bir `DELETE FROM tenant` ile `audit_log` satırını silebiliyor; **ayrıca** `REVOKE UPDATE` çekildikten sonra da `UPDATE tenant SET id=…` ile aynı satırın `tenant_id`'si değiştirilip kiracının görüş alanından yetim bırakılabiliyor (PostgreSQL RI cascade eylemleri referans eden tabloda `DELETE` **veya** `UPDATE` yetkisi **aramaz**). Patlama yarıçapı tek kiracıyla sınırlı değil: `tenant` tablosu RLS taşımadığı için (borç `D6`, ADR-0008 §4) herhangi bir kiracı bağlamındaki uygulama rolü herhangi bir kiracının `tenant` satırını bu yoldan hedefleyebilir. Düzeltmesi yıkıcı bir `ALTER TABLE … DROP CONSTRAINT` gerektirir ve migration linter'ının `DESTRUCTIVE_STATEMENT` kuralına çarpar (bu ADR'nin kapsamındaki R-A10'un aynı duvarı); kuralı kendi değişikliğimiz için gevşetmek CLAUDE.md §10 madde 6 ihlali olurdu. Borç `D2` (`medium` — derece artık **çapraz kiracı** patlama yarıçapına dayanıyor, "kendi kapsamı" varsayımına değil) olarak kaydedildi |
+
+### Sonuçlar (ek)
+
+**Olumlu:** `arkesoft_app`, iki denetim tablosunda artık `SELECT`/`INSERT` dışında hiçbir
+yetki taşımıyor (canlı doğrulandı — bkz. aşağıdaki olumsuz madde için istisna); iki kural
+tamamlayıcı olduğu için beyan tek başına unutulsa dahi sessiz bir boşluk **oluşamaz**.
+
+**Olumsuz ve kabul edilen maliyet — `audit_log` için "silinemez" iddiası YANLIŞTIR, iki eksen (`security` tur 1, F2/F3):** FK cascade (`schema.prisma:564`, `onDelete: Cascade, onUpdate: Cascade`) rol yetkisinden **bağımsız** iki yol açar.
+**Silme ekseni:** `arkesoft_app`'in `tenant` tablosundaki tam DML'i üzerinden bir `DELETE FROM tenant` ile bağlı `audit_log` satırları silinebilir.
+**Güncelleme ekseni (daha önce yazılmamıştı):** aynı tam DML üzerinden bir `UPDATE tenant SET id=…` ile bağlı `audit_log` satırlarının `tenant_id`'si değiştirilip kayıt silinmeden kiracının görüş alanından **yetim** bırakılabilir — `arkesoft_app`'in `audit_log` üzerinde `UPDATE` taşımaması bunu önlemez, çünkü PostgreSQL RI cascade eylemleri referans eden tabloda ayrı bir yetki aramaz.
+**Patlama yarıçapı tek kiracıyla sınırlı değildir:** `tenant` tablosu RLS taşımadığı için (bilinçli tasarım, `PLATFORM_LEVEL_TABLES`; borç `D6`, ADR-0008 §4) herhangi bir kiracı bağlamındaki uygulama rolü **herhangi bir kiracının** `tenant` satırını bu yoldan hedefleyebilir — tek bariyer uygulama katmanı yetkilendirmesidir.
+`platform_audit_log`'da bu eksenlerin hiçbiri **yoktur** (FK taşımaz).
+Bu teslim bu boşluğu **kapatmadı** — yukarıdaki Reddedilen alternatifler §3'teki gerekçeyle borç olarak (`D2`, `medium` — derece artık **çapraz kiracı** patlama yarıçapına dayanıyor, "kendi kapsamı" varsayımına değil, vade v0.0.22) bırakıldı.
+Sertleştirme cümlesi bu yüzden _"silinemez"_ değil, _"yalnızca eklenebilir; güncelleme/silme/TRUNCATE yetkisi yok"_ olarak yazıldı.
+
+### Gözden geçirme koşulları (ek)
+
+6. **`D2` (FK cascade) kapatıldığında veya gerçek tamper-evidence (`D3`, hash zinciri/imza)
+   tasarlandığında** — bu ek yeniden değerlendirilir; `D2` migration linter'ının
+   `DESTRUCTIVE_STATEMENT` kuralına parametrize bir istisna (gevşetme değil) gerektirebilir.

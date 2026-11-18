@@ -84,6 +84,11 @@ async function createTenantUpdateHistoryRow(
 export const tenantUpdateHistoryProbe: TenantScopedProbe = {
   tableName: 'tenant_update_history',
 
+  // ⚠ T-023/S5 — `mutationRejection` ZORUNLU alan. `tenant_update_history`
+  // `REVOKE` kapsamı DIŞINDA (K2: yalnızca `audit_log`/`platform_audit_log`)
+  // → her zaman `'record-not-found'`.
+  mutationRejection: 'record-not-found',
+
   insertRow: (tx, tenantId) => createTenantUpdateHistoryRow(tx, tenantId),
 
   findRowById: async (tx, rowId) => {

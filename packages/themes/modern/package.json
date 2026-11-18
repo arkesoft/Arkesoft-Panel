@@ -1,6 +1,6 @@
 {
   "name": "@arkesoft/themes-modern",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "type": "module",
   "description": "Modern teması — ilk sürüm (home+404), kaynak-dağıtımlı tema paketi (ADR-0002 Karar 1)",

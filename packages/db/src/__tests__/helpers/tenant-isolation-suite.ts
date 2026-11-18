@@ -20,11 +20,16 @@
 //   6. (havuz sızıntısı, KRİTİK) `withTenant` sonrası context'siz sorgu → 0 satır
 //   7. AC2'nin üç sorgusu (uygulama bağlantısıyla, Zod-parse edilmiş)
 //
-// Senaryo 3/4'ün "bulunamadı" sınıfı Prisma'nın P2025 ("Record to update/delete
-// not found") hata koduyla tespit edilir — bu RLS'in filtrelediği bir satırla
-// (var ama görünmez) hiç var olmayan bir satırı AYNI ŞEKİLDE ele alır (CLAUDE.md
-// §7: "var olmayan vs. yetkisiz ayrımı yapılmıyor → her ikisi de 404" ilkesinin
-// veritabanı seviyesindeki karşılığı).
+// Senaryo 3/4'ün reddi, çoğu prob için "bulunamadı" sınıfıdır — Prisma'nın
+// P2025 ("Record to update/delete not found") hata koduyla tespit edilir; bu
+// RLS'in filtrelediği bir satırla (var ama görünmez) hiç var olmayan bir
+// satırı AYNI ŞEKİLDE ele alır (CLAUDE.md §7: "var olmayan vs. yetkisiz
+// ayrımı yapılmıyor → her ikisi de 404" ilkesinin veritabanı seviyesindeki
+// karşılığı). DÜZELTME (FIX turu 2, `solid` tur 2 [low] — bu paragraf TEK
+// sınıf varmış gibi okunuyordu): T-023/S6'dan (DDL uygulandı) İTİBAREN
+// `audit_log`/`platform_audit_log` probları BAŞKA bir sınıf (`'privilege-
+// denied'`, P2039) döner — ikisinin ayrımı `MutationRejectionKind`
+// (aşağıda) ile her prob kendi beklediğini BEYAN eder.
 
 import { randomUUID } from 'node:crypto'
 
@@ -35,6 +40,35 @@ import { TenantStatus, withTenant } from '../../index.js'
 import type { PrismaDatabase, TransactionClient } from '../../index.js'
 
 /**
+ * Senaryo 3/4'ün UPDATE/DELETE denemesi RLS tarafından reddedildiğinde
+ * Prisma'nın fırlattığı hatanın BEKLENEN sınıfı (T-023/S5, architect M5 +
+ * Orkestratör düzeltmesi):
+ *   - `'record-not-found'` — RLS `USING` filtrelediği için satır Prisma'ya
+ *     hiç GÖRÜNMEZ; Postgres sorguyu normal şekilde ÇALIŞTIRIR ve "0 satır
+ *     etkilendi" sonucu Prisma'nın P2025 ("Record to update/delete not
+ *     found") koduna dönüşür.
+ *   - `'privilege-denied'` — çalışma zamanı rolünün tablo üzerinde `UPDATE`/
+ *     `DELETE` yetkisi YOKTUR (`REVOKE` sonrası); Postgres sorguyu RLS'e HİÇ
+ *     GETİRMEDEN `42501` ("permission denied") ile reddeder; bu Prisma 7'nin
+ *     driver-adapter katmanında **P2039** ("Database error") olarak YÜZEYE
+ *     ÇIKAR — DÜZELTME (FIX turu 2, `solid` tur 2 [low] — bu paragraf GEÇİCİ
+ *     bir "henüz değil" durumunu kalıcı zamanla anlatıyordu): T-023/S6'nın
+ *     `audit_log`/`platform_audit_log`'dan `UPDATE, DELETE, TRUNCATE`
+ *     yetkisini çekmesi UYGULANDI (bkz. `sql/bootstrap-roles.sql` §9) — bu
+ *     iki prob (`audit-log.probe.ts`) bu sınıfı `mutationRejection:
+ *     'privilege-denied'` olarak BEYAN eder; diğer altı prob
+ *     `'record-not-found'`de kalır (davranışları DEĞİŞMEDİ).
+ *
+ * ⚠⚠ ZORUNLU (opsiyonel DEĞİL) — F-NEW-4 (architect): alan opsiyonel
+ * olsaydı, S6'nın DDL'si uygulandığında `audit_log`/`platform_audit_log`
+ * probu sessizce eski (`'record-not-found'`) varsayımda KALIR ve senaryo
+ * 3/4 YANLIŞ SEBEPLE kırmızı verir — hata "neden" kırıldığını ANLATMAZ.
+ * Zorunlu alan bu sınıfı derleme zamanında KAPATIR: yeni bir prob veya bu
+ * alanı SİLİNEN bir prob `tsc`'yi kırar, sessiz drift OLUŞAMAZ.
+ */
+export type MutationRejectionKind = 'record-not-found' | 'privilege-denied'
+
+/**
  * Bir tenant'a bağlı tablonun süitin ihtiyaç duyduğu minimum CRUD yüzeyi.
  * Tablo'ya özel bilgi (model adı, zorunlu kolonlar, FK bağımlılıkları) BU
  * ARAYÜZÜN ARKASINDA kalır — süitin kendisi bunları BİLMEZ.
@@ -42,6 +76,11 @@ import type { PrismaDatabase, TransactionClient } from '../../index.js'
 export type TenantScopedProbe = {
   /** `src/tenancy.ts` → `TENANT_SCOPED_TABLES` ile BİREBİR eşleşen tablo adı. */
   readonly tableName: string
+  /**
+   * Senaryo 3/4'ün UPDATE/DELETE reddinin BEKLENEN sınıfı — yukarıdaki
+   * `MutationRejectionKind` dosya başı yorumuna bak. ⚠⚠ ZORUNLU alan.
+   */
+  readonly mutationRejection: MutationRejectionKind
   /** Context içinde (`tx`), verilen `tenantId`'ye ait YENİ bir satır oluşturur; satırın id'sini döner. */
   readonly insertRow: (tx: TransactionClient, tenantId: string) => Promise<string>
   /** Context içinde (`tx`), verilen id'yi okur; RLS filtrelerse/yoksa `null`. */
@@ -58,9 +97,14 @@ export type TenantScopedProbe = {
     tx: TransactionClient,
     foreignTenantId: string,
   ) => Promise<void>
-  /** Context içinde verilen id'deki satırı güncellemeyi DENER; görünmezse Prisma P2025 fırlatır. */
+  /**
+   * Context içinde verilen id'deki satırı güncellemeyi DENER; probun beyan
+   * ettiği `mutationRejection`e göre `'record-not-found'` (Prisma P2025) veya
+   * `'privilege-denied'` (P2039) fırlatır (DÜZELTME, FIX turu 2 — bu yorum
+   * eskiden KOŞULSUZ "P2025" diyordu).
+   */
   readonly updateRowById: (tx: TransactionClient, rowId: string) => Promise<void>
-  /** Context içinde verilen id'deki satırı silmeyi DENER; görünmezse Prisma P2025 fırlatır. */
+  /** Aynı davranış `updateRowById` ile — bkz. yukarıdaki yorum. */
   readonly deleteRowById: (tx: TransactionClient, rowId: string) => Promise<void>
   /** Context KURMADAN (ham istemci), tablodaki TOPLAM görünür satır sayısını döner. */
   readonly countAllRowsWithoutContext: (client: PrismaDatabase) => Promise<number>
@@ -93,6 +137,106 @@ const rlsCheckRowSchema = z.object({
  */
 function isRecordNotFoundError(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2025'
+}
+
+/**
+ * Prisma 7 driver-adapter'ının bir Postgres sürücü hatasının `meta` gövdesinde
+ * taşıdığı `driverAdapterError.cause.originalCode` alanını Zod ile doğrular.
+ *
+ * ⚠ `meta` BİLİNMEYEN veriden gelir (Prisma'nın kendi `meta: Record<string,
+ * unknown>` sözleşmesi) — bu yüzden runtime doğrulaması olmadan daraltma
+ * YAPILMAZ (CLAUDE.md §4: dış veri Zod ile parse edilir, `as` yasak).
+ * Bilinmeyen/beklenmeyen şekil → `safeParse` başarısız → aşağıdaki
+ * `isPrivilegeDeniedError` **fail-closed** `false` döner (gerçek bir hatayı
+ * sessizce maskelemez).
+ */
+const driverAdapterErrorMetaSchema = z.object({
+  driverAdapterError: z.object({
+    cause: z.object({
+      originalCode: z.string(),
+    }),
+  }),
+})
+
+/** Postgres'in "yetersiz yetki" SQLSTATE'i. */
+const POSTGRES_INSUFFICIENT_PRIVILEGE_SQLSTATE = '42501'
+
+/**
+ * Hatanın Postgres'in yetki reddi (`42501`, "permission denied") kodundan
+ * kaynaklanıp kaynaklanmadığını daraltır.
+ *
+ * ⚠⚠ ORKESTRATÖR DÜZELTMESİ (T-023/S5) — NEDEN İKİ KOŞUL BİRDEN GEREKİR:
+ * `node_modules/@prisma/client/runtime/client.js` (sürüm 7.10.1) STATİK
+ * OLARAK okundu ve ÖLÇÜLDÜ: driver-adapter hata eşleyicisi (`Cp`), bir
+ * sürücü hatasının `cause.kind`'ini biliniyorsa (`UniqueConstraintViolation`
+ * → P2002, `ForeignKeyConstraintViolation`/`RestrictViolation` → P2003,
+ * `NullConstraintViolation` → P2011, vb.) ÖZEL bir Prisma koduna çevirir;
+ * `cause.kind` yalnızca `'postgres'|'mysql'|'sqlite'|'mssql'` (yani sürücü
+ * hatayı KENDİSİ sınıflandıramadı) olduğunda `Cp` `undefined` döner ve
+ * çağıran (`Be`) bunu **P2039** ("Database error") GENEL ÇÖP KUTUSUNA
+ * düşürür. ⇒ **P2039 yetki reddine ÖZGÜ DEĞİLDİR** — sözdizimi hatası,
+ * `relation does not exist`, deadlock, serileştirme hatası gibi
+ * SINIFLANDIRILAMAYAN her Postgres hatası da AYNI kodu taşır.
+ * ⇒ `error.code === 'P2039'` **TEK BAŞINA** yetersizdir: yalnızca ona
+ * dayanmak her sınıflandırılamayan veritabanı hatasını "yetki reddi" sayar
+ * ve gerçek bir hatayı MASKELER. Bu yüzden ikinci koşul — sürücünün ham
+ * `originalCode`'unun Postgres'in yetki reddi SQLSTATE'i (`42501`) OLMASI —
+ * ZORUNLUDUR; bu, S1'in canlı ölçümünde (`audit-log.probe.ts`'in `update`
+ * çağrısı `REVOKE` sonrası) gözlenen GERÇEK hata gövdesiyle BİREBİR eşleşir.
+ */
+// FIX turu 1 (M2, `solid` [medium] bulgusu): `export` EKLENDİ —
+// `platform-tables.isolation.test.ts` bu fonksiyonu (+ yukarıdaki
+// `driverAdapterErrorMetaSchema`/`POSTGRES_INSUFFICIENT_PRIVILEGE_SQLSTATE`)
+// BAYT DÜZEYİNDE KOPYALAMIŞTI — "dosya listesi dışında, DOKUNMA" eskiden bir
+// SÜREÇ kısıtıydı (S6'nın alt görev sınırı), bir TASARIM kararı DEĞİLDİ. İki
+// kopya AYNI sebeple (Prisma driver-adapter hata şekli) değişir; tek kaynak
+// burada.
+export function isPrivilegeDeniedError(error: unknown): boolean {
+  if (!(typeof error === 'object' && error !== null && 'code' in error)) {
+    return false
+  }
+  if (error.code !== 'P2039') {
+    return false
+  }
+  if (!('meta' in error)) {
+    return false
+  }
+  const parsedMeta = driverAdapterErrorMetaSchema.safeParse(error.meta)
+  if (!parsedMeta.success) {
+    return false
+  }
+  return (
+    parsedMeta.data.driverAdapterError.cause.originalCode ===
+    POSTGRES_INSUFFICIENT_PRIVILEGE_SQLSTATE
+  )
+}
+
+/**
+ * `MutationRejectionKind`'ı ilgili doğrulayıcıya yönlendirir.
+ *
+ * Discriminated union + exhaustive `switch` (CLAUDE.md §4) — yeni bir
+ * `MutationRejectionKind` üyesi eklenip burada ele alınmazsa `assertNever`
+ * dalı `tsc`'yi KIRAR (boolean bayrak yığını yerine).
+ */
+function isExpectedMutationRejection(error: unknown, expected: MutationRejectionKind): boolean {
+  switch (expected) {
+    case 'record-not-found':
+      return isRecordNotFoundError(error)
+    case 'privilege-denied':
+      return isPrivilegeDeniedError(error)
+    default:
+      return assertNever(expected, 'tenant-isolation-suite.ts: MutationRejectionKind')
+  }
+}
+
+/**
+ * Paket-yerel `assertNever` — `packages/db`'nin bugün bir kopyası YOK ve bu
+ * dosya `AGENT_BASELINE.md`'nin dosya listesi DIŞINDAKİ bir yardımcı paket
+ * eklemeye İZİNLİ DEĞİL; `packages/versioning/src/range.ts:204`'ün aynı
+ * paket-yerel desenini TEKRARLAR (`@arkesoft/errors`'a bağımlılık gerektirmez).
+ */
+function assertNever(value: never, context: string): never {
+  throw new Error(`beklenmeyen değer (${context}): ${JSON.stringify(value)}`)
 }
 
 /**
@@ -197,19 +341,24 @@ export function createTenantIsolationSuite(options: TenantIsolationSuiteOptions)
           ).rejects.toThrow()
         })
 
-        it("senaryo 3: A context'inde B'nin satır id'siyle UPDATE/DELETE \"bulunamadı\" semantiği üretir (yetkisiz DEĞİL)", async () => {
+        it("senaryo 3: A context'inde B'nin satır id'siyle UPDATE/DELETE probun beyan ettiği ret sınıfını üretir", async () => {
           const updateError = await captureError(() =>
             withTenant(options.client, tenantAId, (tx) => probe.updateRowById(tx, rowIdInB)),
           )
-          expect(isRecordNotFoundError(updateError)).toBe(true)
+          expect(isExpectedMutationRejection(updateError, probe.mutationRejection)).toBe(true)
 
           const deleteError = await captureError(() =>
             withTenant(options.client, tenantAId, (tx) => probe.deleteRowById(tx, rowIdInB)),
           )
-          expect(isRecordNotFoundError(deleteError)).toBe(true)
+          expect(isExpectedMutationRejection(deleteError, probe.mutationRejection)).toBe(true)
 
-          // Delete RLS tarafından filtrelendiği için satır GERÇEKTEN silinmedi —
-          // sonraki senaryolar (4, 5) aynı satırı güvenle yeniden kullanabilir.
+          // DÜZELTME (FIX turu 2, `solid` tur 2 [low] — "RLS tarafından
+          // filtrelendi" iddiası `mutationRejection: 'privilege-denied'`
+          // probları için YANLIŞ SEBEP verirdi: o sınıfta istek RLS'e HİÇ
+          // ULAŞMAZ, `42501` ile daha ÖNCE reddedilir): satır HER İKİ sınıfta
+          // da GERÇEKTEN silinmedi (RLS filtresi veya yetki reddi, probun
+          // beyan ettiği `mutationRejection`'a bağlı) — sonraki senaryolar
+          // (4, 5) aynı satırı güvenle yeniden kullanabilir.
           const stillExists = await withTenant(options.client, tenantBId, (tx) =>
             probe.findRowById(tx, rowIdInB),
           )
@@ -227,14 +376,25 @@ export function createTenantIsolationSuite(options: TenantIsolationSuiteOptions)
             ),
           )
 
-          const foreignIsNotFound = isRecordNotFoundError(foreignRowError)
-          const nonExistentIsNotFound = isRecordNotFoundError(nonExistentRowError)
+          const foreignRowMatchesExpectation = isExpectedMutationRejection(
+            foreignRowError,
+            probe.mutationRejection,
+          )
+          const nonExistentRowMatchesExpectation = isExpectedMutationRejection(
+            nonExistentRowError,
+            probe.mutationRejection,
+          )
 
           // İDDİA (A-E5) BURADA PİNLENİR — tutmazsa bu `expect` GÜRÜLTÜLÜ kırmızı
-          // verir; testi gevşetmek YASAK (§10.6).
-          expect({ foreignIsNotFound, nonExistentIsNotFound }).toEqual({
-            foreignIsNotFound: true,
-            nonExistentIsNotFound: true,
+          // verir; testi gevşetmek YASAK (§10.6). ⚠ T-023/S5: iddia artık
+          // mutlak `isRecordNotFoundError` DEĞİL, probun beyan ettiği
+          // `mutationRejection` sınıfı — varlık/yetki oracle'ı HER İKİ sınıf
+          // için de KAPALI kalır (hem RLS'in "bulunamadı" hem `REVOKE`'un
+          // "yetki reddi" yolu, var olan yabancı satırla var olmayan satırı
+          // AYNI şekilde ele alır).
+          expect({ foreignRowMatchesExpectation, nonExistentRowMatchesExpectation }).toEqual({
+            foreignRowMatchesExpectation: true,
+            nonExistentRowMatchesExpectation: true,
           })
         })
 
