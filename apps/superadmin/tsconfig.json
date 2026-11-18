@@ -1,10 +1,17 @@
 {
+  // Tek proje (ROADMAP v0.0.20, T-021/S8, `apps/admin`'in T-008/S4 emsali):
+  // `src` + `scripts` + `e2e` + kök `*.config.ts` AYNI tsconfig'te.
+  // GÜNCELLEME (T-021/S10): `e2e/**/*` EKLENDİ (S8'in notunun ÖNGÖRDÜĞÜ
+  // haliyle) — `playwright.config.ts`/`e2e/*.spec.ts`/`e2e/fixtures/**`
+  // bu olmadan `tsc --noEmit`/ESLint'in `projectService: true`'u TARAFINDAN
+  // GÖRÜLMEZ (`apps/admin/tsconfig.json`'ın AYNI gerekçesi).
+  // `outDir`/`rootDir`/`declaration` YOK — `apps/superadmin` artık bir
+  // uygulama, kütüphane DEĞİL (`build` artık `vite build`, bu proje yalnızca
+  // `tsc --noEmit` için kullanılıyor).
   "extends": "@arkesoft/config/tsconfig/react.json",
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src",
-    "tsBuildInfoFile": "dist/.tsbuildinfo"
+    "types": ["node", "vite/client"]
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "scripts/**/*", "e2e/**/*", "*.config.ts"],
   "exclude": ["dist", "node_modules"]
 }

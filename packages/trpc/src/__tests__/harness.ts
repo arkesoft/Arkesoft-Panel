@@ -39,6 +39,8 @@ import type {
 import type { JobReadPort } from '../ports/job-read.port.js'
 import type { MemberWritePort } from '../ports/member-write.port.js'
 import type { MembershipReadPort } from '../ports/membership-read.port.js'
+import type { PlatformAdminReadPort } from '../ports/platform-admin-read.port.js'
+import type { PlatformReadPort } from '../ports/platform-read.port.js'
 import type { RegistrationReadPort } from '../ports/registration-read.port.js'
 import type { RegistrationWritePort } from '../ports/registration-write.port.js'
 import type { SessionListReadPort } from '../ports/session-list-read.port.js'
@@ -53,6 +55,11 @@ import type { TenantSecurityPolicyUpdateInput } from '../schemas/tenant-security
 import type { StorefrontTenant } from '../schemas/storefront-tenant.schema.js'
 import type { JobListPage, JobSummary } from '../schemas/job-summary.schema.js'
 import type { ActiveSessionWire } from '../schemas/session-summary.schema.js'
+import type {
+  PlatformAuditEntry,
+  PlatformSession,
+  PlatformTenantSummary,
+} from '../schemas/platform.schema.js'
 import type {
   CreateTenantInput,
   CreateTenantResult,
@@ -315,6 +322,101 @@ export function createFakeRegistrationWritePort(): RegistrationWritePort {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Platform yöneticisi/denetim sahteleri — ROADMAP v0.0.20, T-021/S5
+// ---------------------------------------------------------------------------
+
+/** `apps/api`'nin `PlatformAdminRequiredError`'ının test-yerel taklidi (403) — `PlatformAdminReadPort.requirePlatformAdmin`'in TOTAL sözleşmesini sınamak için. */
+export class HarnessPlatformAdminRequiredError extends AppError {
+  constructor() {
+    super({
+      code: 'PLATFORM_ADMIN_REQUIRED',
+      httpStatus: 403,
+      userMessageKey: 'errors.platform.adminRequired',
+    })
+  }
+}
+
+/** `apps/api`'nin `TwoFactorRequiredError`'ının test-yerel taklidi (403) — `platformAdminProcedure`'ün ikinci adımını sınamak için. */
+export class HarnessTwoFactorRequiredError extends AppError {
+  constructor() {
+    super({
+      code: 'TWO_FACTOR_REQUIRED',
+      httpStatus: 403,
+      userMessageKey: 'errors.auth.twoFactorRequiredForOwner',
+    })
+  }
+}
+
+/** Harness'in varsayılan `platform.tenantList` öğesi — gerçekçi, PII içermez. */
+export const HARNESS_PLATFORM_TENANT_SUMMARY: PlatformTenantSummary = {
+  id: 'tenant_harness_01',
+  slug: 'harness-tenant',
+  name: 'Harness Tenant A.Ş.',
+  status: 'active',
+  planId: 'plan_harness_01',
+  planName: 'Harness Plan',
+  createdAt: '2026-11-03T09:00:00.000Z',
+}
+
+/** Harness'in varsayılan `platform.auditLog` öğesi — `detail`/e-posta TAŞIMAZ. */
+export const HARNESS_PLATFORM_AUDIT_ENTRY: PlatformAuditEntry = {
+  id: 'paudit_harness_01',
+  actorUserId: 'user_harness_01',
+  action: 'platform_admin_signed_in',
+  subject: 'user_harness_01',
+  createdAt: '2026-11-03T09:00:00.000Z',
+}
+
+export interface CreateFakePlatformAdminReadPortOptions {
+  readonly isPlatformAdmin?: boolean
+  readonly twoFactorEnabled?: boolean
+}
+
+/**
+ * `PlatformAdminReadPort`'un sahte uygulaması. `requirePlatformAdmin` port
+ * dosyasının kendi TOTAL sözleşmesine UYAR: `isPlatformAdmin === false` ise
+ * {@link HarnessPlatformAdminRequiredError} fırlatır (`membershipRead.
+ * requireRole`'ün AYNI deseni); `readPlatformSession` ASLA FIRLAMAZ.
+ * Varsayılan İKİSİ DE `true` — çoğu testin ihtiyacı budur, negatif senaryolar
+ * `options` ile GEÇERSİZ KILAR.
+ */
+export function createFakePlatformAdminReadPort(
+  options: CreateFakePlatformAdminReadPortOptions = {},
+): PlatformAdminReadPort {
+  const isPlatformAdmin = options.isPlatformAdmin ?? true
+  const twoFactorEnabled = options.twoFactorEnabled ?? true
+
+  return {
+    requirePlatformAdmin() {
+      return isPlatformAdmin
+        ? Promise.resolve({ twoFactorEnabled })
+        : Promise.reject(new HarnessPlatformAdminRequiredError())
+    },
+    readPlatformSession(): Promise<PlatformSession> {
+      return Promise.resolve({ isPlatformAdmin, twoFactorEnabled })
+    },
+  }
+}
+
+/**
+ * `PlatformReadPort`'un sahte uygulaması (`createFakeSessionListReadPort`'un
+ * AYNI deseni). Port TOTAL'dır ve FIRLAMAZ — verilen dizileri sabitçe döner.
+ */
+export function createFakePlatformReadPort(
+  tenants: readonly PlatformTenantSummary[] = [HARNESS_PLATFORM_TENANT_SUMMARY],
+  entries: readonly PlatformAuditEntry[] = [HARNESS_PLATFORM_AUDIT_ENTRY],
+): PlatformReadPort {
+  return {
+    listTenants() {
+      return Promise.resolve(tenants)
+    },
+    listAuditEntries() {
+      return Promise.resolve(entries)
+    },
+  }
+}
+
 /** `apps/api`'nin `JobNotFoundError`'ının test-yerel taklidi (404) — `JobReadPort`'un TOTAL sözleşmesini sınamak için. */
 export class HarnessJobNotFoundError extends AppError {
   constructor() {
@@ -552,6 +654,9 @@ export function createFakeErrorFactoryPort(): TrpcErrorFactoryPort {
     unauthenticated: () => new HarnessUnauthenticatedError(),
     tenantContextRequired: () => new HarnessTenantContextRequiredError(),
     permissionDenied: (permission, role) => new HarnessPermissionDeniedError(permission, role),
+    // ROADMAP v0.0.20, T-021/S5 — İKİ YENİ fabrika yöntemi (AYNI desen).
+    platformAdminRequired: () => new HarnessPlatformAdminRequiredError(),
+    twoFactorRequired: () => new HarnessTwoFactorRequiredError(),
   }
 }
 
@@ -691,6 +796,10 @@ export interface CreateHarnessOptions {
   readonly registrationRead?: RegistrationReadPort
   /** ROADMAP v0.1.0, T-019/S3 — ZORUNLU üyenin override'ı (AYNI emsal). */
   readonly registrationWrite?: RegistrationWritePort
+  /** ROADMAP v0.0.20, T-021/S5 — ZORUNLU üyenin override'ı (AYNI emsal). */
+  readonly platformAdminRead?: PlatformAdminReadPort
+  /** ROADMAP v0.0.20, T-021/S5 — ZORUNLU üyenin override'ı (AYNI emsal). */
+  readonly platformRead?: PlatformReadPort
   // ⚠ İŞ OKUMA PORTU İÇİN PORT-DÜZEYİ OVERRIDE BİLEREK YOK (ROADMAP v0.0.11,
   // T-013/S8): bugün hiçbir test onu geçirmiyor ve KULLANILMAYAN bir override
   // alanı tutmak, o alanın adının `TrpcPorts`'un ZORUNLU üyesinin adıyla
@@ -804,6 +913,9 @@ export function createHarness(options: CreateHarnessOptions = {}): Harness {
       // ROADMAP v0.1.0, T-019/S3 — İKİSİ DE ZORUNLU üye (AYNI kural).
       registrationRead: options.registrationRead ?? createFakeRegistrationReadPort(),
       registrationWrite: options.registrationWrite ?? createFakeRegistrationWritePort(),
+      // ROADMAP v0.0.20, T-021/S5 — İKİSİ DE ZORUNLU üye (AYNI kural).
+      platformAdminRead: options.platformAdminRead ?? createFakePlatformAdminReadPort(),
+      platformRead: options.platformRead ?? createFakePlatformReadPort(),
     },
     errors: options.errors ?? createFakeErrorFactoryPort(),
   }

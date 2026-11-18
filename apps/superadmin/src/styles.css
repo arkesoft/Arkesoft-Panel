@@ -1,0 +1,37 @@
+/*
+ * @arkesoft/superadmin — global stil girişi (ROADMAP v0.0.20, T-021/S8)
+ *
+ * `main.tsx` BU dosyayı import eder — Tailwind v4 burada başlatılır.
+ * `apps/admin/src/styles.css`'in BİREBİR deseni (A-A2'nin ölçümü orada
+ * yapıldı, burada tekrarlanmıyor — aynı `@tailwindcss/vite` eklentisi).
+ */
+@import 'tailwindcss';
+@import '@arkesoft/ui/theme.css';
+
+/*
+ * Tailwind v4 `@source` — ZORUNLU: `packages/ui`'nin kaynak dosyalarındaki
+ * sınıf adları bu paketin KENDİ `node_modules` dışında yaşıyor; Tailwind'in
+ * otomatik içerik taraması `apps/superadmin/src` DIŞINA bakmaz. Bu satır
+ * OLMADAN `packages/ui` bileşenleri (Button/Input/Card/Skeleton/DataTable)
+ * STİLSİZ gelir.
+ *
+ * `.tsx`'e EK OLARAK `.ts`'i de TARAR — `packages/ui/src/tokens.ts`'teki
+ * `FOCUS_RING_CLASS_NAMES` bir `.ts` dosyasında yaşıyor (`apps/admin/src/
+ * styles.css`'teki AYNI zorunlu not, `tokens.ts`'in dosya başı yorumu: "bu
+ * sabiti tüketen yeni bir uygulama eklendiğinde aynı şart onun `@source`
+ * globu için de geçerlidir").
+ */
+@source '../../../packages/ui/src/**/*.{ts,tsx}';
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+}

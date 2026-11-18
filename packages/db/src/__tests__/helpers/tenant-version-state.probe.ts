@@ -79,6 +79,11 @@ async function createTenantVersionStateRow(
 export const tenantVersionStateProbe: TenantScopedProbe = {
   tableName: 'tenant_version_state',
 
+  // ⚠ T-023/S5 — `mutationRejection` ZORUNLU alan. `tenant_version_state`
+  // `REVOKE` kapsamı DIŞINDA (K2: yalnızca `audit_log`/`platform_audit_log`)
+  // → her zaman `'record-not-found'`.
+  mutationRejection: 'record-not-found',
+
   insertRow: (tx, tenantId) => createTenantVersionStateRow(tx, tenantId),
 
   findRowById: async (tx, rowId) => {

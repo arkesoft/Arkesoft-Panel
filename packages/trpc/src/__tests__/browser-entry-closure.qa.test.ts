@@ -71,6 +71,10 @@ const FORBIDDEN_MODULE_PATTERNS: readonly RegExp[] = [
   new RegExp(`^${['hand', 'ler'].join('')}/`),
   new RegExp(`^${['por', 'ts'].join('')}/`),
   new RegExp(`^authz/${['permis', 'sion-'].join('')}`),
+  // ROADMAP v0.0.20, T-021/S5 — merdivenin ALTINCI basamağı, BEŞİNCİNİN AYNI
+  // gerekçesiyle: `authz/platform-admin-procedure.ts` yalnızca `server.ts`'ten
+  // export edilir, `index.ts`'ten ASLA.
+  new RegExp(`^authz/${['plat', 'form-admin-procedure'].join('')}`),
 ]
 
 /**

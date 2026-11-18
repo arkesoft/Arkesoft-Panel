@@ -187,7 +187,18 @@ const roleRowSchema = z.object({
   canCreateDb: z.boolean(),
 })
 
-/** T-015/ST-B: `roleName` EKLENDİ — artık `appRoleName` VE `authRoleName` için okunur. */
+/**
+ * T-015/ST-B: `roleName` EKLENDİ — artık `appRoleName` VE `authRoleName` için
+ * okunur.
+ *
+ * T-023/S2 (R3/AC17, K-A17 adım ①) — `canTruncate` EKLENDİ, ZORUNLU alan
+ * (opsiyonel DEĞİL — fail-closed). Gerekçe (po'nun R3 kararı): TRUNCATE
+ * RLS'i BAYPAS EDER ve bu alt göreve kadar HİÇBİR kuralın görüş alanında
+ * DEĞİLDİ (`readPrivileges` yalnızca dört fiil okuyordu) — "append-only"
+ * iddiası TRUNCATE'i kapsamazsa VAKUM olurdu. Zorunlu olması her fixture'ı
+ * DERLEME ZAMANINDA güncellemeye zorlar — sessiz/varsayılan bir `false`
+ * YOKTUR.
+ */
 const privilegeRowSchema = z.object({
   roleName: z.string(),
   tableName: z.string(),
@@ -195,6 +206,7 @@ const privilegeRowSchema = z.object({
   canInsert: z.boolean(),
   canUpdate: z.boolean(),
   canDelete: z.boolean(),
+  canTruncate: z.boolean(),
 })
 
 /**
@@ -483,12 +495,17 @@ async function readRole(client: CatalogQueryClient, roleName: string): Promise<C
 }
 
 /**
- * Her tablo için verilen `roleName`'in SELECT/INSERT/UPDATE/DELETE yetkisini
- * `has_table_privilege()` ile sorar (grant görünürlüğü `information_schema.
- * role_table_grants`'in grantor kısıtlarına TABİ DEĞİLDİR — `has_table_privilege`
- * doğrudan etkin yetkiyi sorar). `APP_ROLE_MISSING_DML_PRIVILEGE`'ın zemini.
- * T-015/ST-B: çıktıya `roleName` eklendi — `readCatalogSnapshot` bunu HEM
- * `appRoleName` HEM `authRoleName` için çağırıp sonuçları BİRLEŞTİRİR.
+ * Her tablo için verilen `roleName`'in SELECT/INSERT/UPDATE/DELETE/TRUNCATE
+ * yetkisini `has_table_privilege()` ile sorar (grant görünürlüğü
+ * `information_schema.role_table_grants`'in grantor kısıtlarına TABİ
+ * DEĞİLDİR — `has_table_privilege` doğrudan etkin yetkiyi sorar).
+ * `APP_ROLE_MISSING_DML_PRIVILEGE`'ın zemini. T-015/ST-B: çıktıya `roleName`
+ * eklendi — `readCatalogSnapshot` bunu HEM `appRoleName` HEM `authRoleName`
+ * için çağırıp sonuçları BİRLEŞTİRİR.
+ *
+ * T-023/S2 (R3/AC17) — BEŞİNCİ fiil `canTruncate` EKLENDİ: `TRUNCATE`
+ * RLS'i BAYPAS EDER (Postgres, dosya başı kaynak notu) ve bu alt göreve
+ * kadar okunan dört fiil arasında YOKTU.
  */
 async function readPrivileges(
   client: CatalogQueryClient,
@@ -501,7 +518,8 @@ async function readPrivileges(
       has_table_privilege(${roleName}, format('%I.%I', schemaname, tablename), 'SELECT') AS "canSelect",
       has_table_privilege(${roleName}, format('%I.%I', schemaname, tablename), 'INSERT') AS "canInsert",
       has_table_privilege(${roleName}, format('%I.%I', schemaname, tablename), 'UPDATE') AS "canUpdate",
-      has_table_privilege(${roleName}, format('%I.%I', schemaname, tablename), 'DELETE') AS "canDelete"
+      has_table_privilege(${roleName}, format('%I.%I', schemaname, tablename), 'DELETE') AS "canDelete",
+      has_table_privilege(${roleName}, format('%I.%I', schemaname, tablename), 'TRUNCATE') AS "canTruncate"
     FROM pg_tables
     WHERE schemaname = 'public'
   `

@@ -42,6 +42,13 @@ test.describe('Mobil yerleşim — /sign-in (T-020, auth tüketmez)', () => {
       expect(bodyScrollWidth).toBeLessThanOrEqual(viewportSize.width)
     }
 
+    // AC-23 — WCAG 1.4.10 reflow referans genişliği: birinci yarı
+    // viewport'un gerçekten 320 px'e bağlandığını (`reflowMobileDevice`
+    // kullanıldığını), ikinci yarı içeriğin 320 px'te taşmadığını kanıtlar.
+    expect(page.viewportSize()?.width).toBe(320)
+    const scrollWidth = await page.evaluate(() => document.body.scrollWidth)
+    expect(scrollWidth).toBeLessThanOrEqual(320)
+
     // E-posta/şifre alanları DOKUNULABİLİR genişlikte görünür — form
     // gönderilmez, ağ çağrısı YAPILMAZ (dosya başı notu: auth tüketmez).
     await expect(page.getByLabel('E-posta adresi')).toBeVisible()

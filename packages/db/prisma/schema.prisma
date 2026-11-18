@@ -51,6 +51,18 @@
 // `TwoFactor.secret`/`backupCodes` ŞİFRELİ saklanır (Better Auth
 // `symmetricEncrypt`) → `src/tenancy.ts` → `AUTH_SECRET_BEARING_TABLES` üç
 // üyeden DÖRDE çıkar (S2'nin işi, bu dosyada DEĞİL).
+//
+// GÜNCELLEME (ROADMAP v0.0.20, T-021/S3 — süper admin platform kimliği,
+// ADR-0023 Karar 1/3): `PlatformAdmin` ve `PlatformAuditLog` EKLENDİ, ikisi
+// de PLATFORM SEVİYESİ (`tenant_id` TAŞIMAZLAR) → `src/tenancy.ts` →
+// `PLATFORM_LEVEL_TABLES` ONDAN ON İKİYE çıktı. ⭐ `TENANT_SCOPED_TABLES`
+// DEĞİŞMEDİ (yedide kaldı) — kiracı tablosu eklenmedi, prob tamlığı kapısı
+// kırılmadı. `TenantRole` enum'u BU SÜRÜMDE DE DEĞİŞMEDİ (platform yetkisi
+// bir üyelik değildir, `:966`'nın yazılı reddi — ADR-0023 Karar 1). İki
+// yeni tablo da RLS politikası TAŞIMAZ (platform seviyesi — migration
+// linter'ının `TENANT_ID_ON_PLATFORM_TABLE` kuralı). Migration tamamen
+// additive (yeni enum, iki yeni tablo, bir FK) — `DROP COLUMN`/`SET NOT
+// NULL`/`ALTER TYPE … ADD VALUE` YOK.
 
 // `output = "../generated"` iki farklı "generated" konumunun KAYNAĞIDIR:
 //   1. packages/db/generated/     — `prisma generate`'in ham TS çıktısı (KÖK, .gitignore'da)
@@ -214,13 +226,18 @@ model User {
   updatedAt        DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   deletedAt        DateTime?  @map("deleted_at") @db.Timestamptz(3)
 
-  memberships TenantMembership[]
-  sessions    Session[]
-  accounts    Account[]
+  memberships   TenantMembership[]
+  sessions      Session[]
+  accounts      Account[]
   // ROADMAP v0.0.15 (T-016/S1): `TwoFactor.user` ilişkisinin ZORUNLU karşı
   // tarafı (`sessions`/`accounts` ile AYNI gerekçe — Prisma ilişkileri iki
   // taraflıdır). DDL ÜRETMEZ (FK kolonu `two_factor` tarafındadır).
-  twoFactor   TwoFactor?
+  twoFactor     TwoFactor?
+  // ROADMAP v0.0.20 (T-021/S3, ADR-0023 Karar 1): `PlatformAdmin.user`
+  // ilişkisinin ZORUNLU karşı tarafı (`twoFactor` ile AYNI gerekçe — Prisma
+  // ilişkileri iki taraflıdır; bu satır olmadan `prisma generate` doğrulama
+  // hatasıyla durur). DDL ÜRETMEZ (FK kolonu `platform_admin` tarafındadır).
+  platformAdmin PlatformAdmin?
 
   @@map("app_user")
 }
@@ -744,9 +761,19 @@ model ThemeRelease {
 /// `apps/api` tarafında yaşar (CLAUDE.md §4 — JSONB okunurken Zod ile parse
 /// edilir), `TenantVersionState.previousState` emsali.
 ///
-/// ⚠ `name` OPERATÖRE DÖNÜKTÜR — TELE ÇIKMAZ ve PANELDE RENDER EDİLMEZ (aksi
-/// hâlde CLAUDE.md §4'ün i18n kuralı, "kullanıcıya dönük metin kodda sabit
-/// yazılmaz", ihlal olurdu).
+/// ⚠ `name` OPERATÖRE DÖNÜKTÜR — KİRACI PANELİNE TELE ÇIKMAZ ve kiracı
+/// panelinde RENDER EDİLMEZ (aksi hâlde CLAUDE.md §4'ün i18n kuralı,
+/// "kullanıcıya dönük metin kodda sabit yazılmaz", ihlal olurdu).
+///
+/// GÜNCELLEME (ROADMAP v0.0.20, T-021/S3 — R-PO2 doc drift düzeltmesi, po'nun
+/// bulgusu): yukarıdaki cümle süper admin yüzeyini (`platform.tenantList`)
+/// KAPSAMAZ — o uç bu kolonu `planName` olarak TAŞIR (architect T-021 tRPC
+/// tasarımı). Lafız daraltıldı ama RUH ihlal EDİLMİYOR: süper admin
+/// OPERATÖRÜN KENDİ panelidir (müşteriye dönük değil) ve taşınan değer
+/// VERİDİR, kodda sabit metin değil — CLAUDE.md §4'ün i18n gerekçesi bu
+/// yüzden ateşlenmez. "Kiracı panelinde render edilmez" ifadesi bu
+/// sürümden itibaren MÜŞTERİYE dönük panelleri işaret eder, platformun KENDİ
+/// iç panelini değil.
 ///
 /// ⚠ ROADMAP'in beşinci kalemi ("modül erişimi") BİLEREK YOK — modül
 /// kataloğu yok, boş bir liste ÖLÜ VERİ olurdu.
@@ -944,6 +971,107 @@ model Subscription {
   @@map("subscription")
 }
 
+/// Platform seviyesi, kiracı rolünden BAĞIMSIZ platform yetkisi kaydı
+/// (ROADMAP v0.0.20, T-021/S3, ADR-0023 Karar 1). `PLATFORM_LEVEL_TABLES`'ın
+/// ON BİRİNCİ üyesi.
+///
+/// ⚠⚠ `TenantRole` enum'una DOKUNULMAZ, `tenant_membership`'e satır
+/// YAZILMAZ, `Session` şeması DEĞİŞMEZ (ADR-0023 Karar 1 — birebir): platform
+/// yetkisi bir ÜYELİK değildir (`enum TenantRole` doc'unun yazılı reddi,
+/// aşağıda), `permissions-catalog.test.ts:51` bunu
+/// `expect(roles).not.toContain('platform_admin')` ile canlı pinler. Yetki
+/// HER İSTEKTE okunur, oturum TAŞIMAZ — `permission-procedure.ts`'in "rol
+/// KİRACI bazlı, kimlik KULLANICI bazlıdır" (kategori hatası) gerekçesinin
+/// platform yetkisi için BİREBİR uygulaması: taşınsaydı yetki iptali oturum
+/// ömrü kadar gecikirdi.
+///
+/// ⚠⚠ `status` kolonu BİLEREK YOKTUR — bu sürümde onu yazacak bir yüzey
+/// (iptal/askıya alma UI'ı) OLMADIĞI için ölü bir sözlük olurdu
+/// (`AuditAction` enum doc'unun "ölü sözlük, ölü iznin kardeşidir" kuralı,
+/// yukarıda). Yetki = satırın VARLIĞI; iptal = satırın SİLİNMESİ.
+///
+/// `userId` → `@unique` + `app_user`'a `ON DELETE CASCADE` FK: bu BİR
+/// YETKİDİR, `AuditLog.actorUserId`'nin OLGU kararının TAM TERSİ — kullanıcı
+/// silinince platform yetkisi YETİM KALAMAZ, DÜŞMELİDİR.
+///
+/// Platform yöneticisi olmak TEK BAŞINA SIFIR kiracı verisi erişimi verir
+/// (ADR-0023 Karar 1) — bu satır RLS'i ETKİLEMEZ, GUC KURMAZ, yeni bir
+/// veritabanı rolü GETİRMEZ.
+///
+/// İndeks: yalnızca `userId @unique` — ayrı bir `@@index` GEREKMEZ (tekil
+/// kısıt zaten bir B-tree indekstir ve kullanıcı↔platform yetkisi 1:1
+/// ilişkisini veritabanı seviyesinde ZORLAR). `tenant_id` TAŞIMAZ (migration
+/// linter'ının `TENANT_ID_ON_PLATFORM_TABLE` kuralı) — RLS politikası
+/// YAZILMAZ.
+model PlatformAdmin {
+  id        String   @id @default(cuid(2))
+  userId    String   @unique @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("platform_admin")
+}
+
+/// Platform seviyesi, platform yöneticisi eylemlerinin denetim kaydı
+/// (ROADMAP v0.0.20, T-021/S3, ADR-0023 Karar 3). `PLATFORM_LEVEL_TABLES`'ın
+/// ON İKİNCİ üyesi. Kiracı `audit_log`'undan AYRI bir tablodur —
+/// `AuditLog.tenantId` NOT NULL + `Tenant` FK + `TENANT_SCOPED_TABLES` üyesi
+/// (RLS `ENABLE`+`FORCE`); platform yöneticisi eyleminin (giriş,
+/// impersonation başlatma) atfedilecek bir KİRACISI YOKTUR — bu olgu
+/// `audit_log`'a YAZILAMAZ (`AuditAction` doc'unun kullanıcı-seviyesi 2FA
+/// olayı için verdiği gerekçeyle BİREBİR aynı sınıf).
+///
+/// ⚠ `actorUserId` için YABANCI ANAHTAR YOKTUR (`AuditLog.actorUserId`'nin
+/// BİREBİR gerekçesi): "kim yaptı" bir OLGUDUR, denetim izi aktörden UZUN
+/// YAŞAR. `Cascade` olsaydı kullanıcı silindiğinde onun platform eylem
+/// kaydı da giderdi (denetim izinin varlık sebebini yok ederdi); `Restrict`
+/// olsaydı kullanıcı silmek denetim kaydı yüzünden kilitlenirdi.
+///
+/// APPEND-ONLY — `AuditLog`'un BİREBİR deseni: `updatedAt` BİLEREK YOK
+/// (satır yazıldıktan sonra DEĞİŞMEZ, bir UPDATE yolu yoktur), soft delete
+/// YOK (silme bir saklama/retention politikası kararıdır).
+///
+/// `action` → `PlatformAuditAction` enum'u (iki değer, İKİSİ DE bu sürümde
+/// tüketilir — `platform_admin_signed_in`, `tenant_impersonation_started`;
+/// "ölü sözlük, ölü iznin kardeşidir" kuralı İHLAL EDİLMEZ, bkz. enum doc'u).
+/// Değer EKLEMEK `ALTER TYPE … ADD VALUE` ile additive'dir.
+///
+/// `detail` → `Json` NOT NULL. Denetim birimi ERİŞİM OPERASYONU'dur, kiracı
+/// DEĞİL (ADR-0023 Karar 3): bir `runImpersonated()` çağrısı BİR satır yazar
+/// ve `detail.tenantIds` erişilen kiracı kümesinin TAMAMINI adlandırır. ⚠ Bu
+/// JSON tele HİÇ ÇIKMAZ (AC-8 satır SAYAR, içerik OKUMAZ) — kiracı kimlik
+/// listesi semver yüzeyini ve PII değerlendirmesini genişletirdi. Okunurken
+/// Zod ile parse edilir (CLAUDE.md §4); şema `apps/api` tarafında yaşar.
+///
+/// `ip`/`userAgent` kişisel veri sınıfındadır AMA denetim kaydının VARLIK
+/// SEBEBİDİR (`AuditLog`'un BİREBİR kararı) — SAKLANIR, LOGLANMAZ.
+///
+/// İndeksler: `(createdAt desc)` genel okuma (platform denetim listesi) ve
+/// `(actorUserId, createdAt desc)` aktör bazlı okuma için. `tenant_id`
+/// TAŞIMAZ (migration linter'ının `TENANT_ID_ON_PLATFORM_TABLE` kuralı) — RLS
+/// politikası YAZILMAZ, bu tablo PLATFORM seviyesindedir.
+///
+/// ⚠⚠ CLAUDE.md §7 "dört liste" (`AUTH_SECRET_BEARING_TABLES` vb.) BU İKİ
+/// yeni tabloya DOKUNMAZ — ikisi de parola özeti/token/TOTP sırrı/kurtarma
+/// kodu TAŞIMAZ (ölçülmüş karar, atlama DEĞİL; architect, T-021 "Veri
+/// modeli" bölümü).
+model PlatformAuditLog {
+  id          String              @id @default(cuid(2))
+  actorUserId String              @map("actor_user_id")
+  action      PlatformAuditAction
+  subject     String
+  detail      Json
+  ip          String?
+  userAgent   String?             @map("user_agent")
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([actorUserId, createdAt(sort: Desc)])
+  @@map("platform_audit_log")
+}
+
 /// Kiracı durumu. `deleted` değeri YOKTUR (A-V8) — silinmişliğin tek doğruluk
 /// kaynağı `Tenant.deletedAt`'tir.
 enum TenantStatus {
@@ -1098,4 +1226,16 @@ enum SubscriptionStatus {
   active
 
   @@map("subscription_status")
+}
+
+/// Platform denetim kaydı eylemi (ROADMAP v0.0.20, T-021/S3, ADR-0023 Karar
+/// 1/3). İKİ değer, İKİSİ DE bu sürümde tüketilir (AC-8 `öncesi + 2` sayımı
+/// tam bu ikisiyle yapılır) ⇒ ölü sözlük YOKTUR ("ölü sözlük, ölü iznin
+/// kardeşidir" kuralı — `AuditAction` doc'u). Değer EKLEMEK `ALTER TYPE …
+/// ADD VALUE` ile additive bir migration'dır.
+enum PlatformAuditAction {
+  platform_admin_signed_in
+  tenant_impersonation_started
+
+  @@map("platform_audit_action")
 }

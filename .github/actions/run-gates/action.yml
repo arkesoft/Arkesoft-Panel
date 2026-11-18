@@ -60,12 +60,59 @@ runs:
         FILTER: ${{ inputs.filter }}
       run: pnpm exec turbo run typecheck --filter="$FILTER"
 
+    # ROADMAP v0.0.20.1 (T-022/S7) — ham vitest çıktısı KIRMIZIDA artefakt
+    # olarak yüklenir ("api" job'undaki iki izlenen flake, AGENT_BASELINE
+    # "ÖLÇÜM DİSİPLİNİ" uyarısı — üç ajan ham "expect" çıktısını kesmişti,
+    # kayıt yoktu). "2>&1 | tee <dosya>" TEK BAŞINA YETERSİZ: kabuk "tee"nin
+    # çıkış kodunu döner, test düşse bile adım YEŞİL raporlanırdı (bu
+    # sürümün kendi sahte-yeşil yasağının ihlali) — "set -o pipefail" bunu
+    # kapatır, pipeline'ın çıkış kodu "pnpm"in gerçek kodu olur.
+    #
+    # ⚠⚠ FIX turu 1 (T-022/S7, security F1 "medium") — DÜZELTME: "tee"DEN
+    # ÖNCE bir redaksiyon süzgeci (`scripts/redact-test-log.ts`) eklendi.
+    # Depo PUBLIC (ölçüldü) ve bu artefakt ANONİM indirilebilir; bazı
+    # assertion'lar TASARIM GEREĞİ ham sır basıyor (otpauth secret, oturum
+    # çerezi, BETTER_AUTH_SECRET, ham Set-Cookie, bkz. süzgecin kendi başlık
+    # yorumu). Süzgeç SATIR SİLMEZ — yalnızca sır biçimli jetonu maskeler;
+    # "Expected:"/"Received:"/"AssertionError" satırları (sır biçimiyle
+    # ÇAKIŞMADIKLARI sürece) aynen kalır, bu adımın VAROLUŞ SEBEBİ (iki
+    # flake'in ham diff'i) KORUNUR. Süzgeç ÖNCE geldiği için hem konsol
+    # çıktısı hem "tee"nin yazdığı artefakt dosyası AYNI ANDA redakte edilir.
+    # "pipefail" ile ÇELİŞMEZ: süzgeç normal akışta HER ZAMAN exit 0 döner
+    # (kendi hatasını yutar, bkz. dosya başı yorumu) — pipeline'ın çıkış kodu
+    # pipefail altında hâlâ "pnpm"in gerçek koduna eşittir (ortadaki
+    # aşamalardan biri başarısız OLMADIĞI sürece, ki normal akışta olmaz).
     - name: Birim/entegrasyon testleri
       if: ${{ inputs.run-test == 'true' }}
       shell: bash
       env:
         FILTER: ${{ inputs.filter }}
-      run: pnpm exec turbo run test --filter="$FILTER"
+      run: |
+        set -o pipefail
+        pnpm exec turbo run test --filter="$FILTER" 2>&1 \
+          | node scripts/redact-test-log.ts \
+          | tee /tmp/arkesoft-ci-test-output.log
+
+    # "test" görevinin REDAKTE EDİLMİŞ çıktısı — yalnızca BU adım
+    # başarısız olduğunda yüklenir ("failure()": şu ana kadar işte bir adım
+    # düşmüş olmalı). Adım koşmadıysa (ör. test adımından ÖNCEKİ
+    # lint/typecheck düştüyse) dosya hiç üretilmez; "actions/upload-artifact"
+    # bunu sessizce "0 dosya" ile raporlar, job'u KIRMAZ (mevcut "Playwright
+    # artefaktlarını yükle" adımıyla aynı davranış, ci.yml). Ad
+    # "test-output-${{ github.job }}" — bu composite BEŞ farklı job'tan
+    # (api/admin/superadmin/storefront/shared/theme-sdk) çağrılıyor;
+    # "github.job" olmadan aynı isimle paralel yükleme GitHub'ın "ad zaten
+    # var" hatasıyla çakışırdı. "retention-days: 1" (FIX turu 1, security F1)
+    # — bu artefakt bir flake teşhis aracıdır, 7 günlük pencere ANONİM
+    # indirme yüzeyini gereksiz uzatıyordu; süzgeç eklendiği için risk zaten
+    # düşük ama 1 gün savunma derinliği olarak KORUNUYOR.
+    - name: Test çıktısını artefakt olarak yükle (başarısızlıkta)
+      if: ${{ inputs.run-test == 'true' && failure() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-output-${{ github.job }}
+        path: /tmp/arkesoft-ci-test-output.log
+        retention-days: 1
 
     # ROADMAP v0.0.13 (T-005/S5, K-E9) — "test" İLE "build" ARASINDA, 5.
     # adım. Ayrı bir CI job'u OLARAK AÇILMADI (K-E9 ile reddedildi — ikinci
@@ -76,12 +123,36 @@ runs:
     # bu görevi AYNI invocation'da PLANLAMAZ (ikisi ayrı "run:" adımı —
     # GitHub Actions adımları SIRALI koşar) — bkz. turbo.json içindeki ilgili
     # görev yorumu (eşzamanlılık ölçümü ve kararı).
+    #
+    # ROADMAP v0.0.20.1 (T-022/S7) — AYNI pipefail gerekçesi (yukarıdaki
+    # "Birim/entegrasyon testleri" notuna bakın) ve AYRI bir log dosyası:
+    # "test" ve "test:isolation" AYRI turbo görevleri, iki izlenen flake
+    # BİRBİRİNDEN FARKLI süitte gözlemlendi (AGENT_BASELINE) — tek dosyaya
+    # yazsalardı ikinci koşum birinciyi EZERDİ.
+    #
+    # ⚠⚠ FIX turu 1 (T-022/S7, security F1) — AYNI redaksiyon süzgeci, AYNI
+    # gerekçe (yukarıdaki "Birim/entegrasyon testleri" notuna bakın).
     - name: Tenant izolasyon süiti (ROADMAP v0.0.13)
       if: ${{ inputs.run-isolation == 'true' }}
       shell: bash
       env:
         FILTER: ${{ inputs.filter }}
-      run: pnpm exec turbo run "test:isolation" --filter="$FILTER"
+      run: |
+        set -o pipefail
+        pnpm exec turbo run "test:isolation" --filter="$FILTER" 2>&1 \
+          | node scripts/redact-test-log.ts \
+          | tee /tmp/arkesoft-ci-isolation-output.log
+
+    # Aynı gerekçe (yukarıdaki "Test çıktısını artefakt olarak yükle" notu)
+    # — ayrı ad ("isolation-output-…") ve ayrı dosya, aynı sebepten.
+    # "retention-days: 1" — aynı gerekçe (yukarıdaki not, security F1).
+    - name: İzolasyon süiti çıktısını artefakt olarak yükle (başarısızlıkta)
+      if: ${{ inputs.run-isolation == 'true' && failure() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: isolation-output-${{ github.job }}
+        path: /tmp/arkesoft-ci-isolation-output.log
+        retention-days: 1
 
     - name: Derleme
       shell: bash

@@ -781,15 +781,24 @@ check_adr22_k1d_shellout_boundary() {
     violation=true
   fi
 
-  # --- Alt kontrol 2: GERÇEK execFileSync mekanizmasını ('exec'+'psql' dizi
-  #     öğeleri) KULLANAN dosya kümesi TAM OLARAK bu ikisi (po kararı —
-  #     üçüncü kopya sessizce doğmasın); hedef apps+packages+scripts ------
-  local allowed_file_1='apps/storefront/e2e/fixtures/custom-domain-tenant.ts'
-  local allowed_file_2='apps/admin/e2e/fixtures/tenant-cleanup.ts'
+  # --- Alt kontrol 2 (T-021/S9 GÜNCELLEME — ADR-0022 Karar 1'in UYGULAMA
+  #     birleştirmesi, `docs/adr/0022-*.md` ⭐ GÜNCELLEME bloğu): iki
+  #     fabrikanın `runSql`/`querySqlRows` gövdeleri + dört korumanın
+  #     ((a)-(d)) gövdeleri artık BAĞIMSIZ kopya DEĞİL — TEK paylaşılan
+  #     modülde (`scripts/playwright/sql.ts`). GERÇEK kabuk-çağrısı
+  #     mekanizmasını (execFileSync 'exec'+'psql' dizi öğeleri) VEYA
+  #     düzyazı (bitişik "docker exec"/"psql" metni) kalıbını KULLANAN
+  #     dosya kümesi artık TAM OLARAK BİR modül olmak ZORUNDADIR — eski
+  #     "iki fixture arasında gövde eşitliği" denetimine (eski alt kontrol
+  #     3/4) artık GEREK YOK, çünkü sapacak İKİNCİ bir gövde YOK. ---------
+  local allowed_module='scripts/playwright/sql.ts'
+  local consumer_file_1='apps/storefront/e2e/fixtures/custom-domain-tenant.ts'
+  local consumer_file_2='apps/admin/e2e/fixtures/tenant-cleanup.ts'
 
-  # S-7 düzeltmesi (gate fix turu 2): needle'lar BİRLEŞİM — mekanizma
-  # (dizi-öğesi literalleri) ∪ düzyazı (bitişik "docker exec"/"psql" metni)
-  # — tek biçimi arayan bir tarama diğerini yazan bir kopyayı KAÇIRIRDI.
+  # S-7 düzeltmesi (T-020 gate fix turu 2) KORUNDU: needle'lar BİRLEŞİM —
+  # mekanizma (dizi-öğesi literalleri) ∪ düzyazı (bitişik "docker exec"/
+  # "psql" metni) — tek biçimi arayan bir tarama diğerini yazan bir kopyayı
+  # KAÇIRIRDI. T-020'nin dersi: mekanizmaya geçerken düzyazı KALDIRILMAZ.
   local exec_candidate_needle="${exec_array_needle}|${shellout_needle}"
   local psql_candidate_needle="${psql_array_needle}|${psql_needle}"
 
@@ -799,107 +808,50 @@ check_adr22_k1d_shellout_boundary() {
     -- "$exec_candidate_needle" apps packages scripts 2>/dev/null || true)"
   actual_files="$(printf '%s\n' "$exec_array_file_matches" | grep -v '^$' \
     | xargs -r grep -lE -- "$psql_candidate_needle" 2>/dev/null | sort)"
-  expected_files="$(printf '%s\n' "$allowed_file_1" "$allowed_file_2" | sort)"
+  expected_files="$allowed_module"
 
   if [ "$actual_files" != "$expected_files" ]; then
-    echo "ADR-0022 K1(d) allowlist İHLALİ — gerçek kabuk-çağrısı mekanizmasını (execFileSync 'exec'+'psql') VEYA düzyazı (docker exec/psql) kalıbını kullanan dosya kümesi beklenen İKİ fixture'dan SAPTI (üçüncü bir kopya doğmuş olabilir):"
+    echo "ADR-0022 K1(d) allowlist İHLALİ — gerçek kabuk-çağrısı mekanizmasını (execFileSync 'exec'+'psql') VEYA düzyazı (docker exec/psql) kalıbını kullanan dosya kümesi beklenen TEK modülden ($allowed_module) SAPTI (üçüncü/ek bir kopya doğmuş olabilir):"
     echo "Beklenen:"; printf '%s\n' "$expected_files"
     echo "Gerçek:"; printf '%s\n' "$actual_files"
     violation=true
   fi
 
-  # --- Alt kontrol 3 (S-8/İŞ ② düzeltmesi): her allowlist dosyası
-  #     ADR-0022 K1'in (a)+(b) koruma fonksiyonlarını GERÇEKTEN tanımlıyor
-  #     VE ÇAĞIRIYOR olmalı (ad geçişi YETERSİZ) VE iki dosyadaki gövdeler
-  #     (normalize edilmiş) BİREBİR eşit olmalı. --------------------------
-  local guard_fn_names=("assertDockerHostIsLoopback" "assertTestEnvironment")
-  local min_call_sites=2
-
-  # Belirtilen fonksiyonun imzadan (`function <ad>(): void {`) kapanış
-  # `}`'a (sütun 0, dahil) kadar GÖVDESİNİ yazdırır. Yoksa boş çıktı verir.
-  extract_guard_function_body() {
-    local body_file="$1" body_fn="$2"
-    awk -v sig="function ${body_fn}(): void {" '
-      $0 == sig { capture = 1 }
-      capture { print }
-      capture && $0 == "}" { exit }
-    ' "$body_file"
-  }
-
-  # Backtick şablon dizgelerinin İÇERİĞİNİ bir yer tutucuyla değiştirir —
-  # tek legitimate fark (dosyaya özgü hata metni öneki) burada ELENİR.
-  normalize_guard_body_text() {
-    sed -E 's/`[^`]*`/<TEMPLATE_LITERAL>/g'
-  }
-
-  local allowed_file
-  for allowed_file in "$allowed_file_1" "$allowed_file_2"; do
-    if [ ! -f "$allowed_file" ]; then
-      echo "ADR-0022 K1(d) İHLALİ — beklenen allowlist dosyası bulunamadı: $allowed_file"
-      violation=true
-      continue
-    fi
-
-    local guard_fn
-    for guard_fn in "${guard_fn_names[@]}"; do
-      if ! grep -qE "^function ${guard_fn}\\(\\): void \\{\$" "$allowed_file"; then
-        echo "ADR-0022 K1(d) İHLALİ — $allowed_file içinde koruma $guard_fn TANIM olarak (imza biçiminde) bulunamadı (ad bir yorumda geçmesi YETERLİ değil)."
-        violation=true
-        continue
-      fi
-      local call_count
-      call_count="$(grep -cE "^[[:space:]]*${guard_fn}\\(\\)\$" "$allowed_file" || true)"
-      if [ "$call_count" -lt "$min_call_sites" ]; then
-        echo "ADR-0022 K1(d) İHLALİ — $allowed_file içinde koruma $guard_fn en az $min_call_sites ÇAĞRI noktası ile beklenirdi, $call_count bulundu (tanım var ama çağrılmıyor olabilir)."
+  # --- Alt kontrol 3 (T-021/S9): paylaşılan modül GERÇEKTEN var, ADR-0022
+  #     K1'in taşınan export'larını TANIMLIYOR; iki mevcut fabrika onu
+  #     GÖRELİ YOLLA import ediyor (kendi kopyalarını başka bir biçimde
+  #     saklamadıklarının ikinci kanıtı). -------------------------------
+  if [ ! -f "$allowed_module" ]; then
+    echo "ADR-0022 K1(d) İHLALİ — beklenen paylaşılan modül bulunamadı: $allowed_module"
+    violation=true
+  else
+    local required_export
+    for required_export in runSql querySqlRows assertDockerHostIsLoopback \
+      assertTestEnvironment resolvePostgresContainerName DOCKER_HOST_ALLOWED_HOSTNAMES; do
+      if ! grep -qE "^export (function|const) ${required_export}\\b" "$allowed_module"; then
+        echo "ADR-0022 K1(d) İHLALİ — $allowed_module beklenen export'u taşımıyor: $required_export"
         violation=true
       fi
     done
-  done
+  fi
 
-  # Gövde eşitliği (iki dosya arasında, normalize edilmiş) — SAPMA ekseni.
-  for guard_fn in "${guard_fn_names[@]}"; do
-    local body_1 body_2
-    body_1="$(extract_guard_function_body "$allowed_file_1" "$guard_fn" | normalize_guard_body_text)"
-    body_2="$(extract_guard_function_body "$allowed_file_2" "$guard_fn" | normalize_guard_body_text)"
-    if [ -z "$body_1" ] || [ -z "$body_2" ]; then
-      # Tanım yoksa yukarıdaki döngü zaten İHLAL bastı — burada tekrar
-      # BASMA, yalnızca anlamsız bir boş-boş "eşit" sonucunu ATLA.
+  local consumer_file
+  for consumer_file in "$consumer_file_1" "$consumer_file_2"; do
+    if [ ! -f "$consumer_file" ]; then
+      echo "ADR-0022 K1(d) İHLALİ — beklenen fabrika dosyası bulunamadı: $consumer_file"
+      violation=true
       continue
     fi
-    if [ "$body_1" != "$body_2" ]; then
-      echo "ADR-0022 K1(d) İHLALİ — $guard_fn gövdesi $allowed_file_1 ile $allowed_file_2 arasında (normalize edilmiş, şablon dizgesi metni hariç) SAPMIŞ:"
-      diff <(printf '%s\n' "$body_1") <(printf '%s\n' "$body_2") || true
+    if ! grep -qE "from '(\\.\\./)+scripts/playwright/sql\\.js'" "$consumer_file"; then
+      echo "ADR-0022 K1(d) İHLALİ — $consumer_file paylaşılan modülü (scripts/playwright/sql.js) göreli yolla import ETMİYOR."
       violation=true
     fi
   done
-
-  # Allowlist Set'inin (DOCKER_HOST_ALLOWED_HOSTNAMES) iki dosya arasında
-  # BİREBİR eşit olduğu doğrulanır — (iii)'ün somut örneği bu Set'e bir
-  # host eklemekti.
-  extract_allowlist_set_block() {
-    local set_file="$1"
-    awk '
-      /^const DOCKER_HOST_ALLOWED_HOSTNAMES/ { capture = 1 }
-      capture { print }
-      capture && $0 == "])" { exit }
-    ' "$set_file"
-  }
-  local allowlist_1 allowlist_2
-  allowlist_1="$(extract_allowlist_set_block "$allowed_file_1")"
-  allowlist_2="$(extract_allowlist_set_block "$allowed_file_2")"
-  if [ -z "$allowlist_1" ] || [ -z "$allowlist_2" ]; then
-    echo "ADR-0022 K1(d) taraması hata verdi: DOCKER_HOST_ALLOWED_HOSTNAMES bloğu $allowed_file_1 veya $allowed_file_2 içinde bulunamadı — fail-closed."
-    violation=true
-  elif [ "$allowlist_1" != "$allowlist_2" ]; then
-    echo "ADR-0022 K1(d) İHLALİ — DOCKER_HOST_ALLOWED_HOSTNAMES allowlist'i $allowed_file_1 ile $allowed_file_2 arasında SAPMIŞ:"
-    diff <(printf '%s\n' "$allowlist_1") <(printf '%s\n' "$allowlist_2") || true
-    violation=true
-  fi
 
   if [ "$violation" = true ]; then
     return 1
   fi
-  echo "ADR-0022 K1(d): apps/*/src/** istisnasız temiz; gerçek kabuk-çağrısı mekanizmasını/düzyazısını kullanan dosya kümesi TAM OLARAK beklenen iki fixture ($allowed_file_1, $allowed_file_2); ikisi de (a)+(b) korumalarını TANIMLIYOR+ÇAĞIRIYOR ve gövdeleri (+allowlist Set'i) birebir eşit."
+  echo "ADR-0022 K1(d): apps/*/src/** istisnasız temiz; gerçek kabuk-çağrısı mekanizmasını/düzyazısını kullanan dosya kümesi TAM OLARAK bir modül ($allowed_module); iki mevcut e2e fabrikası ($consumer_file_1, $consumer_file_2) onu göreli yolla import ediyor."
   return 0
 }
 
@@ -958,6 +910,309 @@ check_playwright_retries_single_source() {
 }
 
 # ---------------------------------------------------------------------------
+# `@axe-core/playwright` tek-kaynak taraması (ROADMAP v0.0.20.3, T-024,
+# Orkestratör kararı A-T24-1, emsal BİREBİR: check_playwright_retries_single_source
+# yukarıda).
+#
+# AMAÇ: depoda `eslint-plugin-import` YOK (architect ölçtü:
+# `packages/config/eslint` → sıfır eşleşme) ⇒ bir spec `AxeBuilder`'ı
+# `scripts/playwright/a11y.ts` DIŞINDA DOĞRUDAN import edip `include`/
+# `exclude`/`disableRules` çağırabilir — yardımcının "tek daraltma yolu
+# allowlist" sözleşmesi (R6-②) o zaman yalnızca TASARIMLA korunur, MEKANİK
+# olarak DEĞİL. BUGÜN ÖLÇÜLDÜ: `@axe-core/playwright` jetonu `apps/**`/
+# `packages/**`/`scripts/**` genelindeki TÜM `.ts` dosyalarında YALNIZCA
+# `scripts/playwright/a11y.ts`'te geçiyor — bu kontrol o durumu MEKANİK
+# olarak KORUR: jeton `a11y.ts` DIŞINDA bir yerde görünürse İHLAL.
+# ---------------------------------------------------------------------------
+check_axe_single_source() {
+  local home_file="scripts/playwright/a11y.ts"
+  if [ ! -f "$home_file" ]; then
+    echo "axe tek-kaynak taraması hata verdi: $home_file bulunamadı — fail-closed."
+    return 1
+  fi
+
+  local scan_targets
+  scan_targets="$(find apps packages scripts -type f -name '*.ts' \
+    -not -path '*/node_modules/*' -not -path '*/dist/*' \
+    -not -path '*/generated/*' -not -path '*/.turbo/*' 2>/dev/null)"
+  if [ -z "$scan_targets" ]; then
+    echo "axe tek-kaynak taraması hata verdi: tarama hedefi (apps/**, packages/**, scripts/**) üretilemedi — fail-closed."
+    return 1
+  fi
+
+  local outside_matches
+  outside_matches="$(printf '%s\n' "$scan_targets" \
+    | grep -Fv "$home_file" \
+    | xargs -r grep -ln "@axe-core/playwright" 2>/dev/null || true)"
+
+  if [ -n "$outside_matches" ]; then
+    echo "axe tek-kaynak İHLALİ — '@axe-core/playwright' jetonu $home_file DIŞINDA bulundu (bir spec/dosya AxeBuilder'ı doğrudan import edip yardımcının allowlist sözleşmesini (R6-②) baypas edebilir):"
+    printf '%s\n' "$outside_matches"
+    return 1
+  fi
+
+  if ! grep -q "@axe-core/playwright" "$home_file"; then
+    echo "axe tek-kaynak taraması hata verdi: $home_file artık '@axe-core/playwright' jetonunu taşımıyor — tek kaynak kaybolmuş olabilir, fail-closed."
+    return 1
+  fi
+
+  echo "axe tek-kaynak: jeton yalnızca $home_file içinde geçiyor — hiçbir spec AxeBuilder'ı doğrudan import edip allowlist sözleşmesini baypas EDEMİYOR."
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# e2e env passthrough kontrolü (ROADMAP v0.0.20, T-021 FIX turu 2, devops —
+# qa tur1 `high` bulgusunun İŞ ③'ü). "scripts/e2e-env-passthrough-check.ts"'in
+# KENDİSİNE bkz. (kapsam, bilinen (B)-sınıfı kör nokta ve ikisinin NEGATİF
+# testle doğrulandığı kanıt dosya başı yorumunda). `node` ile çalışır — Node
+# 20.6+'nın yerel TS tip sıyırması (A4'ün diğer script'leriyle AYNI desen),
+# ayrı bir derleme adımı YOK.
+# ---------------------------------------------------------------------------
+check_e2e_env_passthrough() {
+  node scripts/e2e-env-passthrough-check.ts
+}
+
+# ---------------------------------------------------------------------------
+# Çapraz-uygulama (admin ↔ superadmin) e2e oran sınırı bütçesi (ROADMAP
+# v0.0.20.1, T-022/EK İŞ, devops). "scripts/cross-app-auth-budget-check.ts"'in
+# KENDİSİNE bkz. (gerekçe, mekanizma (A)/(B), iki yönlü kanıt — dosya başı
+# yorumunda). `node` ile çalışır — diğer `scripts/*.ts` kontrolleriyle AYNI
+# desen (derlemesiz, erasable syntax).
+# ---------------------------------------------------------------------------
+check_cross_app_auth_budget() {
+  node scripts/cross-app-auth-budget-check.ts
+}
+
+# ---------------------------------------------------------------------------
+# Ham günlük (redaksiyonsuz "tee") ↔ artefakt yükleme sınırı + retention-days
+# sınırı (ROADMAP v0.0.20.1, T-022/S7 FIX turu 2 — security tur 2 F1'in FIX
+# turu 1 kuralını MUTASYONLA KÖR bulması üzerine YENİDEN TASARLANDI).
+#
+# FIX TURU 1'İN KURALININ security tur 2'de MUTASYONLA ÖLÇÜLEN İKİ KÖR NOKTASI:
+#   (i) tarama yalnızca `.github/workflows/*.yml`'i görüyordu (`find
+#       -maxdepth 1`, ayrı bir `find` — script başındaki PAYLAŞILAN
+#       `$workflow_action_targets`'ı KULLANMIYORDU). ⭐ GERÇEK düzeltme ise
+#       `.github/actions/run-gates/action.yml` İÇİNDEYDİ — composite
+#       action'ların `jobs:` anahtarı YOKTUR, eski awk durum makinesi o
+#       dosyayı HİÇ TARAMIYORDU. FIX turu 1'in "composite action'lar kapsam
+#       DIŞI, çünkü `jobs:` yok" kararı security tarafından ÇÜRÜTÜLDÜ:
+#       `jobs:` yokluğu kapsam dışı bırakmanın gerekçesi DEĞİL, BİRİMİN
+#       "job" OLMAMASI gerektiğinin kanıtıydı.
+#   (ii) kural bir job'da `secrets.` jetonunun LİTERAL GEÇMESİNİ şart
+#       koşuyordu — ama gerçek risk (security F1'in kendi gerekçesi) bir
+#       job'un KENDİ metninde `secrets.` YAZMASINA bağlı değil: ortam
+#       değişkeni başka bir yoldan (devralınan `env:`, çağrılan bir script)
+#       gerçek bir sırrı test çıktısına sızdırabilir ve `secrets.` jetonu
+#       hiçbir zaman o job'un metninde GEÇMEZ. `ci.yml` genelinde `secrets.`
+#       bugün yalnızca `release.yml:82`'de var (ölçüldü) — yani kural pratikte
+#       HİÇBİR ZAMAN tetiklenemiyordu.
+#
+# ⇒ security'nin üç önerisi BİREBİR uygulandı:
+#   1. Tarama hedefi artık script başında TEK YERDE türetilen
+#      `$workflow_action_targets` (`.github/workflows` + `.github/actions`,
+#      AC13/run-bloğu kontrolüyle AYNI küme) — composite action'lar DAHİL.
+#   2. `secrets.` ŞARTI KALDIRILDI — redaksiyonsuz `tee` + `upload-artifact`
+#      TEK BAŞINA ihlal sayılır.
+#   3. `retention-days` ≤ 1 kontrolü EKLENDİ.
+#
+# BİRİM DEĞİŞTİ — "job" DEĞİL, "redaksiyon korumasının GERÇEKTEN yaşadığı
+# yer" (security'nin önerisi, BİREBİR): her STEP (bir `steps:` listesinin
+# HER liste öğesi) kendi İÇİNDE "ham tee" + "redaksiyon korumalı mı"
+# değerlendirilir — FIX turu 1'in SATIR BAZLI eşleşmesi (`$0 !~
+# /redact-test-log/`) GERÇEK dosyada HİÇBİR ZAMAN tutmuyordu, çünkü
+# redaksiyon borusu (`| node scripts/redact-test-log.ts \`) ve `tee` komutu
+# YAML'in çok satırlı `run:` bloğunda İKİ AYRI SATIRDIR — step bazlı
+# değerlendirme bunu düzeltir. "Artefakt yükleniyor" ve "retention-days"
+# ise STEP'İ KAPSAYAN BİRİME (workflow dosyasında `jobs:` anahtarı varsa
+# JOB, YOKSA — composite action'da olduğu gibi — DOSYANIN TAMAMI) göre
+# toplanır; bir job/dosya içinde HERHANGİ bir step korumasız `tee`
+# taşıyorsa VE HERHANGİ bir step `upload-artifact` kullanıyorsa İHLAL (iki
+# adımın AYNI step olması ŞART DEĞİL — bu, FIX turu 1'in zaten BİLİNÇLİ
+# kabul ettiği "fazla-kapsama, az-kapsama DEĞİL" yönüyle AYNI tercih).
+#
+# ⚠⚠ FIX turu 3 (T-022/S7, security tur 3 M-1 + M-2) — İKİ DÜZELTME, AYNI
+# awk BLOĞU, AYNI DÜZENLEME:
+#
+#   M-1 (adsız step bayrağı miras alıyordu): adım başlangıcı ÖNCEDEN
+#   yalnızca `^[[:space:]]*- (name|uses):` İLE tanınıyordu. Korumalı bir
+#   step'ten SONRA gelen ADSIZ bir step (`- run:`, `- id:`, `- shell:`) yeni
+#   step SAYILMIYORDU; önceki step'in `protected`/`rawtee` bayrakları
+#   DEVAM EDİYORDU ve adsız step'teki redaksiyonsuz `tee` MASKELENİYORDU.
+#   DÜZELTME: adım başlangıcı artık anahtar ADINDAN BAĞIMSIZ — `steps:`
+#   anahtarının AÇTIĞI bölgede (`in_steps_region`) HER `^[[:space:]]*- `
+#   liste öğesi — ama GİRİNTİ TAKİBİYLE: yalnızca MEVCUT step'in girintisine
+#   EŞİT veya ONDAN AZ girintili bir `- ` satırı yeni (kardeş) step sayılır.
+#   `with:` altındaki İÇ İÇE bir dizi (ör. `files: [- a.txt, - b.txt]`
+#   YAML sözdizimiyle) MEVCUT step'ten DAHA GİRİNTİLİ olduğu için yeni step
+#   SAYILMAZ — aksi hâlde (girinti kontrolü OLMADAN "her `- ` yeni step"
+#   sezgisi) bu tür iç içe diziler GERÇEK step'in bayraklarını YANLIŞLIKLA
+#   SIFIRLARDI (M-1'i düzeltirken YENİ bir sınıf yanlış-pozitif açardı).
+#   `in_steps_region` yalnızca bir `steps:` anahtarı GÖRÜLDÜKTEN SONRA
+#   AKTİFTİR — `strategy: matrix: include: - …` gibi `steps:`'TEN ÖNCE
+#   gelen iş/job seviyesi diziler bu yüzden step sayılmaz.
+#
+#   M-2 (yorum satırları jeton taraması ve adım sınırı tespitine giriyordu):
+#   `tee`/`redact-test-log`/`upload-artifact`/`retention-days` jetonları
+#   ÖNCEDEN yorum (`#`) satırlarında da eşleşiyordu — (a) ham `tee` taşıyan
+#   bir step'in İÇİNE konan açıklayıcı bir yorum (`# … redact-test-log …`)
+#   `protected` bayrağını SAHTE olarak ayağa kaldırıp gerçek ihlali
+#   SUSTURABİLİYORDU (yanlış negatif); (b) gerçek dosyanın SALT-YORUM
+#   yeniden sözcüklenmiş bir kopyası (yorum DIŞI sıfır fark) yorumların
+#   jeton TAŞIMASINA bağlı TESADÜFİ bir sonuç üretebiliyordu (yanlış
+#   pozitif/negatif riski — bugünkü yeşilin KANIT DEĞERİ düşüktü).
+#   DÜZELTME: `^[[:space:]]*#` İLE başlayan satırlar hem jeton taramasından
+#   hem adım-başlangıcı tespitinden TAMAMEN HARİÇ (yorumlanmış bir
+#   `# - name: …` de bir adım AÇMAZ).
+# ---------------------------------------------------------------------------
+check_raw_log_upload_boundary() {
+  fail_if_targets_empty "ham günlük ↔ artefakt yükleme sınırı" || return 1
+
+  local violation=false
+  local file
+  while IFS= read -r file; do
+    [ -z "$file" ] && continue
+    [ -f "$file" ] || continue
+
+    local findings
+    findings="$(awk '
+      BEGIN {
+        injobs = 0
+        group = "__FILE__"
+        norder = 0
+        instep = 0
+        step_indent = -1
+        in_steps_region = 0
+      }
+      function flush_step() {
+        if (instep) {
+          if (!(group in seen)) {
+            seen[group] = 1
+            order[++norder] = group
+          }
+          if (rawtee && !protected) grp_unprotected[group] = 1
+          if (rawtee) grp_rawtee[group] = 1
+          if (uploads) grp_uploads[group] = 1
+          if (retentions != "") grp_retentions[group] = grp_retentions[group] " " retentions
+        }
+        instep = 0
+        rawtee = 0
+        protected = 0
+        uploads = 0
+        retentions = ""
+      }
+      {
+        line = $0
+        if (line ~ /^jobs:[[:space:]]*$/) {
+          flush_step()
+          injobs = 1
+          group = "__PREAMBLE__"
+          in_steps_region = 0
+          step_indent = -1
+          next
+        }
+        if (injobs && line ~ /^  [A-Za-z0-9_-]+:[[:space:]]*$/) {
+          flush_step()
+          g = line
+          sub(/^  /, "", g)
+          sub(/:[[:space:]]*$/, "", g)
+          group = g
+          in_steps_region = 0
+          step_indent = -1
+          next
+        }
+        # M-2 — yorum satırları jeton taramasından VE adım-başlangıcı
+        # tespitinden TAMAMEN hariç (bkz. fonksiyon başı yorumu).
+        if (line ~ /^[[:space:]]*#/) {
+          next
+        }
+        if (line ~ /^[[:space:]]*steps:[[:space:]]*$/) {
+          flush_step()
+          in_steps_region = 1
+          step_indent = -1
+          next
+        }
+        # M-1 — adım başlangıcı anahtar ADINDAN BAĞIMSIZ: steps
+        # bölgesinde HER `- ` liste öğesi, AMA yalnızca mevcut adımın
+        # girintisine eşit/ondan az girintiliyse (kardeş liste öğesi).
+        # Daha girintili bir `- ` (ör. with altında iç içe bir dizi)
+        # mevcut adımın İÇİNDE sayılır, yeni adım AÇMAZ (bkz. fonksiyon
+        # başı yorumu).
+        if (in_steps_region && line ~ /^[[:space:]]*- /) {
+          tmp = line
+          sub(/[^ ].*$/, "", tmp)
+          indent = length(tmp)
+          if (!instep || indent <= step_indent) {
+            if (instep && indent <= step_indent) flush_step()
+            instep = 1
+            step_indent = indent
+            rawtee = 0
+            protected = 0
+            uploads = 0
+            retentions = ""
+          }
+        }
+        if (instep) {
+          if (line ~ /tee[[:space:]]/) rawtee = 1
+          if (line ~ /redact-test-log/) protected = 1
+          if (line ~ /actions\/upload-artifact@/) uploads = 1
+          if (match(line, /retention-days:[[:space:]]*[0-9]+/)) {
+            val = substr(line, RSTART, RLENGTH)
+            sub(/^retention-days:[[:space:]]*/, "", val)
+            retentions = retentions " " val
+          }
+        }
+      }
+      END {
+        flush_step()
+        for (i = 1; i <= norder; i++) {
+          g = order[i]
+          if (grp_unprotected[g] && grp_uploads[g]) {
+            print "BOUNDARY\t" g
+          }
+          if (grp_rawtee[g] && grp_uploads[g]) {
+            if (grp_retentions[g] == "") {
+              print "RETENTION_MISSING\t" g
+            } else {
+              n = split(grp_retentions[g], parts, " ")
+              for (j = 1; j <= n; j++) {
+                if (parts[j] != "" && parts[j] + 0 > 1) {
+                  print "RETENTION\t" g "\t" parts[j]
+                }
+              }
+            }
+          }
+        }
+      }
+    ' "$file")"
+
+    if [ -n "$findings" ]; then
+      local kind grp val
+      while IFS=$'\t' read -r kind grp val; do
+        [ -z "$kind" ] && continue
+        case "$kind" in
+          BOUNDARY)
+            echo "Ham günlük ↔ artefakt yükleme sınırı İHLALİ — $file / birim \"$grp\": redaksiyonsuz (\"redact-test-log\" YOK) bir \"tee\" çıktısı actions/upload-artifact İLE yükleniyor (secrets.* şartı YOK)."
+            ;;
+          RETENTION)
+            echo "Ham günlük ↔ artefakt yükleme sınırı İHLALİ — $file / birim \"$grp\": 'retention-days' ${val} — 1'den büyük (ham test günlüğü artefaktının anonim indirme penceresi gereksiz uzatılıyor)."
+            ;;
+          RETENTION_MISSING)
+            echo "Ham günlük ↔ artefakt yükleme sınırı İHLALİ — $file / birim \"$grp\": ham test günlüğü artefakt olarak yükleniyor ama 'retention-days' hiç tanımlı değil (varsayılan pencere çok uzun)."
+            ;;
+        esac
+        violation=true
+      done <<<"$findings"
+    fi
+  done <<<"$workflow_action_targets"
+
+  if [ "$violation" = true ]; then
+    return 1
+  fi
+  echo "Ham günlük ↔ artefakt yükleme sınırı: .github/workflows + .github/actions genelinde hiçbir birim redaksiyonsuz bir ham günlüğü artefakt olarak yüklemiyor; \"tee\" kullanan birimlerin tamamında retention-days ≤ 1."
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # actionlint — yalnızca kurulu ise (indirme CI'a özgü, kapsam dışı — bkz.
 # dosya başı not). Yerelde yoksa BLOKLAMADAN uyarı verir.
 # ---------------------------------------------------------------------------
@@ -986,7 +1241,11 @@ run_step "AC-1 — kök test:e2e/test:visual/test:visual:update script varlığ�
 run_step "Bütçe pin tazeliği — AUTH_IP_LIMITS ↔ rate-limit.policy.ts" check_auth_budget_pin_freshness
 run_step "ADR-0022 K1(d) — fabrika sızma yasağı + allowlist" check_adr22_k1d_shellout_boundary
 run_step "Playwright retries tek-kaynak taraması (S-11)" check_playwright_retries_single_source
+run_step "e2e env passthrough — process.env ⊆ turbo.json test:e2e (T-021 İŞ ③)" check_e2e_env_passthrough
+run_step "Çapraz-uygulama e2e oran sınırı bütçesi (admin ↔ superadmin, T-022/EK İŞ)" check_cross_app_auth_budget
+run_step "Ham günlük ↔ artefakt yükleme + retention-days sınırı (T-022/S7 FIX2)" check_raw_log_upload_boundary
 run_step "actionlint (yerelde kuruluysa)" check_actionlint_if_available
+run_step "axe tek-kaynak taraması (T-024, A-T24-1)" check_axe_single_source
 
 echo ""
 echo "════════════════════════════════════════════════════════"

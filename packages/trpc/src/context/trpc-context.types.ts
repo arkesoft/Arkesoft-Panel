@@ -13,6 +13,8 @@ import type { TenantStatusWire } from '../schemas/tenant-summary.schema.js'
 import type { JobReadPort } from '../ports/job-read.port.js'
 import type { MemberWritePort } from '../ports/member-write.port.js'
 import type { MembershipReadPort } from '../ports/membership-read.port.js'
+import type { PlatformAdminReadPort } from '../ports/platform-admin-read.port.js'
+import type { PlatformReadPort } from '../ports/platform-read.port.js'
 import type { RegistrationReadPort } from '../ports/registration-read.port.js'
 import type { RegistrationWritePort } from '../ports/registration-write.port.js'
 import type { SessionListReadPort } from '../ports/session-list-read.port.js'
@@ -140,6 +142,21 @@ export interface TrpcPorts {
    * Opsiyonel (`?`) YAPILMASI YASAK.
    */
   readonly registrationWrite: RegistrationWritePort
+  /**
+   * ROADMAP v0.0.20, T-021/S5 — ZORUNLU üye (AYNI kural, `registrationWrite`'ın
+   * emsali). `platformAdminProcedure`'ün (`../authz/platform-admin-procedure.ts`)
+   * platform yetkisi + 2FA kapısının VE kapı DIŞINDAKİ `platform.session`'ın
+   * TEK veri kaynağı. Opsiyonel (`?`) YAPILMASI YASAK — bu nesneyi elle kuran
+   * her yerin (R-PO5, bu sürümde ÜÇ yeri `S7`'ye devredildi, ÖLÇÜLÜ ve
+   * İSTENEN geçici kırmızılık) portu DOLDURMASI gerekir, bir typecheck
+   * hatasını susturmak için GEVŞETME değil.
+   */
+  readonly platformAdminRead: PlatformAdminReadPort
+  /**
+   * ROADMAP v0.0.20, T-021/S5 — ZORUNLU üye (AYNI kural). `platform.tenantList`/
+   * `platform.auditLog`'un TEK veri kaynağı. Opsiyonel (`?`) YAPILMASI YASAK.
+   */
+  readonly platformRead: PlatformReadPort
 }
 
 /**

@@ -65,114 +65,47 @@
 // kapatır, YOL A'nın yeni kontrolü ise "regex hiç eşleşmedi" (0) VEYA "birden
 // fazla eşleşti" (>1) senaryolarını kapatır — üçü de AYRI, İSİMLENDİRİLMİŞ
 // hatalar üretir, birbirinin yerini TUTMAZ.
+//
+// FIX turu 1 (M3, `solid` [medium] bulgusu): `extractForeachSecretTableArray`/
+// `expectSqlArrayMatchesTenancySource` BURADAN ÇIKARILDI —
+// `append-only-tables-sql-consistency.test.ts`'in BİREBİR aynı deseni
+// (döngü değişkeni adı ve karşılaştırılan küme DIŞINDA) taşıyordu. İkisi de
+// `helpers/foreach-array-sql-consistency.ts`'teki PARAMETRELEŞTİRİLMİŞ ortak
+// yardımcıyı kullanır (`loopVariableName`/`declaredSetLabel` parametreleri —
+// `F-NEW-3`'ün "farklı döngü değişkeni" kısıtı bunu ENGELLEMİYORDU, ayrı dosya
+// GEREKMİYORDU).
 
-import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
 import { AUTH_ROLE_TABLE_PRIVILEGE_EXPECTATIONS, AUTH_SECRET_BEARING_TABLES } from '../tenancy.js'
+import {
+  expectForeachArrayMatchesDeclaredSet,
+  extractForeachLiteralArray,
+} from './helpers/foreach-array-sql-consistency.js'
 
 const BOOTSTRAP_SQL_PATH = fileURLToPath(new URL('../../sql/bootstrap-roles.sql', import.meta.url))
 const ROLLBACK_SQL_PATH = fileURLToPath(
   new URL('../../sql/rollback-auth-role.sql', import.meta.url),
 )
 
-/**
- * `sql/bootstrap-roles.sql` ve `sql/rollback-auth-role.sql`'in paylaştığı
- * `FOREACH secret_table_name IN ARRAY ARRAY[...]` LİTERAL dizisini çıkarır.
- * Bağlı parametre YOKTUR (DDL betiği, `CREATE/ALTER ROLE ... $1` PostgreSQL'de
- * geçersiz — dosya başı yorumları) — bu yüzden METİN ayrıştırması meşru tek
- * yoldur; `pg`/`@prisma/adapter-pg` İLE GERÇEKTEN PARSE ETMEK bu testi bir DB
- * bağlantısına bağımlı kılardı (K-E9'un izolasyon ayrımını BOZAR).
- *
- * Dosya başına TAM 1 eşleşme BEKLENİR (FIX turu 3, YOL A — bkz. dosya başı
- * yorum): `matchAll` KULLANILIR ama sonuç `.exec()`'teki gibi sessizce İLKİ
- * alınmaz — eşleşme sayısı 0 veya >1 ise AYRI, isimlendirilmiş bir hata
- * fırlatılır. Böylece dosyaya SONRADAN eklenecek ikinci bir
- * `FOREACH secret_table_name` döngüsü bu fonksiyonun GÖRÜŞ ALANI DIŞINDA
- * sessizce kalamaz.
- *
- * Desen hiç BULUNAMAZSA (dosya yeniden yazıldı, söz dizimi değişti) SESSİZCE
- * boş dizi DÖNMEZ — fırlatır. Vacuity riskinin KENDİSİ burada kapatılır:
- * aşağıdaki `it()`'ler bu fonksiyonun ürettiği diziyi KULLANMAK ZORUNDA, boş
- * bir dizi `AUTH_SECRET_BEARING_TABLES` (4 üye) ile asla eşleşmez — ama "neden
- * boş" sorusuna AYRI ve isimlendirilmiş bir hata ile cevap vermek için
- * fırlatma tercih edildi (regex uyuşmazlığını tablo uyuşmazlığından AYIRT
- * ETMEK için). Çoklu eşleşme (>1) durumu da aynı gerekçeyle AYRI bir hata
- * taşır — "regex hiç eşleşmedi" ile "regex birden fazla eşleşti" birbirine
- * KARIŞTIRILMAZ, ikisi de kendi adını taşıyan mesajla fırlatılır.
- */
-function extractForeachSecretTableArray(filePath: string): readonly string[] {
-  const sqlText = readFileSync(filePath, 'utf-8')
-  const matches = [...sqlText.matchAll(/FOREACH secret_table_name IN ARRAY ARRAY\[([^\]]*)\]/g)]
-  if (matches.length === 0) {
-    throw new Error(
-      `"${filePath}" içinde "FOREACH secret_table_name IN ARRAY ARRAY[...]" deseni BULUNAMADI ` +
-        "— SQL dosyasının söz dizimi değişti mi? Bu testin regex'i de güncellenmeli.",
-    )
-  }
-  if (matches.length > 1) {
-    const matchCount = String(matches.length)
-    throw new Error(
-      `"${filePath}" içinde "FOREACH secret_table_name IN ARRAY ARRAY[...]" deseni ` +
-        `${matchCount} KEZ bulundu (TAM 1 eşleşme bekleniyordu) — dosyaya YENİ bir ` +
-        'FOREACH döngüsü mü eklendi? Bu testin karşılaştırma mantığı (ek dizinin hangi ' +
-        'tabloları kapsadığı, tenancy.ts ile nasıl ilişkilendirileceği) BİLİNÇLİ olarak ' +
-        'gözden geçirilip güncellenmeli (bkz. dosya başı yorum, FIX turu 3 YOL A/B kararı) ' +
-        '— sessizce yalnızca ilk eşleşmeyi almak bu testin amacını BOŞALTIR.',
-    )
-  }
-  const arrayLiteralBody = matches[0]?.[1] ?? ''
-  return [...arrayLiteralBody.matchAll(/'([^']*)'/g)].map((entry) => entry[1] ?? '')
-}
-
-/**
- * `sqlTables` ile `AUTH_SECRET_BEARING_TABLES`'ı İKİ YÖNLÜ karşılaştırır ve
- * uyuşmazlık varsa `label`'ı (çağıranın belirttiği `dosya:satır` kimliği)
- * TAŞIYAN, HANGİ tablonun HANGİ yönde eksik/fazla olduğunu adlandıran bir
- * hata fırlatır. İki ayrı `expect` çağrısı (eksik/fazla) — tek bir
- * `toEqual(new Set(...))` yerine — ÇÜNKÜ `toEqual` başarısızlık mesajı tüm
- * kümeyi basar, "hangi TABLO" sorusunu okuyucuya BIRAKIR; buradaki mesaj
- * doğrudan tablo adını taşır (DoD madde 2 — "mesaj hangi yerin eksik olduğunu
- * adlandırmalı").
- */
-function expectSqlArrayMatchesTenancySource(label: string, sqlTables: readonly string[]): void {
-  expect(
-    sqlTables.length,
-    `${label}: FOREACH ARRAY deseni eşleşti ama İÇİ BOŞ döndü — ayrıştırma mı bozuldu?`,
-  ).toBeGreaterThan(0)
-
-  const sqlSet = new Set<string>(sqlTables)
-  const tsSet = new Set<string>(AUTH_SECRET_BEARING_TABLES)
-
-  const missingFromSql = [...tsSet].filter((tableName) => !sqlSet.has(tableName))
-  const extraInSql = [...sqlSet].filter((tableName) => !tsSet.has(tableName))
-
-  expect(
-    missingFromSql,
-    `${label}: tenancy.ts'in AUTH_SECRET_BEARING_TABLES'INDA OLUP bu SQL dosyasının FOREACH ` +
-      `dizisinde EKSİK olan tablo(lar): [${missingFromSql.join(', ')}]`,
-  ).toEqual([])
-  expect(
-    extraInSql,
-    `${label}: bu SQL dosyasının FOREACH dizisinde OLUP tenancy.ts'in ` +
-      `AUTH_SECRET_BEARING_TABLES'INDA OLMAYAN (FAZLA) tablo(lar): [${extraInSql.join(', ')}]`,
-  ).toEqual([])
-}
-
 describe('SQL ≡ TS — sır taşıyan tablo kümesi (M-5, korumasız yer 1/3 ve 2/3)', () => {
   it('sql/bootstrap-roles.sql:291 FOREACH dizisi AUTH_SECRET_BEARING_TABLES ile BİREBİR aynı kümedir', () => {
-    expectSqlArrayMatchesTenancySource(
+    expectForeachArrayMatchesDeclaredSet(
       'sql/bootstrap-roles.sql (FOREACH secret_table_name IN ARRAY ...)',
-      extractForeachSecretTableArray(BOOTSTRAP_SQL_PATH),
+      'AUTH_SECRET_BEARING_TABLES',
+      extractForeachLiteralArray(BOOTSTRAP_SQL_PATH, 'secret_table_name'),
+      AUTH_SECRET_BEARING_TABLES,
     )
   })
 
   it('sql/rollback-auth-role.sql:70 FOREACH dizisi AUTH_SECRET_BEARING_TABLES ile BİREBİR aynı kümedir', () => {
-    expectSqlArrayMatchesTenancySource(
+    expectForeachArrayMatchesDeclaredSet(
       'sql/rollback-auth-role.sql (FOREACH secret_table_name IN ARRAY ...)',
-      extractForeachSecretTableArray(ROLLBACK_SQL_PATH),
+      'AUTH_SECRET_BEARING_TABLES',
+      extractForeachLiteralArray(ROLLBACK_SQL_PATH, 'secret_table_name'),
+      AUTH_SECRET_BEARING_TABLES,
     )
   })
 })

@@ -26,6 +26,8 @@ import {
   createFakeErrorFactoryPort,
   createFakeJobReadPort,
   createFakeMembershipReadPort,
+  createFakePlatformAdminReadPort,
+  createFakePlatformReadPort,
   createFakeRegistrationReadPort,
   createFakeRegistrationWritePort,
   createFakeSessionListReadPort,
@@ -123,6 +125,10 @@ describe('publicProcedure — hermetik semantik (architect K4)', () => {
         // `registration.*` ÇAĞIRMAZ, stub'lar yalnızca sözleşmeyi doldurur.
         registrationRead: createFakeRegistrationReadPort(),
         registrationWrite: createFakeRegistrationWritePort(),
+        // ROADMAP v0.0.20, T-021/S5 — İKİSİ DE ZORUNLU üye; bu test
+        // `platform.*` ÇAĞIRMAZ, stub'lar yalnızca sözleşmeyi doldurur.
+        platformAdminRead: createFakePlatformAdminReadPort(),
+        platformRead: createFakePlatformReadPort(),
       },
       errors: createFakeErrorFactoryPort(),
     }

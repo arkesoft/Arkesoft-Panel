@@ -163,6 +163,7 @@ import {
   ACCOUNT_LOCKOUT_DURATION_SECONDS,
   ACCOUNT_LOCKOUT_MAX_FAILED_ATTEMPTS,
 } from './two-factor/account-lockout.constants.js'
+import { resolveTrustedOrigins } from './trusted-origins.js'
 
 export type CreateAuthInstanceOptions = {
   readonly env: ApiEnv
@@ -679,6 +680,17 @@ export function createAuthInstance(options: CreateAuthInstanceOptions): Auth {
     appName: 'Arkesoft',
     baseURL: env.AUTH_BASE_URL,
     basePath: AUTH_BASE_PATH,
+    // ROADMAP v0.0.20 (T-021/S6, ADR-0023 §4) — `baseURL`'in orijini Better
+    // Auth tarafından ZATEN otomatik güvenilir sayılır (kütüphanenin kendi
+    // `getTrustedOrigins()`'i, ÖLÇÜLDÜ); bu satır yalnızca İKİNCİ bir orijin
+    // (`SUPERADMIN_BASE_URL` verilmişse) EKLER. TEK türetme fonksiyonu
+    // (`./trusted-origins.js`) — `SameOriginGuard` İLE AYNI kaynak (ADR-0011'in
+    // "iki orijin kontrolü tek kaynaktan beslenir" garantisi). Hiçbiri
+    // verilmediğinde liste TEK elemanlıdır ve `baseURL`'in zaten eklediği
+    // orijinle BİREBİR aynıdır — davranış BAYT-BİREBİR değişmez (ADR-0023
+    // §4.5); test ortamında `disableOriginCheck`/`disableCSRFCheck` (altta)
+    // zaten DEVRE DIŞI olduğu için bu alan test davranışını hiç ETKİLEMEZ.
+    trustedOrigins: [...resolveTrustedOrigins(env)],
     secret: env.BETTER_AUTH_SECRET,
     database: prismaAdapter(prismaClient, { provider: 'postgresql' }),
     logger: createBetterAuthLogger(logger),

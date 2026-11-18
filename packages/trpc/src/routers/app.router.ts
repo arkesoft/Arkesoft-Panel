@@ -20,6 +20,12 @@
 // mevcut beş satırın HİÇBİRİ silinmedi/değişmedi, yine EKLEME (MINOR,
 // `@arkesoft/trpc` 0.6.1 → 0.7.0, ADR-0021).
 //
+// GÜNCELLEME (ROADMAP v0.0.20, T-021/S5): `platform` namespace'i EKLENDİ —
+// mevcut altı satırın HİÇBİRİ silinmedi/değişmedi, yine EKLEME (MINOR,
+// ADR-0023). Üç prosedürün İKİSİ (`tenantList`/`auditLog`) merdivenin
+// ALTINCI builder'ı (`platformAdminProcedure`) ile kapılı; `session` BİLEREK
+// `protectedProcedure` (architect "tRPC" bölümü madde 1).
+//
 // ⚠ Bu dosya prosedür yüzeyinin TEK kaydıdır ve `authz/procedure-surface.ts`
 // o yüzeyin BEYANIDIR; ikisi `__tests__/authz-consistency.test.ts`'te küme
 // eşitliğiyle karşılaştırılır. Buraya bir namespace eklemek, o tabloya satır
@@ -28,6 +34,7 @@
 import { router } from '../trpc.js'
 import { jobRouter } from './job.router.js'
 import { memberRouter } from './member.router.js'
+import { platformRouter } from './platform.router.js'
 import { registrationRouter } from './registration.router.js'
 import { sessionRouter } from './session.router.js'
 import { storefrontRouter } from './storefront.router.js'
@@ -40,6 +47,7 @@ export const appRouter = router({
   job: jobRouter,
   member: memberRouter,
   registration: registrationRouter,
+  platform: platformRouter,
 })
 
 /** İstemci factory'sinin (`client/create-trpc-client.ts`) tiplediği kök router tipi. */

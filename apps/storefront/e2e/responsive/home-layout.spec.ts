@@ -39,5 +39,12 @@ test.describe('Mobil yerleşim — demo-magaza kök sayfası (T-020, oran sını
       const bodyScrollWidth = await page.evaluate(() => document.body.scrollWidth)
       expect(bodyScrollWidth).toBeLessThanOrEqual(viewportSize.width)
     }
+
+    // AC-23 — WCAG 1.4.10 reflow referans genişliği: birinci yarı
+    // viewport'un gerçekten 320 px'e bağlandığını (`reflowMobileDevice`
+    // kullanıldığını), ikinci yarı içeriğin 320 px'te taşmadığını kanıtlar.
+    expect(page.viewportSize()?.width).toBe(320)
+    const scrollWidth = await page.evaluate(() => document.body.scrollWidth)
+    expect(scrollWidth).toBeLessThanOrEqual(320)
   })
 })

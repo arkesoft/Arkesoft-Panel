@@ -43,6 +43,17 @@ playwright-report/
 test-results/
 blob-report/
 
+# Playwright JSON reporter çıktısı (apps/*/playwright.config.ts → `outputFile:
+# 'playwright-annotations.json'`, CI'da "AC-21 — onaylanmış a11y "incomplete"
+# bulgularını CI özetine yaz (PII'siz)" adımında jq ile okunup
+# GITHUB_STEP_SUMMARY'ye yazılıyor — ad referansı bilerek, satır numarası
+# DEĞİL: bu Task'ta ci.yml büyüdükçe mutlak satır atıfları üç kez bayatladı).
+# T-024/D1 (devops ölçtü): test-results/ ve playwright-report/ bu dosyayı KAPSAMIYOR —
+# reporter'ın yazdığı yer apps/<app>/ kökü, o iki dizinin içi değil. Dosya test
+# başlıklarını ve (hata varsa) hata mesajlarını taşıyabilir; depo PUBLIC olduğu
+# için commit edilmemeli.
+playwright-annotations.json
+
 # Vitest JSON reporter çıktısı (`--reporter=json` → `<paket>/.vitest/json/output.json`).
 # T-014/FIX 1b'de ÖLÇÜLDÜ: dosya git'te izlenmiyordu ama hiçbir ignore kuralına da
 # girmediği için `git status`'ta `?? apps/api/.vitest/` olarak kirlilik üretiyordu.

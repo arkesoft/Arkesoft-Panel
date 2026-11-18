@@ -317,6 +317,17 @@ catalog:
   # package.json artık aynı catalog girdisini devDependency olarak taşıyor —
   # yeni ana bağımlılık DEĞİL, sürüm burada zaten sabitliydi.
   '@playwright/test': 1.64.1 # 2026-10-14 yayınlandı
+  # @axe-core/playwright: Kullanıcı Onayı (2026-11-17, ROADMAP v0.0.20.3) — test-only
+  # devDependency, erişilebilirlik (axe-core) entegrasyonu için. dist-tag "latest"
+  # 4.14.0, yayın 2026-10-15 — BUGÜNDEN (2026-11-18) 34 gün, 7 günlük eşiğin
+  # ÜZERİNDE (nodemailer 10.2.1 / @trpc 11.19.0 / astro 7.4.2 emsalleri — bu kez
+  # izin kaydı GEREKMİYOR, eşik zaten karşılanıyor). Peer `playwright-core`
+  # ">= 1.0.0" — katalogdaki `@playwright/test@1.64.1` üzerinden gelen
+  # `playwright-core@1.64.1` karşılıyor. Kendi `dependencies`'i `axe-core: ~4.14.0`
+  # — bu tam sürüm (`4.14.0`) katalogda ZATEN VAR (`eslint-plugin-jsx-a11y@6.10.2`
+  # üzerinden, `pnpm why axe-core` ile ölçüldü) ⇒ ikinci kopya YOK, tek axe-core.
+  # engines.node ">=22.12.0" — kurulu v25.8.1 kapsıyor.
+  '@axe-core/playwright': 4.14.0 # 2026-10-15 yayınlandı
   # eslint-plugin-react-hooks: Kullanıcı onayı (2026-10-31, T-008 PO) —
   # React bağımlılığıyla birlikte eklenmesi deponun kendi taahhüdüydü
   # (packages/config/eslint/react.js:4-6). Peer'ı eslint

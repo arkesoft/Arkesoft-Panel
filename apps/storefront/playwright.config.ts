@@ -57,6 +57,7 @@ import {
   createPlaywrightBaseConfig,
   desktopDevice,
   mobileDevice,
+  reflowMobileDevice,
 } from '../../scripts/playwright/base.js'
 import { STOREFRONT_E2E_PORT, storefrontUrl } from './e2e/e2e-port.js'
 import {
@@ -108,6 +109,22 @@ const visualLaunchOptions =
 
 export default createPlaywrightBaseConfig({
   testDir: './e2e',
+  // DÜZELTME (ROADMAP v0.0.20.3, T-024 fix turu 1, `security` tur1 F4 —
+  // medium) — `apps/admin/playwright.config.ts`'in AYNI gerekçesi
+  // (DEĞİŞTİRİLMEDİ, ayrıntı orada): `dot` (CI varsayılanı, DAVRANIŞ
+  // DEĞİŞMİYOR) + `json` (outputFile glob'ların DIŞINDA — `ci.yml`'in
+  // mevcut yükleme adımına GİRMEZ), YALNIZCA `process.env['CI']` iken.
+  // ⚠ `test:visual`'ın (`scripts/run-visual.sh`) AYNI config dosyasını AYNI
+  // outputFile ile İKİNCİ kez çağırması dosyayı EZER — bu ZARARSIZDIR:
+  // `ci.yml`'in annotation okuma adımı `test:e2e` İLE `test:visual`
+  // ARASINDA konumlandı (görsel projeler `e2e/visual/**`'i, `a11y.ts`
+  // kullanan `accessibility.spec.ts` ise `e2e/`'i tarar — İKİSİ AYRI
+  // `testDir`, çakışma YOK), ayrıntı: `ci.yml`'deki okuma adımının yorumu.
+  // `exactOptionalPropertyTypes: true` — `apps/admin/playwright.config.ts`'in
+  // AYNI gerekçesi (DEĞİŞTİRİLMEDİ): anahtar CI DIŞINDA hiç SPREAD EDİLMEZ.
+  ...(process.env['CI']
+    ? { reporter: [['dot'], ['json', { outputFile: 'playwright-annotations.json' }]] as const }
+    : {}),
   // T-020/S6 — ADR-0022 Karar 6 düzeltmesinin AYNI gerekçesi (`apps/admin/
   // playwright.config.ts:90-98`, DEĞİŞTİRİLMEDİ — emsal): Playwright'ın
   // VARSAYILAN `testMatch`'i `*.test.ts`'i DE eşleştirir. Storefront'ta
@@ -140,7 +157,9 @@ export default createPlaywrightBaseConfig({
     {
       name: 'storefront-mobile',
       testDir: './e2e/responsive',
-      use: { ...mobileDevice, baseURL: DEV_BASE_URL },
+      // T-024 (ROADMAP v0.0.20.3): WCAG 1.4.10 referans genişliği (320 px)
+      // — `mobileDevice` (412 px) DEĞİL, `reflowMobileDevice` (bkz. base.ts).
+      use: { ...reflowMobileDevice, baseURL: DEV_BASE_URL },
     },
     {
       name: 'storefront-visual-desktop',
@@ -150,6 +169,8 @@ export default createPlaywrightBaseConfig({
     {
       name: 'storefront-visual-mobile',
       testDir: './e2e/visual',
+      // ⚠⚠ T-024: BİLEREK DEĞİŞMEDİ — `mobileDevice` (412 px), AC-24'ün
+      // yapısal garantisi (mobil görsel regresyon referans PNG'leri).
       use: { ...mobileDevice, baseURL: VISUAL_BASE_URL, ...visualLaunchOptions },
     },
   ],

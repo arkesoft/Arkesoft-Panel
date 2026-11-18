@@ -78,7 +78,7 @@ const enableTwoFactorBodySchema = z.object({
   backupCodes: z.array(z.string()),
 })
 
-/** `POST /auth/two-factor/enable` — AC11: bu çağrı yalnızca BİR KEZ yapılmalı (sihirbazın state makinesi, `TwoFactorSetupWizard`/kontrolcüsü, sorumlu). İkinci çağrı sırrı yeniden üretir. */
+/** `POST /auth/two-factor/enable` — AC11: bu çağrı yalnızca GERÇEKTEN taze bir kurulumda yapılmalı. ADR-0024 (T-022/S4): zorlayıcı artık mount ömrüne bağlı bir bayrak DEĞİL, SUNUCU DURUMU — `TwoFactorSetupController` her zaman önce `getTotpUri`'yi dener, bu uca yalnızca sunucu `TOTP_NOT_ENABLED` dönerse düşer. İkinci çağrı sırrı yeniden üretir. */
 export async function enableTwoFactor(password: string): Promise<EnableTwoFactorResult> {
   const response = await fetch(AUTH_TWO_FACTOR_ENABLE_PATH, {
     method: 'POST',

@@ -33,7 +33,7 @@
 // değişiklik bu dosyayı KENDİ kapısına yem etmesin.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -305,32 +305,79 @@ describe('KAPI 3 — denetim yazma kapısı logger İMPORT ETMEZ (AC6 yapısal y
 // `eslint` EXIT 0 ve ÜÇ grep kapısı da **7/7 yeşil** geçti — yani denetim izini
 // SESSİZCE tahrif eden bir üretim yolu hiçbir kapıya ÇARPMIYORDU.
 //
-// ⚠ Bu kapı veritabanı seviyesinde bir garanti DEĞİL (uygulama rolü dört DML
-// yetkisinin dördüne de sahiptir ve bunu `catalog-lint` ZORUNLU tutuyor) —
-// `security` tur 1'in L2'si o gerilimi ayrıca kaydetti. Buradaki iddia daha
-// dar ve tam olarak denetlenebilir olanı: UYGULAMA KATMANI o yolu AÇMIYOR.
+// ⚠ DÜZELTME (T-023/FIX turu 2, `solid` tur 2 — bu yorum v0.0.20.2'den ÖNCE
+// YANLIŞ hâle geldi): bu paragraf eskiden "bu kapı veritabanı seviyesinde
+// bir garanti DEĞİL — uygulama rolü dört DML yetkisinin dördüne de sahiptir
+// ve `catalog-lint` bunu ZORUNLU tutuyor" diyordu (`security` tur 1'in L2'si
+// o gerilimi kaydetmişti). v0.0.20.2 (T-023) bu gerilimi KAPATTI:
+// `arkesoft_app`'ten `audit_log`/`platform_audit_log` tablolarında `UPDATE,
+// DELETE, TRUNCATE` çekildi (`packages/db/sql/bootstrap-roles.sql` §9) ve
+// `catalog-lint`in YENİ, tamamlayıcı kuralları
+// (`APP_ROLE_MISSING_EXPECTED_PRIVILEGE`/`APP_ROLE_UNEXPECTED_PRIVILEGE`,
+// `packages/db/src/tenancy.ts`'teki `APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS`)
+// bu iki tabloda TAM TERSİNİ ZORUNLU TUTAR: `UPDATE`/`DELETE`'in
+// OLMAMASI. Buradaki iddia artık İKİ KATMANLIDIR: UYGULAMA KATMANI bu yolu
+// HİÇ AÇMAZ (bu dosyanın kapısı) VE çalışma zamanı veritabanı ROLÜ bu
+// yetkiyi ARTIK TAŞIMAZ (`packages/db`'nin katalog linter'ı + canlı
+// izolasyon probu).
 describe('KAPI 4 — denetim kaydı üretimde GÜNCELLENMİYOR ve SİLİNMİYOR (append-only)', () => {
-  /** Denetim kaydı mutasyon delegeleri — jetonlar ÇALIŞMA ANINDA birleştirilir. */
+  /**
+   * Denetim kaydı mutasyon delegeleri — jetonlar ÇALIŞMA ANINDA birleştirilir.
+   *
+   * ⚠⚠ T-023/S4 — ÜÇTEN ALTIYA ÇIKARILDI: bugüne kadar yalnızca kiracı
+   * denetim delegesi (`.auditLog`) taranıyordu; kod ise platform denetim
+   * yazımını `prisma.platform.platformAuditLog` (büyük `A`) üzerinden yapıyor
+   * — eski üç needle bu delegeyle HİÇBİR ZAMAN eşleşmiyordu, yani
+   * `platform_audit_log` bu kapıda SIFIR katman taşıyordu (bkz. aşağıdaki
+   * anti-vacuity testi, bu olguyu doğrudan ölçer).
+   */
   const AUDIT_MUTATION_NEEDLES = [
     ['.auditLog', 'update'].join('.'),
     ['.auditLog', 'delete'].join('.'),
     ['.auditLog', 'upsert'].join('.'),
+    ['.platformAuditLog', 'update'].join('.'),
+    ['.platformAuditLog', 'delete'].join('.'),
+    ['.platformAuditLog', 'upsert'].join('.'),
   ] as const
+
+  /** Platform denetim kaydı INSERT çağrısı — jeton ÇALIŞMA ANINDA birleştirilir. */
+  const PLATFORM_AUDIT_WRITE_NEEDLE = ['.platformAuditLog', 'create'].join('.')
 
   it('bu uygulamanın üretim kodunda denetim kaydı UPDATE/DELETE/UPSERT çağrısı SIFIR', () => {
     const files = collectAuditWriteScopeFiles()
 
     for (const needle of AUDIT_MUTATION_NEEDLES) {
       // `updateMany`/`deleteMany` de yakalanır: `.auditLog.update` öneki
-      // `.auditLog.updateMany`'nin İÇİNDE yer alıyor.
+      // `.auditLog.updateMany`'nin İÇİNDE yer alıyor; aynısı `.platformAuditLog.update` için de geçerli.
       expect(findMatches(files, needle), `append-only ihlali: ${needle}`).toEqual([])
     }
   })
 
-  it('kapı VACUOUS DEĞİL: aynı tarayıcı, AYNI kökte INSERT çağrısını buluyor', () => {
+  it('kapı VACUOUS DEĞİL (kiracı ayağı): aynı tarayıcı, AYNI kökte INSERT çağrısını buluyor', () => {
     // ⚠ Kalıp biçiminin doğru olduğunun kanıtı: tarayıcı ve kök aynı; tek fark
     // delege adı. INSERT eşleşmesi bulunuyorsa UPDATE/DELETE için dönen boş
     // küme "kalıp hiçbir şeyle eşleşmiyor" yüzünden değildir.
     expect(findMatches(collectAuditWriteScopeFiles(), AUDIT_WRITE_NEEDLE).length).toBe(1)
+  })
+
+  it("kapı VACUOUS DEĞİL (platform ayağı) — ANTI-VACUITY: aynı tarayıcı `.platformAuditLog.create`'i TAM BİR eşleşmeyle buluyor (impersonation.service.ts:274)", () => {
+    // ⚠⚠ Bu assert geçmezse yukarıdaki altı-needle düzeltmesi SAHTE
+    // YEŞİLDİR: tarayıcı `platformAuditLog` delegesini HİÇ görmüyor demektir
+    // ve UPDATE/DELETE/UPSERT için dönen boş küme "ihlal yok" yüzünden değil,
+    // "tarayıcı o dosyayı görmüyor" yüzünden olurdu.
+    expect(findMatches(collectAuditWriteScopeFiles(), PLATFORM_AUDIT_WRITE_NEEDLE).length).toBe(1)
+  })
+
+  it('tarama KÖKÜ apps/api/src/platform altını KAPSIYOR (architect R5 çürütmesinin mekanik garantisi)', () => {
+    // ⭐ architect R5'i kodla çürüttü: `AUDIT_WRITE_SCOPE_ROOTS` zaten
+    // `apps/api/src` kökünde ve `walk()` özyinelemeli — `platform/` onun
+    // kapsamında. Bu assert o çürütmeyi MEKANİKLEŞTİRİR: bir gelecek scope
+    // daraltması `platform/` dizinini (veya tarama köklerinin tamamını) bu
+    // kapsam dışına atarsa burada KIRMIZI olur, "needle'ı düzelttim ama kök
+    // artık dosyayı görmüyor" sahte-yeşili sessizce geri gelemez.
+    const platformRootPrefix = join('apps', 'api', 'src', 'platform') + sep
+    const scopedFiles = collectAuditWriteScopeFiles().map((file) => relative(REPO_ROOT, file))
+
+    expect(scopedFiles.some((file) => file.startsWith(platformRootPrefix))).toBe(true)
   })
 })

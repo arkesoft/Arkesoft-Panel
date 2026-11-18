@@ -27,6 +27,17 @@ import {
   type LintFinding,
   type TenantIsolationRule,
 } from '../catalog-lint.js'
+// T-023/S3 — "bedava kapı" testinin GERÇEK üretim beyanını okuması için
+// (dosya başı AC-11(b)/AC-12/AC-16(b)/AC-17 describe'u, dosyanın SONUNA
+// yakın). `tenancy.ts` İMPORTSUZ kalma kuralı (K-E5/AC9) `catalog-lint.ts`'e
+// özgüdür — bu dosya zaten `tenancy.ts`'in BEYANINI (fixture'lara İLHAM
+// olarak) DOLAYLI yansıtıyordu, burada DOĞRUDAN okunur (S2'nin satırlarına
+// DOKUNULMADI — bu TEK BAŞINA yeni bir import satırıdır).
+import {
+  APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS,
+  PLATFORM_LEVEL_TABLES,
+  TENANT_SCOPED_TABLES,
+} from '../tenancy.js'
 
 const TENANT_CONTEXT_SETTING = 'app.tenant_id'
 const APP_ROLE_NAME = 'arkesoft_app'
@@ -58,6 +69,16 @@ const BASE_OPTIONS: LintCatalogOptions = {
   },
   tenantContextSetting: TENANT_CONTEXT_SETTING,
   appRoleName: APP_ROLE_NAME,
+  // T-023/S2 — ZORUNLU alan. Bu dosyanın `appRoleTablePrivilegeExpectations`e
+  // özgü fixture'ları (AC-11(b)/AC-12/AC-16(b)/AC-17) S3'ün işi — bu temel
+  // fixture (`BASE_OPTIONS`) BİLEREK BOŞ kalır: aşağıdaki `AUDIT_LOG_OPTIONS`
+  // (S3) `audit_log`'a özgü GERÇEK beklentiyi taşır, BASE_OPTIONS'ı KULLANAN
+  // testler o tabloyla İLGİLİ DEĞİLDİR. ⚠⚠ DÜZELTME (FIX turu 1 kuyruğu —
+  // bayat): bu satır ESKİDEN "tenancy.ts'teki beyanla AYNI" diyordu — S6'dan
+  // İTİBAREN YANLIŞ: `tenancy.ts`'teki GERÇEK beyan artık BOŞ DEĞİL (iki
+  // satır taşıyor), bu fixture'ın kendisi hâlâ `[]` ama bu artık tenancy.ts'in
+  // bugünkü durumunu YANSITMIYOR — bilinçli bir test fixture'ı seçimidir.
+  appRoleTablePrivilegeExpectations: [],
   authRole: {
     roleName: AUTH_ROLE_NAME,
     secretBearingTables: SECRET_TABLE_NAMES,
@@ -149,6 +170,7 @@ function healthySnapshot(): CatalogSnapshot {
         canInsert: true,
         canUpdate: true,
         canDelete: true,
+        canTruncate: false,
       },
       {
         roleName: APP_ROLE_NAME,
@@ -157,6 +179,7 @@ function healthySnapshot(): CatalogSnapshot {
         canInsert: true,
         canUpdate: true,
         canDelete: true,
+        canTruncate: false,
       },
       {
         roleName: APP_ROLE_NAME,
@@ -165,6 +188,7 @@ function healthySnapshot(): CatalogSnapshot {
         canInsert: true,
         canUpdate: true,
         canDelete: true,
+        canTruncate: false,
       },
       // FIX turu 2 (B3): `_prisma_migrations`'ın SAĞLIKLI hedef durumu artık
       // yalnızca SELECT — bootstrap'ın daraltılmış `REVOKE`si (bkz.
@@ -176,6 +200,7 @@ function healthySnapshot(): CatalogSnapshot {
         canInsert: false,
         canUpdate: false,
         canDelete: false,
+        canTruncate: false,
       },
       // T-015/ST-C/ST-D'nin HEDEF DURUMU: `arkesoft_app` üç sır taşıyan
       // tabloda HİÇBİR yetkiye sahip DEĞİL (tablo bazlı REVOKE uygulandı).
@@ -186,6 +211,7 @@ function healthySnapshot(): CatalogSnapshot {
         canInsert: false,
         canUpdate: false,
         canDelete: false,
+        canTruncate: false,
       })),
       // `arkesoft_auth`: üç sır taşıyan tabloda TABLO bazlı SELECT/INSERT/
       // UPDATE YOK (kolon bazlı veriliyor, aşağıdaki `columnPrivileges`), TABLO
@@ -197,6 +223,7 @@ function healthySnapshot(): CatalogSnapshot {
         canInsert: false,
         canUpdate: false,
         canDelete: true,
+        canTruncate: false,
       })),
       // `arkesoft_auth`: `app_user` üzerinde TABLO bazlı SELECT/INSERT/UPDATE
       // VAR, DELETE YOK (A-N1 — en az yetki).
@@ -207,6 +234,7 @@ function healthySnapshot(): CatalogSnapshot {
         canInsert: true,
         canUpdate: true,
         canDelete: false,
+        canTruncate: false,
       },
     ],
     // T-015/ST-C, Kaynak A: her sır taşıyan tablonun HER kolonu için
@@ -1068,6 +1096,7 @@ describe('catalog-lint — auth rolü / sır taşıyan tablo yetkisi (T-015/ST-C
       taxonomy: BASE_OPTIONS.taxonomy,
       tenantContextSetting: BASE_OPTIONS.tenantContextSetting,
       appRoleName: BASE_OPTIONS.appRoleName,
+      appRoleTablePrivilegeExpectations: BASE_OPTIONS.appRoleTablePrivilegeExpectations,
     }
     const findings = lint(leakingMatview, optionsWithoutAuthRole)
     expect(findingsOf(findings, 'UNEXPECTED_RELATION_KIND')).toEqual([
@@ -1180,6 +1209,7 @@ describe('catalog-lint — auth rolü / sır taşıyan tablo yetkisi (T-015/ST-C
       taxonomy: BASE_OPTIONS.taxonomy,
       tenantContextSetting: BASE_OPTIONS.tenantContextSetting,
       appRoleName: BASE_OPTIONS.appRoleName,
+      appRoleTablePrivilegeExpectations: BASE_OPTIONS.appRoleTablePrivilegeExpectations,
     }
     const findings = lint(definerFunction, optionsWithoutAuthRole)
     expect(findingsOf(findings, 'UNEXPECTED_SECURITY_DEFINER_FUNCTION')).toEqual([
@@ -1254,10 +1284,41 @@ describe('catalog-lint — auth rolü / sır taşıyan tablo yetkisi (T-015/ST-C
           canInsert: false,
           canUpdate: false,
           canDelete: false,
+          canTruncate: false,
         },
       ],
     }
     const findings = lint(unexpectedTablePrivilege, BASE_OPTIONS)
+    expect(findingsOf(findings, 'AUTH_ROLE_EXCESS_TABLE_PRIVILEGE')).toEqual([
+      expect.objectContaining({ rule: 'AUTH_ROLE_EXCESS_TABLE_PRIVILEGE', tableName: 'tenant' }),
+    ])
+  })
+
+  // YENİ (FIX turu 1 kuyruğu, `solid`'in "vakum" bulgusu — `catalog-lint.ts:1193-1199`):
+  // `lintAuthRoleUnexpectedTablePrivileges`'in `|| privilege.canTruncate` terimi
+  // (T-023/S2, M3b) bugüne kadar HİÇBİR fixture'da TEK BAŞINA sınanmamıştı —
+  // yukarıdaki test `canSelect: true` ile tetikleniyor, `canTruncate`'in
+  // KENDİSİ hiçbir zaman TEK doğru değer olmadı. Bu test SADECE `canTruncate`'i
+  // `true` yapar (diğer dört fiil `false`) — terim SİLİNİRSE bu test KIRMIZI
+  // olur (anti-vakum kanıtı, aşağıda elle doğrulandı).
+  it("AUTH_ROLE_EXCESS_TABLE_PRIVILEGE: arkesoft_auth beklenti tablosunda OLMAYAN bir tabloda SADECE TRUNCATE yetkisi taşıyor (TRUNCATE RLS'i baypas eder, R3)", () => {
+    const snapshot = healthySnapshot()
+    const unexpectedTruncateOnlyPrivilege: CatalogSnapshot = {
+      ...snapshot,
+      privileges: [
+        ...snapshot.privileges,
+        {
+          roleName: AUTH_ROLE_NAME,
+          tableName: 'tenant',
+          canSelect: false,
+          canInsert: false,
+          canUpdate: false,
+          canDelete: false,
+          canTruncate: true,
+        },
+      ],
+    }
+    const findings = lint(unexpectedTruncateOnlyPrivilege, BASE_OPTIONS)
     expect(findingsOf(findings, 'AUTH_ROLE_EXCESS_TABLE_PRIVILEGE')).toEqual([
       expect.objectContaining({ rule: 'AUTH_ROLE_EXCESS_TABLE_PRIVILEGE', tableName: 'tenant' }),
     ])
@@ -1286,6 +1347,248 @@ describe('catalog-lint — fail-closed (1 kural)', () => {
     }
     const findings = lint(empty, BASE_OPTIONS)
     expect(findings).toEqual([expect.objectContaining({ rule: 'EMPTY_CATALOG_SNAPSHOT' })])
+  })
+})
+
+// T-023/S3 (ROADMAP v0.0.20.2, K-A17 adım ①-b) — `arkesoft_app`'in tablo
+// başına KAPALI küme yetki beyanının (`APP_ROLE_TABLE_PRIVILEGE_
+// EXPECTATIONS`) fixture kanıtları. ⚠⚠ DÜZELTME (FIX turu 1 kuyruğu — bayat):
+// bu satır S3 yazıldığında ("bu alt görevde `tenancy.ts`'te HÂLÂ BOŞ — K-A17
+// adım ③ S6'nın işi") ileriye dönük DOĞRUYDU — S6 TAMAMLANDI, `tenancy.ts`'teki
+// GERÇEK beyan artık BOŞ DEĞİL (iki satır). ⚠⚠ Bu describe DB'ye DOKUNMAZ — tamamı saf
+// fixture/birim testidir (K2'nin `audit_log`/`platform_audit_log` iki satırı
+// S6'da EKLENECEK şekli BURADA YEREL olarak taklit edilir, `BASE_OPTIONS`/
+// `healthySnapshot()` — S2'nin satırları — DEĞİŞTİRİLMEDEN).
+describe('catalog-lint — T-023/S3: arkesoft_app tablo başına kapalı küme yetki beyanı (AC-11(b)/AC-12/AC-16(b)/AC-17)', () => {
+  const AUDIT_LOG_TABLE_NAME = 'audit_log'
+
+  /** `BASE_OPTIONS.appRoleTablePrivilegeExpectations`in eleman tipi — literal yeniden tanım YOK (AuthRoleLintInput deseninin BİREBİR aynısı, yukarıda). */
+  type AppRoleTablePrivilegeExpectationFixture =
+    LintCatalogOptions['appRoleTablePrivilegeExpectations'][number]
+
+  /**
+   * K2'nin (architect) `audit_log` için beyan edeceği DDL SONRASI hedef
+   * durum: `{SELECT, INSERT}` — `UPDATE`/`DELETE`/`TRUNCATE` YOK.
+   */
+  const AUDIT_LOG_PRIVILEGE_EXPECTATION: AppRoleTablePrivilegeExpectationFixture = {
+    tableName: AUDIT_LOG_TABLE_NAME,
+    canSelect: true,
+    canInsert: true,
+    canUpdate: false,
+    canDelete: false,
+    canTruncate: false,
+  }
+
+  /**
+   * `tenant_membership`'in (healthySnapshot) sağlıklı RLS iskeletini
+   * `audit_log` için TEKRARLAR — DDL SONRASI hedef durum (§9 REVOKE
+   * uygulanmış: `canUpdate`/`canDelete` `false`). `healthySnapshot()`in
+   * KENDİSİ (S2'nin satırları) DEĞİŞTİRİLMEZ, yalnızca SPREAD edilip
+   * genişletilir.
+   */
+  function healthySnapshotWithAuditLog(): CatalogSnapshot {
+    const base = healthySnapshot()
+    return {
+      ...base,
+      tables: [...base.tables, { tableName: AUDIT_LOG_TABLE_NAME, tableOwner: MIGRATOR_ROLE_NAME }],
+      columns: [
+        ...base.columns,
+        { tableName: AUDIT_LOG_TABLE_NAME, columnName: 'id', dataType: 'text', isNullable: false },
+        {
+          tableName: AUDIT_LOG_TABLE_NAME,
+          columnName: 'tenant_id',
+          dataType: 'text',
+          isNullable: false,
+        },
+      ],
+      rowSecurity: [
+        ...base.rowSecurity,
+        { tableName: AUDIT_LOG_TABLE_NAME, isRowSecurityEnabled: true, isRowSecurityForced: true },
+      ],
+      policies: [
+        ...base.policies,
+        {
+          tableName: AUDIT_LOG_TABLE_NAME,
+          policyName: 'audit_log_tenant_isolation',
+          roles: ['public'],
+          usingExpression: `(tenant_id = current_setting('${TENANT_CONTEXT_SETTING}'::text, true))`,
+          withCheckExpression: `(tenant_id = current_setting('${TENANT_CONTEXT_SETTING}'::text, true))`,
+        },
+      ],
+      indexes: [
+        ...base.indexes,
+        {
+          tableName: AUDIT_LOG_TABLE_NAME,
+          indexName: 'audit_log_tenant_id_idx',
+          columns: ['tenant_id'],
+        },
+      ],
+      privileges: [
+        ...base.privileges,
+        {
+          roleName: APP_ROLE_NAME,
+          tableName: AUDIT_LOG_TABLE_NAME,
+          canSelect: true,
+          canInsert: true,
+          canUpdate: false,
+          canDelete: false,
+          canTruncate: false,
+        },
+      ],
+    }
+  }
+
+  /** `BASE_OPTIONS` + `audit_log` taksonomi üyeliği + K2 beyanı. */
+  const AUDIT_LOG_OPTIONS: LintCatalogOptions = {
+    ...BASE_OPTIONS,
+    taxonomy: {
+      ...BASE_OPTIONS.taxonomy,
+      tenantScopedTables: [...BASE_OPTIONS.taxonomy.tenantScopedTables, AUDIT_LOG_TABLE_NAME],
+    },
+    appRoleTablePrivilegeExpectations: [AUDIT_LOG_PRIVILEGE_EXPECTATION],
+  }
+
+  it('ölçüm tabanı: audit_log DDL SONRASI hedef durumda + beyan VARKEN hiçbir bulgu üretmez', () => {
+    expect(lint(healthySnapshotWithAuditLog(), AUDIT_LOG_OPTIONS)).toEqual([])
+  })
+
+  it('AC-12(a) FAZLA: audit_log.canUpdate=true (beyan {SELECT,INSERT}) → tam 1 bulgu, APP_ROLE_UNEXPECTED_PRIVILEGE, tableName=audit_log', () => {
+    const snapshot = healthySnapshotWithAuditLog()
+    const withExcessUpdate: CatalogSnapshot = {
+      ...snapshot,
+      privileges: snapshot.privileges.map((privilege) =>
+        privilege.roleName === APP_ROLE_NAME && privilege.tableName === AUDIT_LOG_TABLE_NAME
+          ? { ...privilege, canUpdate: true }
+          : privilege,
+      ),
+    }
+    const findings = lint(withExcessUpdate, AUDIT_LOG_OPTIONS)
+    expect(findings).toHaveLength(1)
+    expect(findings[0]).toEqual(
+      expect.objectContaining({
+        rule: 'APP_ROLE_UNEXPECTED_PRIVILEGE',
+        tableName: AUDIT_LOG_TABLE_NAME,
+      }),
+    )
+  })
+
+  it('AC-12(b) EKSİK (KAPALI küme — "en az" DEĞİL): audit_log.canInsert=false → tam 1 bulgu, APP_ROLE_MISSING_EXPECTED_PRIVILEGE, tableName=audit_log', () => {
+    const snapshot = healthySnapshotWithAuditLog()
+    const withMissingInsert: CatalogSnapshot = {
+      ...snapshot,
+      privileges: snapshot.privileges.map((privilege) =>
+        privilege.roleName === APP_ROLE_NAME && privilege.tableName === AUDIT_LOG_TABLE_NAME
+          ? { ...privilege, canInsert: false }
+          : privilege,
+      ),
+    }
+    const findings = lint(withMissingInsert, AUDIT_LOG_OPTIONS)
+    expect(findings).toHaveLength(1)
+    expect(findings[0]).toEqual(
+      expect.objectContaining({
+        rule: 'APP_ROLE_MISSING_EXPECTED_PRIVILEGE',
+        tableName: AUDIT_LOG_TABLE_NAME,
+      }),
+    )
+  })
+
+  // ⚠⚠ AC-12(c) — ÜÇ YÖNLÜ VAKUMUN EN ÖNEMLİ AYAĞI, AYNI ZAMANDA AC-16(b)
+  // KARŞI-OLGUSU (architect: "DB'ye HİÇ dokunmadan AC-12(c) birim testi
+  // olarak koşar" — ③ adımı ② olmadan uygulanırsa linter bulgu üretir; bunu
+  // mümkün kılan şey beyanın PARAMETRE olmasıdır, K-E5). İKİSİ DE adlandırılır.
+  it('AC-12(c)/AC-16(b) BEYAN EKSİLTME: beyan dizisinden audit_log SİLİNİR + katalog DDL SONRASI gerçeği taşır ⇒ eski dört-DML kuralı YENİDEN SİLAHLANIR, APP_ROLE_MISSING_DML_PRIVILEGE DÜŞER (yeni tamamlayıcı kural SESSİZDİR — CLAUDE.md §7 "dört liste" tuzağının bu sürümdeki kardeşinin TEK mekanik garantisi)', () => {
+    // Katalog (canUpdate/canDelete=false) DEĞİŞMEDİ — DDL SONRASI gerçek
+    // AYNI kalıyor, SİLİNEN tek şey beyan.
+    const snapshot = healthySnapshotWithAuditLog()
+    const optionsWithoutDeclaration: LintCatalogOptions = {
+      ...AUDIT_LOG_OPTIONS,
+      // K-A17 adım ①'in BOŞ hâli — AC-12(c)'nin BEYAN EKSİLTME senaryosunu
+      // TAKLİT eder (bu test fixture'ı BİLEREK boş; ⚠⚠ DÜZELTME, FIX turu 1
+      // kuyruğu: bu ARTIK tenancy.ts'teki bugünkü gerçek durum DEĞİL — S6'dan
+      // itibaren gerçek beyan iki satır taşıyor, bu satır onun SİLİNMİŞ hâlini
+      // simüle ediyor).
+      appRoleTablePrivilegeExpectations: [],
+    }
+    const findings = lint(snapshot, optionsWithoutDeclaration)
+    expect(findings).toHaveLength(1)
+    expect(findings[0]).toEqual(
+      expect.objectContaining({
+        rule: 'APP_ROLE_MISSING_DML_PRIVILEGE',
+        tableName: AUDIT_LOG_TABLE_NAME,
+      }),
+    )
+    // Tamamlayıcı yeni kural artık DEVRE DIŞI (beyan silindiği için
+    // `lintAppRoleTablePrivilegeExpectations`in döngüsü sıfır kez çalışır) —
+    // "beyanı sessizce sil, CI yeşil kalsın" senaryosu YAPISAL OLARAK
+    // OLUŞAMAZ: ya bu tamamlayıcı kural (beyan VARSA) ya da eski kural
+    // (beyan YOKSA) düşer, İKİSİ BİRDEN SESSİZ KALAMAZ.
+    expect(findingsOf(findings, 'APP_ROLE_MISSING_EXPECTED_PRIVILEGE')).toEqual([])
+    expect(findingsOf(findings, 'APP_ROLE_UNEXPECTED_PRIVILEGE')).toEqual([])
+  })
+
+  it('AC-11(b) REGRESYON: beyan TAŞIMAYAN tenant_membership üzerinde canDelete=false → eski kural (APP_ROLE_MISSING_DML_PRIVILEGE) hâlâ düşüyor', () => {
+    const snapshot = healthySnapshot()
+    const missingDelete: CatalogSnapshot = {
+      ...snapshot,
+      privileges: snapshot.privileges.map((privilege) =>
+        privilege.roleName === APP_ROLE_NAME && privilege.tableName === 'tenant_membership'
+          ? { ...privilege, canDelete: false }
+          : privilege,
+      ),
+    }
+    const findings = lint(missingDelete, BASE_OPTIONS)
+    expect(findings).toEqual([
+      expect.objectContaining({
+        rule: 'APP_ROLE_MISSING_DML_PRIVILEGE',
+        tableName: 'tenant_membership',
+      }),
+    ])
+  })
+
+  it("AC-17 (fixture yarısı — canlı yarısı S6'da): arkesoft_app sır taşıyan bir tabloda canTruncate=true → APP_ROLE_RETAINS_SECRET_TABLE_PRIVILEGE düşer (TRUNCATE RLS'i baypas eder, R3)", () => {
+    const snapshot = healthySnapshot()
+    const withTruncate: CatalogSnapshot = {
+      ...snapshot,
+      privileges: snapshot.privileges.map((privilege) =>
+        privilege.roleName === APP_ROLE_NAME && privilege.tableName === 'account'
+          ? { ...privilege, canTruncate: true }
+          : privilege,
+      ),
+    }
+    const findings = lint(withTruncate, BASE_OPTIONS)
+    expect(findings).toEqual([
+      expect.objectContaining({
+        rule: 'APP_ROLE_RETAINS_SECRET_TABLE_PRIVILEGE',
+        tableName: 'account',
+      }),
+    ])
+  })
+})
+
+// "Bedava kapı" (architect, K-A17) — `tenancy.ts`'teki GERÇEK
+// `APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS` beyanındaki HER tablonun
+// `PLATFORM_LEVEL_TABLES ∪ TENANT_SCOPED_TABLES`te (GERÇEK taksonomi,
+// yukarıdaki describe'un YEREL aynası DEĞİL) var olduğunu doğrulayan SAF
+// birim testi — "kimsenin sınıflandırmadığı tabloyu beyan etme" deliğini
+// kapatır. Bu dosyadaki DİĞER testlerin tersine `lintCatalog`'u ÇAĞIRMAZ
+// (`observedRules`e katkısı YOK, saf bir üyelik kontrolüdür) — bu yüzden
+// `lint()` sarmalayıcısı DEĞİL, dizi üyeliği doğrudan test edilir.
+// ⚠⚠ DÜZELTME (FIX turu 1 kuyruğu — bayat, İKİ KATMANLI): bu yorum ESKİDEN
+// "Bugün (K-A17 adım ①) beyan BOŞ olduğu için döngü SIFIR kez çalışır...
+// S6 beyanı doldurduğu AN..." diyordu (S3'te YAZILMIŞ, ileriye dönük) VE
+// "tip pini S6'daki GERÇEK sabiti değil kendi aynasını pinler" diyordu —
+// İKİSİ DE ARTIK YANLIŞ: S6 TAMAMLANDI (`tenancy.ts`'teki beyan iki satır
+// taşıyor, döngü GERÇEKTEN o iki tabloyu değerlendiriyor) VE Orkestratör'ün
+// S6 düzeltmesi (`as const satisfies`) AYNAYI KALDIRDI — tip pini
+// (`app-role-privilege-expectations.pin.ts`) artık GERÇEK sabiti
+// (`APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS`'ın kendisini) tüketir, kendi
+// yerel kopyasını DEĞİL (bkz. o dosyanın GÜNCELLEME notu).
+describe('catalog-lint — "bedava kapı": APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS taksonomi üyeliği (T-023/S3, saf birim testi)', () => {
+  it("tenancy.ts'teki GERÇEK beyandaki her tablo PLATFORM_LEVEL_TABLES ∪ TENANT_SCOPED_TABLES'te var", () => {
+    const taxonomyTableNames = new Set<string>([...PLATFORM_LEVEL_TABLES, ...TENANT_SCOPED_TABLES])
+    for (const expectation of APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS) {
+      expect(taxonomyTableNames.has(expectation.tableName)).toBe(true)
+    }
   })
 })
 

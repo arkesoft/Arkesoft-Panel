@@ -1,6 +1,6 @@
 {
   "name": "arkesoft",
-  "version": "0.9.0",
+  "version": "0.10.2",
   "private": true,
   "type": "module",
   "description": "Arkesoft — çok kiracılı SaaS e-ticaret ve kurumsal web sitesi platformu",
@@ -17,7 +17,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:isolation": "turbo run test:isolation",
-    "test:e2e": "turbo run test:e2e --concurrency=1",
+    "test:e2e": "turbo run test:e2e --concurrency=1 --continue",
     "test:visual": "turbo run test:visual --concurrency=1",
     "test:visual:update": "turbo run test:visual:update --concurrency=1",
     "clean": "turbo run clean && rm -rf .turbo",
@@ -33,6 +33,7 @@
     "db:bootstrap": "pnpm --filter @arkesoft/db run bootstrap",
     "db:rollback-roles": "pnpm --filter @arkesoft/db run rollback-roles",
     "db:rollback-auth-role": "pnpm --filter @arkesoft/db run rollback-auth-role",
+    "db:rollback-audit-append-only": "pnpm --filter @arkesoft/db run rollback-audit-append-only",
     "db:generate": "pnpm --filter @arkesoft/db run generate",
     "db:migrate": "pnpm --filter @arkesoft/db run migrate && pnpm db:bootstrap",
     "db:deploy": "pnpm --filter @arkesoft/db run deploy && pnpm db:bootstrap",
@@ -46,6 +47,7 @@
   },
   "devDependencies": {
     "@arkesoft/config": "workspace:*",
+    "@axe-core/playwright": "catalog:",
     "@changesets/cli": "catalog:",
     "@playwright/test": "catalog:",
     "prettier": "catalog:",

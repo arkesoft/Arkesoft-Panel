@@ -12,9 +12,16 @@
 // kurar. Sonuç bilerek "2 eski kopya + 1 ortak yardımcı" — borç satırı
 // `docs`'a (S13) yazılacak.
 //
-// Mailpit yardımcıları (`findVerificationToken` + tipler) AYNI gerekçeyle
-// BİREBİR kopya — `panel-flow.spec.ts`/`session-security-dialog-focus.qa.
-// spec.ts`'in ikisi de bunu dışa AÇMIYOR, bu dosya onlardan İTHAL EDEMEZ.
+// Mailpit yardımcısı (`findVerificationToken`) ARTIK bu dosyada DEĞİL —
+// `scripts/playwright/mailpit.ts`'TEN İTHAL EDİLİYOR (T-021/S10 FIX turu 1,
+// dalga 2, `solid` M2 — bağlayıcı): bu, `panel-flow.spec.ts`/
+// `session-security-dialog-focus.qa.spec.ts`/`apps/superadmin/e2e/fixtures/
+// platform-admin.ts` ile BİREBİR aynı dördüncü kopyaydı. Önceki not
+// ("apps/* → apps/* ithalatı YASAK, bu yüzden REFAKTÖR EDİLMEDİ") yalnızca
+// "admin'den import edilemez"i kapatıyordu — `scripts/playwright/`'e taşımak
+// o engeli AŞMIYOR, mimari sınırın DIŞINDA bir paylaşılan alana taşıyor
+// (`sql.ts`/`totp.ts`'in AYNI deseni, `apps/*/e2e` → `scripts/playwright/`
+// GÖRELİ import CLAUDE.md §3'ü ihlal ETMİYOR).
 //
 // Kayıt (sign-up) YAPAR, GİRİŞ (sign-in) YAPMAZ (panel-flow.spec.ts'in AYNI
 // disiplini) — çağıran taraf kendi `sign-in/email` çağrısını (AC18 bütçesine
@@ -22,84 +29,9 @@
 // girer.
 import { expect, type APIRequestContext } from '@playwright/test'
 
+import { findVerificationToken } from '../../../../scripts/playwright/mailpit.js'
+
 const FIXTURE_PASSWORD = 'arkesoft-e2e-registration-fixture-password-123'
-const MAILPIT_BASE_URL = 'http://127.0.0.1:8025'
-
-interface MailpitAddress {
-  readonly Address: string
-}
-interface MailpitMessageSummary {
-  readonly ID: string
-  readonly To: readonly MailpitAddress[]
-}
-interface MailpitMessagesListResponse {
-  readonly messages: readonly MailpitMessageSummary[]
-}
-interface MailpitMessageDetail {
-  readonly Text: string
-}
-
-function isMailpitMessagesListResponse(value: unknown): value is MailpitMessagesListResponse {
-  if (typeof value !== 'object' || value === null) {
-    return false
-  }
-  return Array.isArray((value as Record<string, unknown>)['messages'])
-}
-
-function isMailpitMessageDetail(value: unknown): value is MailpitMessageDetail {
-  if (typeof value !== 'object' || value === null) {
-    return false
-  }
-  return typeof (value as Record<string, unknown>)['Text'] === 'string'
-}
-
-/**
- * Mailpit'ten (`infra/docker-compose.yml`'in açtığı `:8025`) belirli bir
- * alıcıya gönderilmiş e-postadaki doğrulama bağlantısının `token` sorgu
- * parametresini okur. "Token üretildi" varsayımıyla sessizce boş DÖNMEZ —
- * bulunamazsa throw eder (`panel-flow.spec.ts`'in AYNI disiplini).
- */
-async function findVerificationToken(email: string): Promise<string> {
-  const target = email.toLowerCase()
-
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    const listResponse = await fetch(`${MAILPIT_BASE_URL}/api/v1/messages?limit=50`)
-    const listRaw: unknown = await listResponse.json()
-
-    if (isMailpitMessagesListResponse(listRaw)) {
-      const match = listRaw.messages.find((message) =>
-        message.To.some((address) => address.Address.toLowerCase() === target),
-      )
-
-      if (match !== undefined) {
-        const detailResponse = await fetch(`${MAILPIT_BASE_URL}/api/v1/message/${match.ID}`)
-        const detailRaw: unknown = await detailResponse.json()
-
-        if (!isMailpitMessageDetail(detailRaw)) {
-          throw new Error('Mailpit mesaj gövdesi beklenen şekilde değil')
-        }
-
-        const urlMatch = /https?:\/\/\S+/.exec(detailRaw.Text)
-        if (urlMatch === null) {
-          throw new Error('Doğrulama e-postasında bağlantı bulunamadı')
-        }
-
-        const token = new URL(urlMatch[0]).searchParams.get('token')
-        if (token === null) {
-          throw new Error("Doğrulama bağlantısında 'token' sorgu parametresi bulunamadı")
-        }
-
-        return token
-      }
-    }
-
-    await new Promise((resolve) => {
-      setTimeout(resolve, 250)
-    })
-  }
-
-  throw new Error(`Mailpit'te ${email} alıcısına gönderilmiş mesaj bulunamadı`)
-}
 
 export interface FixtureUser {
   readonly email: string

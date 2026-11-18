@@ -35,8 +35,21 @@
 // metot-farkındalığının GEREKLİLİĞİNİ zaten PİNLİYOR.)
 //
 // `useSecureCookies`/F4'ün AYNI "ApiEnv'den TÜRET, `process.env`'e
-// GÜVENME" disiplini: güvenilir orijin `env.AUTH_BASE_URL`'den (A1,
-// panel host'u) türetilir — ikinci bir yapılandırma yüzeyi AÇILMAZ.
+// GÜVENME" disiplini: güvenilir orijin(ler) `ApiEnv`'den türetilir — ikinci
+// bir yapılandırma yüzeyi AÇILMAZ.
+//
+// GÜNCELLEME (ROADMAP v0.0.20, T-021/S6, ADR-0023 §4 "Üçüncü tarayıcı
+// orijini") — güvenilir orijin artık TEK DEĞER DEĞİL, bir LİSTE. Türetme
+// `./trusted-origins.js`'e TAŞINDI (`resolveTrustedOrigins`) — bu dosya
+// ARTIK `env.AUTH_BASE_URL`'i DOĞRUDAN OKUMAZ, ADR-0011'in "iki orijin
+// kontrolü TEK KAYNAKTAN beslenir" garantisi bu TEK fonksiyon üzerinden
+// korunur (`auth-instance.ts`'in Better Auth `trustedOrigins` seçeneği AYNI
+// fonksiyonu tüketir). `SUPERADMIN_BASE_URL` verilmediğinde liste TEK
+// elemanlıdır ve bu dosyanın davranışı BUGÜNKÜYLE BAYT-BİREBİR AYNIDIR
+// (ADR-0023 §4.5) — eski `detectSameOriginViolation` (TEK orijin, string
+// parametre) GERİYE UYUMLU bırakıldı, mevcut testler bu imzayı DEĞİŞMEDEN
+// tüketir; `canActivate` ARTIK yeni, LİSTE kabul eden
+// `detectSameOriginViolationAgainstTrustedOrigins`'i çağırır.
 
 import { Inject, Injectable } from '@nestjs/common'
 import type { CanActivate, ExecutionContext } from '@nestjs/common'
@@ -46,6 +59,7 @@ import { API_ENV } from '../config/config.tokens.js'
 import { CrossSiteRequestRejectedError } from '../errors/domain/cross-site-request-rejected.error.js'
 import type { HttpRequestHeaders, HttpRequestLike } from '../http/http-request.types.js'
 import { getRequestContext } from '../request-context/request-context.accessors.js'
+import { resolveTrustedOrigins } from './trusted-origins.js'
 
 /** `IncomingHttpHeaders`'ın dizi/`undefined` biçimlerini TEK bir değere indirger — çoğul başlık GEÇERSİZDİR (ilk değer okunur, solid tur2 L-4). */
 function singleHeaderValue(headers: HttpRequestHeaders, name: string): string | undefined {
@@ -60,46 +74,48 @@ export type SameOriginViolationReason =
   'cross_site_fetch_metadata' | 'origin_mismatch' | 'missing_origin_with_cookie'
 
 /**
- * `rawUrl`'in orijininin `trustedOrigin` İLE eşleştiğini doğrular. Ayrıştırma
- * BAŞARISIZ olursa (bozuk/eksik bir `Referer`) GÜVENİLMEZ sayılır (`false`) —
- * bu bir sessiz yutma DEĞİL, bilinçli bir fail-closed karardır: ayrıştırılamayan
- * bir `Referer`'ın "güvenilir" kabul edilmesi daha KÖTÜ olurdu.
+ * `rawUrl`'in orijininin `trustedOrigins` listesinden BİRİYLE eşleştiğini
+ * doğrular. Ayrıştırma BAŞARISIZ olursa (bozuk/eksik bir `Referer`)
+ * GÜVENİLMEZ sayılır (`false`) — bu bir sessiz yutma DEĞİL, bilinçli bir
+ * fail-closed karardır: ayrıştırılamayan bir `Referer`'ın "güvenilir" kabul
+ * edilmesi daha KÖTÜ olurdu.
  */
-function isSameOrigin(rawUrl: string, trustedOrigin: string): boolean {
+function isTrustedOrigin(rawUrl: string, trustedOrigins: readonly string[]): boolean {
   try {
-    return new URL(rawUrl).origin === trustedOrigin
+    return trustedOrigins.includes(new URL(rawUrl).origin)
   } catch {
     return false
   }
 }
 
 /**
- * `headers`'ın güvenilir orijinden (`trustedBaseUrl`) geldiğini doğrular.
- * İhlal YOKSA `undefined`, VARSA sebebini döner — çağıran (guard) bunu
- * `warn` logu + `CrossSiteRequestRejectedError`'a çevirir. Saf fonksiyon —
- * Nest DI'sız birim testi için.
+ * `headers`'ın `trustedOrigins` listesindeki bir orijinden geldiğini
+ * doğrular. İhlal YOKSA `undefined`, VARSA sebebini döner. Çekirdek mantık —
+ * `detectSameOriginViolation` (TEK orijin, GERİYE UYUMLU) VE
+ * `detectSameOriginViolationAgainstTrustedOrigins` (LİSTE, `SameOriginGuard`'ın
+ * tükettiği, ROADMAP v0.0.20/T-021/S6) bu fonksiyonu PAYLAŞIR — ikinci bir
+ * doğrulama mantığı İCAT EDİLMEZ.
  */
-export function detectSameOriginViolation(
+function detectViolationAgainstTrustedOrigins(
   headers: HttpRequestHeaders,
   method: string,
-  trustedBaseUrl: string,
+  trustedOrigins: readonly string[],
 ): SameOriginViolationReason | undefined {
   const secFetchSite = singleHeaderValue(headers, 'sec-fetch-site')
   if (secFetchSite === 'cross-site') {
     return 'cross_site_fetch_metadata'
   }
 
-  const trustedOrigin = new URL(trustedBaseUrl).origin
   const origin = singleHeaderValue(headers, 'origin')
 
   if (origin !== undefined) {
-    return origin === trustedOrigin ? undefined : 'origin_mismatch'
+    return trustedOrigins.includes(origin) ? undefined : 'origin_mismatch'
   }
 
   // `Origin` YOK — Better Auth'un AYNI sırasıyla `Referer`'a düş.
   const referer = singleHeaderValue(headers, 'referer')
   if (referer !== undefined) {
-    return isSameOrigin(referer, trustedOrigin) ? undefined : 'origin_mismatch'
+    return isTrustedOrigin(referer, trustedOrigins) ? undefined : 'origin_mismatch'
   }
 
   // `Origin` VE `Referer` İKİSİ DE YOK. GÜVENLİ metotlar (`GET`/`HEAD`/
@@ -115,13 +131,48 @@ export function detectSameOriginViolation(
   return undefined
 }
 
+/**
+ * `headers`'ın güvenilir orijinden (`trustedBaseUrl`) geldiğini doğrular.
+ * ⚠ GERİYE UYUMLU İMZA — TEK orijin (string) kabul eder; mevcut testler
+ * (`same-origin-guard.test.ts` ve iki `qa` eşi) bu fonksiyonu DEĞİŞMEDEN
+ * tüketir (ROADMAP v0.0.20/T-021/S6, ADR-0023 §4.5'in bayt-birebir kanıtı).
+ * `SameOriginGuard.canActivate` bu fonksiyonu ARTIK ÇAĞIRMAZ — bkz.
+ * `detectSameOriginViolationAgainstTrustedOrigins`. Saf fonksiyon — Nest
+ * DI'sız birim testi için.
+ */
+export function detectSameOriginViolation(
+  headers: HttpRequestHeaders,
+  method: string,
+  trustedBaseUrl: string,
+): SameOriginViolationReason | undefined {
+  return detectViolationAgainstTrustedOrigins(headers, method, [new URL(trustedBaseUrl).origin])
+}
+
+/**
+ * `headers`'ın `trustedOrigins` LİSTESİNDEKİ bir orijinden geldiğini
+ * doğrular (ROADMAP v0.0.20, T-021/S6, ADR-0023 §4) — `SameOriginGuard`'ın
+ * tükettiği YENİ giriş noktası. Saf fonksiyon — Nest DI'sız birim testi için.
+ */
+export function detectSameOriginViolationAgainstTrustedOrigins(
+  headers: HttpRequestHeaders,
+  method: string,
+  trustedOrigins: readonly string[],
+): SameOriginViolationReason | undefined {
+  return detectViolationAgainstTrustedOrigins(headers, method, trustedOrigins)
+}
+
 @Injectable()
 export class SameOriginGuard implements CanActivate {
   constructor(@Inject(API_ENV) private readonly env: ApiEnv) {}
 
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<HttpRequestLike>()
-    const violation = detectSameOriginViolation(req.headers, req.method, this.env.AUTH_BASE_URL)
+    const trustedOrigins = resolveTrustedOrigins(this.env)
+    const violation = detectSameOriginViolationAgainstTrustedOrigins(
+      req.headers,
+      req.method,
+      trustedOrigins,
+    )
 
     if (violation === undefined) {
       return true

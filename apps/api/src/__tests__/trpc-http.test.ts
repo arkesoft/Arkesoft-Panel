@@ -31,6 +31,8 @@ import type {
   JobReadPort,
   MemberWritePort,
   MembershipReadPort,
+  PlatformAdminReadPort,
+  PlatformReadPort,
   RegistrationReadPort,
   RegistrationWritePort,
   SessionListReadPort,
@@ -46,7 +48,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 
 import { PermissionDeniedError } from '../errors/domain/permission-denied.error.js'
+import { PlatformAdminRequiredError } from '../errors/domain/platform-admin-required.error.js'
 import { TenantContextRequiredError } from '../errors/domain/tenant-context-required.error.js'
+import { TwoFactorRequiredError } from '../errors/domain/two-factor-required.error.js'
 import { UnauthenticatedError } from '../errors/domain/unauthenticated.error.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { createAuthenticatedSession } from './helpers/auth-fixture.js'
@@ -54,6 +58,7 @@ import { createTestApp } from './helpers/create-test-app.js'
 import { ProbeDetailsError, TrpcProbeController } from './helpers/trpc-probe.controller.js'
 import {
   jobStatusWireValuesMatchPrismaAtRuntime,
+  platformAuditActionWireValuesMatchPrismaAtRuntime,
   tenantRoleWireValuesMatchPrismaAtRuntime,
   tenantStatusWireValuesMatchPrismaAtRuntime,
 } from './type-pins/trpc-wire-contract.pin.js'
@@ -354,6 +359,20 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
     const probeRegistrationWrite: RegistrationWritePort = {
       createTenant: () => Promise.reject(new ProbeDetailsError()),
     }
+    // ROADMAP v0.0.20, T-021/S7 — `TrpcPorts`'un ZORUNLU iki yeni üyesi
+    // (R-PO5'in beklenen, geçici kırmızılığının kapanışı). Bu probe
+    // `platform.*`'ı ÇAĞIRMAZ (hedef `tenant.current`); stub yalnızca
+    // sözleşmeyi doldurmak için var, hiçbir assert buna dayanmaz. ⚠
+    // OPSİYONEL YAPILMASI YASAK (`context/trpc-context.types.ts`'in YAZILI
+    // yasağı) — `registrationWrite`'ın v0.1.0 emsali.
+    const probePlatformAdminRead: PlatformAdminReadPort = {
+      requirePlatformAdmin: () => Promise.reject(new ProbeDetailsError()),
+      readPlatformSession: () => Promise.reject(new ProbeDetailsError()),
+    }
+    const probePlatformRead: PlatformReadPort = {
+      listTenants: () => Promise.reject(new ProbeDetailsError()),
+      listAuditEntries: () => Promise.reject(new ProbeDetailsError()),
+    }
     const context: TrpcContext = {
       requestId,
       logger: { info: () => undefined, warn: () => undefined, error: () => undefined },
@@ -370,6 +389,8 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
         sessionListRead: probeSessionListRead,
         registrationRead: probeRegistrationRead,
         registrationWrite: probeRegistrationWrite,
+        platformAdminRead: probePlatformAdminRead,
+        platformRead: probePlatformRead,
       },
       errors: {
         unauthenticated: () => new UnauthenticatedError(),
@@ -378,6 +399,12 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
         // üyesi. Bu probe izin kapısına UĞRAMAZ (`tenant.current`
         // `tenantProcedure`'dür); fabrika yalnızca sözleşmeyi doldurur.
         permissionDenied: (permission, role) => new PermissionDeniedError(permission, role),
+        // ROADMAP v0.0.20, T-021/S7 — `TrpcErrorFactoryPort`'un ZORUNLU iki
+        // yeni üyesi. Bu probe `platformAdminProcedure`'ün kapısına UĞRAMAZ
+        // (`tenant.current` `tenantProcedure`'dür); fabrikalar yalnızca
+        // sözleşmeyi doldurur.
+        platformAdminRequired: () => new PlatformAdminRequiredError(),
+        twoFactorRequired: () => new TwoFactorRequiredError(),
       },
     }
 
@@ -448,6 +475,14 @@ describe('/trpc entegrasyonu (gerçek Postgres + gerçek HTTP) — ROADMAP v0.0.
     // bir `.test.ts` DEĞİL (vitest glob'u onu yakalamaz), yani içindeki
     // çalışma zamanı fonksiyonları ancak buradan çağrılırsa KOŞAR.
     expect(tenantRoleWireValuesMatchPrismaAtRuntime()).toBe(true)
+  })
+
+  it('PİN 15 çalışma zamanı yarısı — platformAuditActionSchema.options, Object.values(PlatformAuditAction) ile SIRALANMIŞ eşleşiyor', () => {
+    // ROADMAP v0.0.20, T-021/S7 — PİN 1/5/8'in BİREBİR ikizi. Tip pini
+    // (`pinPlatformAuditActionWireKeysExactlyMatchPlatformAuditAction`,
+    // `pnpm typecheck`) anahtar KÜMESİNİ denetler, bu assert DEĞER
+    // kümesini denetler.
+    expect(platformAuditActionWireValuesMatchPrismaAtRuntime()).toBe(true)
   })
 
   // GÜVENLİK DÜZELTMESİ (security tur 1, medium bulgu — GUARD ATLATMA):

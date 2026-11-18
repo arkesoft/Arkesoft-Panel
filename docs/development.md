@@ -300,6 +300,13 @@ erişimi **alır**. Düzeltme `db:deploy`'dan sonra `db:bootstrap`'i tekrar çal
 dosya idempotent olduğu için güvenli, bu kez tablo var olduğu için REVOKE gerçekten **uygulanır**.
 Ayrıntı: `.github/actions/prepare-db/action.yml` satırlarında `bootstrap` → `deploy` → `bootstrap` → `seed` sırası CI'da zaten uygulanıyor.
 
+**İkinci sebep (v0.0.20.2, T-023):** aynı iki geçişli yakınsama artık `bootstrap-roles.sql`'in
+§9'u (`audit_log`/`platform_audit_log`'dan `REVOKE UPDATE, DELETE, TRUNCATE`) için de
+gereklidir — §9'un `REVOKE`'u da `pg_tables` üzerinde `IF EXISTS` şartlıdır ve ilk
+`db:bootstrap` çağrısında bu iki tablo henüz yoktur (`db:deploy` adımında oluşturulur).
+Mekanizma §7'nin (`arkesoft_auth` kolon yetkisi) **birebir aynısıdır**; ek bir CI adımı
+**eklenmedi**, çünkü CI zaten iki geçişlidir (ADR-0017 Ek, v0.0.20.2).
+
 **Mevcut geliştirici için geçiş** (v0.0.12 ve öncesi):
 
 `.env` dosyasına yeni değişken ekleyin:
@@ -391,9 +398,10 @@ expression.sh`'e taşındı — bu TEK DOSYA artık hem `pnpm guards` HEM `ci.ym
 > sahte-yeşil dedektörleri, scripts/ tip+lint, sürüm tutarlılığı) HÂLÂ bilinçli kopya —
 > bu adımların gövdesini CI'a taşımak/CI'ı buraya yönlendirmek ayrı bir karar/ADR gerektirir.
 
-### Dört kademeli geri alma (v0.0.13+, kademe 4: v0.0.14.1+)
+### Beş kademeli geri alma (v0.0.13+, kademe 4: v0.0.14.1+, kademe 5: v0.0.20.2+)
 
-RLS ve rol ayrımını tam geri almak istiyorsanız, sırayla uygulayın:
+RLS ve rol ayrımını tam geri almak istiyorsanız, **numaralandırma sırasıyla değil**,
+aşağıdaki "Numara ≠ yürütme sırası" uyarısındaki gerçek sırayla uygulayın.
 
 #### 1. Politika korumasını kaldır
 
@@ -436,25 +444,31 @@ ve `ALTER DEFAULT PRIVILEGES`'i iptal eder. **`DROP ROLE` YAPILMAZ** — roller 
 seviyesinde yaşar, silme bu script'in kapsamının dışındadır (bkz. ADR-0007, K-E2).
 
 **Uyarı:** Kademe 1-3'ün her adımı `pnpm test:isolation`'ı kırmızıya düşürür — bu bilinçli
-tasarım. Kapatma bir işlem değildir, imkânsızlığın adımlarıdır. ⚠ **Kademe 4'ün istisnası
-aşağıda** — aynı "kırmızı" sonuç farklı bir sebepten gelir.
+tasarım. Kapatma bir işlem değildir, imkânsızlığın adımlarıdır. ⚠ **Kademe 4 ve kademe 5'in
+istisnası aşağıda** — aynı "kırmızı" sonuç farklı bir sebepten gelir.
 
-#### 4. Kimlik rolü ayrımını geri al (v0.0.14.1+) — dördüncü kademe, SIRAYLA İLK çalışır
+#### 4. Kimlik rolü ayrımını geri al (v0.0.14.1+) — dördüncü kademe, SIRAYLA İKİNCİ çalışır
 
 ```bash
 pnpm db:rollback-auth-role
 ```
 
 ⚠⚠ **Numara eklenme sırasını kaydeder, yürütme sırasını DEĞİL.** Gerçek yürütme sırası
-**4 → 1 → 2 → 3**'tür: kademe 1-3 (yukarıdaki `pnpm db:rollback-roles`) artan yıkıcılıkta
-bir **kill-switch merdiveni**dir ve `arkesoft_app`'ten **her şeyi** `REVOKE` eder; kademe 4
-ise yalnızca v0.0.14.1'in **deltasını** (kolon `GRANT` + tablo `REVOKE`) tersler ve
-kataloğu v0.0.14'ün durumuna döndürür. Kademe 3 **önce** koşarsa `arkesoft_app` zaten
-hiçbir tabloda yetki taşımaz ve kademe 4'ün "yetkiyi geri ver" adımı **tutarsız bir ara
-durum** yaratır. Bu yüzden **iki ayrı dosya, iki ayrı script**
-(`sql/rollback-roles.sql` ≠ `sql/rollback-auth-role.sql`, `pnpm db:rollback-roles` ≠
-`pnpm db:rollback-auth-role`) — tek script'e birleştirmek, operatör sadece bu sürümün
-deltasını geri almak isterken geliştirme veritabanını kademe 1-3'ün kill-switch'ine sokar.
+**5 → 4 → 1 → 2 → 3**'tür: kademe 1-3 (yukarıdaki `pnpm db:rollback-roles`) artan
+yıkıcılıkta bir **kill-switch merdiveni**dir ve `arkesoft_app`'ten **her şeyi** `REVOKE`
+eder; kademe 4 ve kademe 5 ise yalnızca kendi sürümlerinin **deltasını** tersler ve
+kataloğu o sürümden **önceki** duruma döndürür (kademe 4 → v0.0.14'ün durumu, kademe 5 →
+v0.0.20.2'den önceki durum). Kademe 3 **önce** koşarsa `arkesoft_app` zaten hiçbir tabloda
+yetki taşımaz ve kademe 4/5'in "yetkiyi geri ver" adımı **tutarsız bir ara durum**
+yaratır — bu yüzden ikisi de kademe 1-3'ten **önce** koşturulur; kademe 4 ile kademe 5
+arasında ise sıra **önemli değildir** (ayrı tablo kümelerine dokunurlar: kademe 4
+`account`/`session`/`verification`/`app_user` kolonları, kademe 5 `audit_log`/
+`platform_audit_log` tablo yetkisi — kesişim yok), numaralandırma sırasında (5'ten önce 4) yazılması yalnızca eklenme kronolojisini izler. Bu yüzden **üç ayrı dosya, üç ayrı
+hedef** (`sql/rollback-roles.sql` ≠ `sql/rollback-auth-role.sql` ≠
+`sql/rollback-audit-append-only.sql`; `pnpm db:rollback-roles` ≠
+`pnpm db:rollback-auth-role` ≠ `pnpm db:rollback-audit-append-only`) — tek script'e
+birleştirmek, operatör sadece bir sürümün deltasını geri almak isterken geliştirme
+veritabanını kademe 1-3'ün kill-switch'ine sokar.
 
 **"Başlangıç durumuna döndü" ≠ "linter yeşil".** Kademe 4'ten sonra `pnpm test:isolation`
 **beklenen biçimde KIRMIZIDIR** (`APP_ROLE_RETAINS_SECRET_TABLE_PRIVILEGE` +
@@ -463,6 +477,7 @@ kurallar) katalogdan **daha yeni** olduğu için. Bu bir hata değil, **kurallar
 çalıştığının kanıtıdır**; kademe 1-3'ün kırmızısıyla aynı görünüp farklı bir sebepten
 gelir. Yeşile dönüşün yolu: **`pnpm db:bootstrap`'i yeniden koştur** (bootstrap §7'yi
 tekrar uygular). Ayrıntı ve gerekçe: `docs/adr/0017-veritabani-seviyesi-rol-ayrimi-ve-kolon-yetkisi.md`.
+Kademe 5'in aynı sınıf istisnası aşağıda, kendi bölümünde.
 
 ⚠ **Üç sır taşıyan tablonun (`account`/`session`/`verification`) veya `app_user`'ın
 şeması değişirse** (yeni kolon), kolon hibesi bootstrap'ın `DO` döngüsüyle **otomatik**
@@ -477,6 +492,41 @@ düşecek** (`UNEXPECTED_SECURITY_DEFINER_FUNCTION`) ve operatör/geliştirici *
 PostgreSQL'in `ALTER DEFAULT PRIVILEGES`/fonksiyon ACL etkileşiminin ölçülmüş bir sınırı
 (bkz. Ölçüm disiplini (k)) ve `security`'nin kabul ettiği bir davranış: _"arıza modu
 fail-closed ve gürültülü"_. Bkz. CLAUDE.md §7, `SECURITY DEFINER` maddesi.
+
+#### 5. Denetim izi ekle-sal (append-only) sertleştirmesini geri al (v0.0.20.2+) — beşinci kademe, SIRAYLA İLK çalışır
+
+```bash
+pnpm db:rollback-audit-append-only
+```
+
+Bu komut, `sql/bootstrap-roles.sql` §9'un deltasını tersler: `arkesoft_app`'e
+`audit_log` **ve** `platform_audit_log` tablolarında `GRANT UPDATE, DELETE` verir. Kademe
+4 ile **aynı sınıf istisna** geçerlidir — "Numara eklenme sırasını kaydeder, yürütme
+sırasını DEĞİL" uyarısı (yukarıda) burada da uygulanır: kademe 3 **önce** koşarsa
+`arkesoft_app` zaten hiçbir tabloda yetki taşımaz ve kademe 5'in "yetkiyi geri ver" adımı,
+kademe 4 için yukarıda belgelenen **aynı tutarsız ara durumu** üretir; bu yüzden kademe 5
+de kademe 1-3'ten **önce** koşturulur (gerçek sıra **5 → 4 → 1 → 2 → 3**).
+
+⚠⚠ **§9'un asimetrisi KASITLI — "simetriyi geri getirme" refleksine karşı uyarı.**
+`bootstrap-roles.sql` §9'un `REVOKE`'u **üç** fiil taşır (`UPDATE, DELETE, TRUNCATE`); bu
+komutun `GRANT`'i yalnızca **iki** fiil taşır (`UPDATE, DELETE`) — `TRUNCATE` **bilerek**
+geri verilmez. Sebebi: sertleştirme öncesi `arkesoft_app` `TRUNCATE` yetkisini **hiç
+taşımıyordu** (canlı ölçüm, T-023/`db` M3/M3b: `public` şemasındaki **20 tablonun 0'ında**
+`arkesoft_app` `TRUNCATE` taşıyor); `TRUNCATE`'i geri vermek, geri almayı başlangıç
+durumunun **üstüne** çıkarır ve `TRUNCATE` RLS'e tabi **olmadığı** için ele geçirilmiş bir
+uygulama kimliğinin tek bir `TRUNCATE audit_log`/`TRUNCATE platform_audit_log` ile **tüm
+kiracıların** denetim kaydını silmesine yol açar. §9'un `REVOKE TRUNCATE`'i bu yüzden bu
+geri almadan **sonra da kalıcı** kalır — `pg_default_acl` `arkesoft_migrator`'ın
+doğurduğu yeni tabloları `arwd` (TRUNCATE içermez) ile doğurduğu için bu savunma bugün
+yük taşımasa da (no-op) **savunma derinliği** olarak bilerek korunur. **Bu asimetriyi
+"düzeltip" `GRANT`'e `TRUNCATE`'i eklemek, kapatılmış bir `high` güvenlik bulgusunu
+yeniden açar** — bkz. `security` T-023 tur 1 bulgusu F1 ve `rollback-audit-append-only.sql:51-67`.
+
+**"Başlangıç durumuna döndü" ≠ "linter yeşil"** burada da geçerlidir: kademe 5'ten sonra
+`pnpm test:isolation` **beklenen biçimde KIRMIZIDIR** (`tenancy.ts`'teki
+`APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS` beyanı hâlâ iki satırı taşırken katalog
+v0.0.20.2'den **önceki** duruma döner) — kuralların çalıştığının kanıtıdır, hata değil.
+Yeşile dönüşün yolu aynı: **`pnpm db:bootstrap`'i yeniden koştur**.
 
 ### `withTenant()` kullanımı
 
@@ -577,6 +627,22 @@ tabloda** yeniden sorulacak:
 denetlenebilir. ⚠ `tenant_invitation`'da bu gerekçenin karşılığı **bilerek yazılmadı ve bunun
 kendisi yazıldı**: o tablo gerçekten güncellenir (tekrar davet) ve kabulde satır silinir, yani
 iki yolun da üretimde **gerçek** karşılığı var.
+
+**Güncelleme (v0.0.20.2, T-023):** yukarıdaki alıntının _"uygulama rolü dört DML yetkisinin
+dördüne de sahiptir"_ cümlesi `audit_log` ve `platform_audit_log` için artık **geçerli değil**
+— `bootstrap-roles.sql` §9 bu iki tablodan `UPDATE`/`DELETE`/`TRUNCATE`'i çekti, kalan yalnızca
+`SELECT`/`INSERT`. Bunun sonucu: bu iki tabloda prob'un beklediği reddin **kaynağı** artık RLS
+değil, **veritabanı yetkisi**dir (Prisma `P2039` + `originalCode === '42501'`, "permission
+denied" — RLS'in ürettiği `P2025`/"record not found" **değil**). `TenantScopedProbe`
+sözleşmesi bu farkı görünür kılmak için **zorunlu** bir alan kazandı:
+`mutationRejection: 'record-not-found' | 'privilege-denied'`
+(`packages/db/src/__tests__/helpers/tenant-isolation-suite.ts:75`). Diğer altı prob
+(`job`, `tenant_invitation`, `subscription`, `tenant_version_state`, `tenant_update_history`,
+`tenant_membership`) `'record-not-found'` bildirir — RLS hâlâ tek bekçidir; yalnızca
+`audit-log.probe.ts` `'privilege-denied'` bildirir. Yeni bir append-only tablo eklerken bu alanı
+kopyalamak yerine **ölçmek** gerekir: tablonun `REVOKE`'u var mı, yoksa yalnızca RLS mi
+koruyor sorusunun cevabı — `isPrivilegeDeniedError`'ın `error.code === 'P2039'` **tek başına**
+yetersiz olduğunu da unutma (bkz. aşağıdaki Ölçüm disiplini (r)).
 
 ⚠ İki kalıntı borç olarak kayıtlıdır (ROADMAP → Teknik Borç): append-only'nin **üretim yarısı**
 yalnızca yazma çağrısı için kapılıydı (düzeltildi, dördüncü kapı eklendi) ve süitin ikinci
@@ -1009,6 +1075,66 @@ hiçbir şey çalıştırmadan** iki ardışık `pnpm --filter @arkesoft/admin t
 
 ---
 
+## Süper admin (`apps/superadmin`) Geliştirme (v0.0.20+)
+
+### ⚠⚠ `SUPERADMIN_IP_ALLOWLIST` boşken panel TAMAMEN KAPALIDIR — bu VARSAYILAN ve BİLİNÇLİDİR
+
+`SUPERADMIN_IP_ALLOWLIST` **varsayılanı boş dizedir** (`api-env.ts`:
+`z.string().default('')`) ve boş liste, `platform.*` tRPC yüzeyinin **tamamını**
+fail-closed reddeder — `PlatformAdminIpGuard` üç dalının ilki tam bu durum için var:
+liste boşsa istek **403 `PLATFORM_NETWORK_NOT_ALLOWED`** alır, IP'nin kendisi hiç
+karşılaştırılmaz.
+
+**Bu bir hata değil, tasarımın varsayılan davranışıdır** (ADR-0023 §5): yeni bir ortam
+kurulumunda operatör allowlist'i **elle** doldurmadan süper admin paneli kimseye
+açılmaz. ⚠ Ama teşhis edilmediğinde bu, ADR-0011'in (madde 37) _"en pahalı teşhis
+sınıfı"_ dediği **sessiz 403** ile aynı yere düşer: panel yüklenir, giriş bile
+**çalışabilir** (kimlik + 2FA katmanı IP kapısından **önce** koşar — ADR-0023 §5,
+_"üçüncü katman, birincil yetkilendirme değil"_), ama kiracı listesi/denetim kaydı
+ekranları hep boş/hatalı kalır ve belirti _"veri gelmiyor"_ olur, _"yapılandırma eksik"_
+değil.
+
+**Teşhis:** yanıt gövdesindeki hata kodu `PLATFORM_NETWORK_NOT_ALLOWED` ise (`401`
+`UNAUTHENTICATED` veya `403` `PLATFORM_ADMIN_REQUIRED` **değil**) kök neden budur.
+Bu üç kod birbirinden **kesin** ayrılır: `UNAUTHENTICATED` oturum yok demektir,
+`PLATFORM_ADMIN_REQUIRED` oturum var ama `platform_admin` kaydı/2FA yok demektir,
+`PLATFORM_NETWORK_NOT_ALLOWED` ise kimlik+yetki **doğru** ama ağ IP'si allowlist'te
+**yok** demektir — üçü de 401/403 olduğu için gövdeyi okumadan ayırt edilemez.
+
+**Çözüm (yerel geliştirme):**
+
+```bash
+# .env — geliştiricinin kendi makinesi loopback'ten bağlanır
+SUPERADMIN_IP_ALLOWLIST=127.0.0.1
+```
+
+Üretimde/CI'da gerçek operatör IP'lerinin (veya VPN çıkış IP'lerinin) virgülle ayrılmış
+listesi beklenir. `AUTH_TRUSTED_PROXY_COUNT` **0** iken (varsayılan) `X-Forwarded-For`
+hiç okunmaz; bir ters vekilin arkasındaysanız bu değeri doğru vekil sayısına ayarlamadan
+allowlist'in IP'leri **hiçbir zaman eşleşmez** (bkz. `ROADMAP.md` → Teknik Borç →
+`security` L5, ham IP'nin güvenilmemesi gerektiği ayrı bir kayıtlı borç).
+
+⚠ Bu kapı **birincil yetkilendirme değildir** — izinsiz bir ağdan biri yine de giriş
+yapabilir (kimlik + TOTP gerekir), yalnızca **hiçbir veri ucunu okuyamaz**. IP kapısının
+amacı veri erişimini ağ seviyesinde daraltmaktır, kimlik doğrulamanın yerine geçmez.
+
+### Dev akışı
+
+```bash
+pnpm infra:up
+pnpm db:migrate
+pnpm db:seed
+pnpm --filter @arkesoft/api dev                     # API
+SUPERADMIN_IP_ALLOWLIST=127.0.0.1 pnpm --filter @arkesoft/superadmin dev   # Vite, :5174
+```
+
+`SUPERADMIN_BASE_URL` panelin tarayıcıda gördüğü orijindir (ADR-0011 gözden geçirme
+koşulu 2'nin cevabı — `AUTH_BASE_URL`'in **anlamı değişmez**, güvenilir orijin **tek
+değerden listeye** geçer, `trusted-origins.ts`). Dev portu **5174**, sabit; e2e override
+`ARKESOFT_SUPERADMIN_E2E_PORT` (bkz. `docs/testing.md` port haritası).
+
+---
+
 ## Vitrin (`apps/storefront`) Geliştirme (v0.0.8+)
 
 ### `CLAUDECODE` tuzağı — `astro dev` arka plana düşer
@@ -1337,7 +1463,8 @@ tehlikelidir (ADR-0008'in kendi dersi).
 
 ✅ **Vaat karşılandı (v0.0.14.1).** İkinci operatör kırılması geldi: `DATABASE_AUTH_URL`
 artık koşulsuz zorunlu ve geçiş + geri alma adımları yazıldı — bkz. yukarıdaki
-"Dört kademeli geri alma" → kademe 4 ve `.env.example:73`. Operatörün yapacağı iki iş:
+"Beş kademeli geri alma" → kademe 4 ve `.env.example:73` (⚠ başlık v0.0.20.2'de
+kademe 5'in eklenmesiyle "Dört"ten "Beş"e güncellendi, T-023). Operatörün yapacağı iki iş:
 mevcut `.env`'e satırı elle eklemek (`pnpm env:init` var olan dosyayı güncellemez) ve
 `pnpm db:bootstrap`'i yeniden koşturmak. Ayrıntı ve gerekçe: ADR-0017.
 
@@ -1587,5 +1714,29 @@ bir ajan tarafından **27** (distinct kolon), başka bir ajan tarafından **81**
 (`aclexplode` satırı, 27 kolon × 3 privilege) raporlandı — çelişki değil, farklı
 soruların yanıtı. Çelişen iki sayı görürsen önce **hangi sorgunun hangi soruyu
 sorduğunu** doğrula, birini "yanlış" ilan etmeden önce.
+
+### (q) `as const satisfies` — açık tip bildirimi literal tipi genişletir (v0.0.20.2'de ölçüldü)
+
+Modül sınırını geçen bir `const`'a açık bir tip bildirimi (`: readonly T[]`) yazmak, `as const`'ın
+ürettiği **literal** tipleri (örn. `'audit_log' | 'platform_audit_log'`) o açık bildirime
+**genişletir** (`string`'e) — modülün dışındaki her `Exclude<>`/`Pick<>` pin'i bu yüzden
+sabitin kendisine değil, bir **aynaya** bağlanmak zorunda kalır (`packages/db/src/tenancy.ts`'in
+`APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS`'ı, T-023/S3 bu şekilde ölçtü). Düzeltme:
+`export const X = [...] as const satisfies readonly T[]` — `satisfies` şekli doğrular ama
+çıkarılan tipi değiştirmez, `as const`'ın literal tipi modül sınırını geçerken korunur ve pin
+aynaya değil gerçek sabite bağlanabilir
+(`packages/db/src/__tests__/type-pins/app-role-privilege-expectations.pin.ts`).
+
+### (r) `P2039` yetki reddine ÖZGÜ DEĞİL — Prisma'nın ORM genel çöp kutusu
+
+Prisma 7.10.1'in driver-adapter katmanı, Postgres'in yetki reddini (`42501`, "permission
+denied") `.create()`/`.update()` gibi ORM çağrılarında **`P2039`** ("Database error") olarak
+yüzeye çıkarır — ama `P2039` **yalnızca** yetki reddinde doğmaz: sözdizimi hatası, "relation
+does not exist", deadlock ve serileştirme hataları da **aynı kodu** taşır (T-023/S5,
+Prisma kaynağından ölçüldü). `error.code === 'P2039'` **tek başına** bir yetki reddi iddiası
+için yetersizdir — gerçek ayraç SQLSTATE'in kendisidir:
+`error.meta.driverAdapterError.cause.originalCode === '42501'`. İkisi birlikte, Zod
+`safeParse` ile fail-closed okunmalı (ayrıştırma başarısızsa `false` dönülür, bkz.
+`packages/db/src/__tests__/helpers/tenant-isolation-suite.ts:174`'teki `isPrivilegeDeniedError`).
 
 ---

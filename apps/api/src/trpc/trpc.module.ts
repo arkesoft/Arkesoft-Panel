@@ -52,10 +52,17 @@
 // dokunmadan DERLENEMEZ/ÇALIŞAMAZ); `MemberWritePortAdapter`'ın AYNI
 // deseni: iş mantığı BU MODÜLDE DEĞİL, adaptör `RegistrationModule`'ün
 // servisine delege eder ve o modül `imports`'a EKLENDİ.
+
+// GÜNCELLEME (ROADMAP v0.0.20, T-021/S7, ADR-0023 Karar 1/2/3):
+// `PlatformAdminReadPortAdapter`/`PlatformReadPortAdapter` EKLENDİ —
+// `platform.*`'ın iş mantığı adaptörleri. AYNI desen: iş mantığı BU
+// MODÜLDE DEĞİL (`ImpersonationService`'te, `PlatformModule` İÇİNDE), bu
+// yüzden `PlatformModule` `imports`'a EKLENDİ.
 import { Module } from '@nestjs/common'
 
 import { AuthModule } from '../auth/auth.module.js'
 import { MemberModule } from '../member/member.module.js'
+import { PlatformModule } from '../platform/platform.module.js'
 import { RegistrationModule } from '../registration/registration.module.js'
 import { TenantSecurityModule } from '../tenant/tenant-security.module.js'
 import { JobReadPortAdapter } from './ports/job-read.port.adapter.js'
@@ -72,7 +79,7 @@ import { TrpcController } from './trpc.controller.js'
 import { TrpcErrorsPortAdapter } from './trpc-errors.port.adapter.js'
 
 @Module({
-  imports: [MemberModule, TenantSecurityModule, AuthModule, RegistrationModule],
+  imports: [MemberModule, TenantSecurityModule, AuthModule, RegistrationModule, PlatformModule],
   controllers: [TrpcController],
   providers: [
     TenantReadPortAdapter,

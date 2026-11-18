@@ -400,6 +400,17 @@ describe('JobReadPortAdapter (ROADMAP v0.0.11, T-013/S8)', () => {
           registrationWrite: {
             createTenant: () => Promise.reject(new Error('çağrılmamalı')),
           },
+          // ROADMAP v0.0.20, T-021/S7 — `TrpcPorts`'un ZORUNLU iki yeni
+          // üyesi (R-PO5'in beklenen, geçici kırmızılığının kapanışı). Bu
+          // probe `platform.*`'ı ÇAĞIRMAZ.
+          platformAdminRead: {
+            requirePlatformAdmin: () => Promise.reject(new Error('çağrılmamalı')),
+            readPlatformSession: () => Promise.reject(new Error('çağrılmamalı')),
+          },
+          platformRead: {
+            listTenants: () => Promise.reject(new Error('çağrılmamalı')),
+            listAuditEntries: () => Promise.reject(new Error('çağrılmamalı')),
+          },
         },
         errors: {
           unauthenticated: () => {
@@ -412,6 +423,14 @@ describe('JobReadPortAdapter (ROADMAP v0.0.11, T-013/S8)', () => {
           // ÇAĞIRMAZ. Fırlatması o iddianın mekanik kanıtıdır: çağrılırsa
           // test gürültülü biçimde kırılır.
           permissionDenied: () => {
+            throw new Error('çağrılmamalı')
+          },
+          // ROADMAP v0.0.20, T-021/S7 — `TrpcErrorFactoryPort`'un ZORUNLU iki
+          // yeni üyesi. Bu probe `platformAdminProcedure`'ün kapısına UĞRAMAZ.
+          platformAdminRequired: () => {
+            throw new Error('çağrılmamalı')
+          },
+          twoFactorRequired: () => {
             throw new Error('çağrılmamalı')
           },
         },

@@ -33,7 +33,7 @@
 import {
   createPlaywrightBaseConfig,
   desktopDevice,
-  mobileDevice,
+  reflowMobileDevice,
 } from '../../scripts/playwright/base.js'
 import { AUTH_IP_LIMITS, SPEC_AUTH_COST } from './e2e/auth-budget.js'
 import { resolvePanelDevPort } from './src/app/panel-config.js'
@@ -87,6 +87,35 @@ if (
 
 export default createPlaywrightBaseConfig({
   testDir: './e2e',
+  // DÜZELTME (ROADMAP v0.0.20.3, T-024 fix turu 1, `security` tur1 F4 —
+  // medium) — AC-21'in "onaylanmış `incomplete` ad ad raporlanır" yarısı
+  // ÖLÇÜLEREK sessiz bulundu: CI'nın varsayılan reporter'ı (`dot`) ve
+  // bu depodaki hiçbir `playwright.config.ts` `testInfo.annotations`'ı
+  // (`scripts/playwright/a11y.ts`'in yazdığı `a11y-incomplete` kaydı)
+  // STDOUT'a/artefakta BASMIYORDU — `apps/*/playwright-report` (html
+  // reporter'ın ürettiği dizin) de hiç DOĞMUYORDU (grep: üç config'te de
+  // `reporter` alanı YOK). `html` reporter EKLENEREK çözülmedi: o dizin
+  // `ci.yml:1564`'ün (bugün `:apps/*/playwright-report`) ZATEN YÜKLEDİĞİ
+  // yola düşer ve html reporter trace/snapshot'ı GÖMER — F1'in kapattığı
+  // PII kanalını BAŞKA bir reporter'la GERİ AÇARDI. Seçilen yol: `dot`
+  // (CI varsayılanı, DAVRANIŞ DEĞİŞMİYOR) + `json` (outputFile BİLEREK
+  // `apps/*/test-results`/`apps/*/playwright-report` glob'unun DIŞINDA,
+  // bu yüzden `ci.yml`'in mevcut yükleme adımına HİÇ GİRMEZ) — `ci.yml`
+  // bu JSON'ı `jq` ile okuyup YALNIZCA `a11y-incomplete` açıklamasını
+  // (`<scanName>/<ruleId> × <düğüm sayısı>` — PII TAŞIMAZ, `a11y.ts`
+  // ölçüldü) `GITHUB_STEP_SUMMARY`'ye yazar; JSON dosyasının KENDİSİ
+  // (hata mesajları/target snippet'leri taşıyabilir, F1'in `medium`
+  // bulgu 2'siyle AYNI sınıf) hiçbir yere YÜKLENMEZ. Yalnızca CI'da
+  // (`process.env['CI']` — `base.ts`'in `forbidOnly` deseniyle AYNI
+  // koşul) — yerelde reporter DEĞİŞMEZ (Playwright'ın varsayılanı
+  // `list`), geliştiricinin yerel teşhis deneyimi ETKİLENMEZ.
+  // `exactOptionalPropertyTypes: true` — `reporter: undefined` TS2379
+  // verir (alanın KENDİSİ `undefined` KABUL ETMEZ, yalnızca YOK OLABİLİR);
+  // bu yüzden anahtar CI DIŞINDA hiç SPREAD EDİLMEZ, `undefined`'A
+  // ATANMAZ.
+  ...(process.env['CI']
+    ? { reporter: [['dot'], ['json', { outputFile: 'playwright-annotations.json' }]] as const }
+    : {}),
   // ⚠⚠ T-020/S5 ÖLÇÜMÜ (negatif kanıt sırasında bulundu): Playwright'ın
   // VARSAYILAN `testMatch`'i `*.test.ts`'i DE eşleştirir (`*.spec.ts`
   // KADAR) — `e2e/__tests__/auth-budget.test.ts` (Vitest testi, `describe`/
@@ -123,7 +152,9 @@ export default createPlaywrightBaseConfig({
     {
       name: 'admin-mobile',
       testDir: './e2e/responsive',
-      use: { ...mobileDevice },
+      // T-024 (ROADMAP v0.0.20.3): WCAG 1.4.10 referans genişliği (320 px)
+      // — `mobileDevice` (412 px) DEĞİL, `reflowMobileDevice` (bkz. base.ts).
+      use: { ...reflowMobileDevice },
     },
   ],
   use: {

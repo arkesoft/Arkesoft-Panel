@@ -150,3 +150,19 @@ describe('formatSupportCodeLine', () => {
     expect(formatSupportCodeLine(null)).toBeNull()
   })
 })
+
+// ROADMAP v0.0.20.1 (T-022/S4, ADR-0024 Karar 5/AC-3) — `setupResumedNotice`
+// KAPALI dünyayı (ERROR_MESSAGES/PanelErrorCode) BÜYÜTMEZ: `TOTP_NOT_ENABLED`
+// içeride tüketilir, kullanıcıya hiçbir ekranda doğrudan gösterilmez. Bu
+// bloğun TEK işi `MESSAGES.auth.twoFactor` altındaki bilgilendirme metnini
+// doğrulamak.
+describe('MESSAGES.auth.twoFactor.setupResumedNotice — ADR-0024 Karar 5', () => {
+  it('anahtar VAR ve boş değil', () => {
+    expect(MESSAGES.auth.twoFactor.setupResumedNotice.length).toBeGreaterThan(0)
+  })
+
+  it('metin yedek kodların bu ekranda tekrar gösterilemeyeceği SINIRINI içerir', () => {
+    expect(MESSAGES.auth.twoFactor.setupResumedNotice).toContain('yedek kodlar')
+    expect(MESSAGES.auth.twoFactor.setupResumedNotice).toContain('tekrar gösterilemez')
+  })
+})

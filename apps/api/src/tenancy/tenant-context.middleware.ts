@@ -3,12 +3,28 @@
 //
 // ALS SÖZLEŞMESİNİN "ÇÖZEN" tarafının İKİNCİ (ve son) parçası — "zorlayan"
 // taraf `TenantGuard`'dır (aşağıda). Bu middleware, `RequestContextMiddleware`
-// (ST-4) ile AYNI gerekçeyle ASLA FIRLATMAZ: NestJS'te middleware içinde
-// fırlatılan hata global exception filter'a ULAŞMAZ (platformun kendi hata
-// yoluna düşer, AC4'ün istediği birebir JSON yerine 500 HTML üretir). Bu
-// yüzden `TenantResolverService.resolve()`'un fırlatabileceği HER beklenmedik
-// hata (ör. DB erişilemez) burada YAKALANIR ve `{ kind: 'failed', cause }`
-// olarak store'a yazılır — `TenantGuard` bunu okuyup FIRLATIR.
+// (ST-4) ile AYNI gerekçeyle normal akışta FIRLATMAZ — AMA bu, ÖNCEDEN
+// yazılan "global exception filter'a ULAŞMAZ" iddiasından DEĞİL (DÜZELTME,
+// T-022/S2 adım②/⑧, A-A22-2): ÖLÇÜLDÜ — Nest 12'de `RequestMethod.ALL` ile
+// bağlanan middleware `RouterProxy.createProxy` tarafından sarmalanır
+// (`@nestjs/core/router/router-proxy.js`) ve middleware'den fırlayan/reddeden
+// HER istisna `ExceptionsHandler.next()` üzerinden, controller'larla AYNI
+// şekilde, non-scoped global filtrelere (`APP_FILTER`, `AppExceptionFilter`)
+// ULAŞIR (`RouterExceptionFilters`'ın KENDİ uyarı metni bunu AÇIKÇA söylüyor:
+// yalnızca REQUEST/TRANSIENT KAPSAMLI global filtreler İSTİSNA). Bağımsız
+// HTTP kanıtı: `GET //` isteğinde (`normalize-request-path-double-slash-
+// http.test.ts`, fix ÖNCESİ koşum) bu middleware'den senkron fırlayan bir
+// `TypeError` 500 ÜRETTİ AMA gövde `AppExceptionFilter`'ın TEMİZ JSON tel
+// sözleşmesiydi (`{ code: 'INTERNAL_ERROR', requestId }`), Nest'in ham HTML
+// hata sayfası DEĞİL — ÖNCEKİ yorumun öngördüğü "500 HTML" SENARYOSU
+// GERÇEKLEŞMEDİ. Bu middleware'in BURADA fırlatmamasının asıl nedeni filter
+// ERİŞİLEMEZLİĞİ değil, hatayı `TenantGuard`'a TAŞIYIP orada DOĞRU, TİPLİ bir
+// `AppError`'a (`TenantResolutionFailedError`, `isRetryable: true`) ÇEVİRME
+// İSTEĞİDİR — burada fırlasa `mapUnknownError`'ın genel `INTERNAL_ERROR`'una
+// düşer, zengin/retryable hata sınıfı KAYBOLURDU. Bu yüzden
+// `TenantResolverService.resolve()`'un fırlatabileceği HER beklenmedik hata
+// (ör. DB erişilemez) burada YAKALANIR ve `{ kind: 'failed', cause }` olarak
+// store'a yazılır — `TenantGuard` bunu okuyup DOĞRU TİPLE FIRLATIR.
 //
 // SIRA (K-A5, bağlayıcı, `app.module.ts`): `RequestContextMiddleware`
 // HER ZAMAN bu middleware'DEN ÖNCE koşar — ALS depo nesnesi orada kurulur,

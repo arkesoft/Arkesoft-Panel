@@ -117,6 +117,27 @@ export class PrismaService implements OnModuleDestroy {
   }
 
   /**
+   * Platform seviyesi (RLS'siz) okuma/yazma yüzeyi (ROADMAP v0.0.20,
+   * T-021/S7, ADR-0023 Karar 1/3). `platformAdmin`/`platformAuditLog`/
+   * `plan` ÜÇÜ DE platform seviyesi tablolardır (`tenant_id` TAŞIMAZ,
+   * `@arkesoft/db`'nin `PLATFORM_LEVEL_TABLES`'ının üyesi) — `.db`
+   * (`AppPrismaDatabase`, yukarıda) bunları BİLEREK TAŞIMAZ
+   * (`packages/db/src/client.ts`'in allowlist kararı; `plan` o dosyada
+   * AÇIKÇA "BU ALLOWLIST'E DE EKLENMEDİ" diye yazılıdır). Yeni bir Pick
+   * tipi `@arkesoft/db`'den İTHAL EDİLMEZ (`AppPrismaDatabase` gibi dışa
+   * açık bir tip İCAT ETMEK bu sürümün kapsamı DEĞİL, `packages/**`
+   * dokunulmaz) — bu getter, bu dosyanın (R-1'in kendi erişim noktası)
+   * ZATEN import ettiği tam `PrismaDatabase` tipinden YEREL olarak
+   * daraltır. Tek tüketici `apps/api/src/platform/**`'in
+   * `ImpersonationService`'idir — başka hiçbir dosya `PrismaService`'i
+   * DOĞRUDAN enjekte ETMEZ (mekanik kapı: `platform-impersonation-write-
+   * gate.test.ts`).
+   */
+  get platform(): Pick<PrismaDatabase, 'platformAdmin' | 'platformAuditLog' | 'plan'> {
+    return this.#client
+  }
+
+  /**
    * Veritabanı bağlantı sağlığı kontrolünün TEK erişim noktası (ROADMAP
    * v0.0.5, T-006, "son temizlik", `security` tur4 S4-1 — ALTINCI KAPI
    * kapatıldı). `.db` (`AppPrismaDatabase`) artık `$queryRaw` TAŞIMADIĞI

@@ -1,5 +1,44 @@
 # @arkesoft/db
 
+## 0.10.2
+
+### Patch Changes
+
+- Platform denetim izi tablolarında (`audit_log`, `platform_audit_log`) uygulamanın çalışma zamanı rolünün (`arkesoft_app`) `UPDATE`/`DELETE`/`TRUNCATE` yetkisi veritabanı seviyesinde çekildi; katalog linter'ı artık tablo başına beklenen yetki kümesini kapalı küme olarak zorunlu tutuyor (fazla yetki de, eksik yetki de bulgu üretir). Denetim kaydı veritabanı seviyesinde yalnızca eklenebilir hâle geldi; uygulamanın çalışma zamanı rolünün güncelleme, silme ve `TRUNCATE` yetkisi yok.
+
+  ⚠ Bu "tamper-evident" (bütünlük kanıtlı) olduğu anlamına gelmez — hash zinciri veya imza yok, ayrı ve vadesiz bir borç olarak kaydedildi. Ayrıca `audit_log`'un kiracı (`tenant`) tablosuna bağlı FK cascade'i hem `ON DELETE` hem `ON UPDATE` eksenlerinde hâlâ dolaylı bir yol bırakıyor: bir kiracı tamamen silindiğinde bağlı denetim kayıtları da cascade ile gidiyor, bir kiracının kimliği değiştirildiğinde ise bağlı denetim kayıtları cascade ile yeniden yazılıp kiracının görüş alanından yetim düşüyor. Bu, tek bir kiracının kendi kapsamıyla sınırlı değil — `tenant` tablosu RLS taşımadığı için herhangi bir kiracı bağlamındaki uygulama rolü herhangi bir kiracının denetim izini bu yoldan silebilir/değiştirebilir; bu bilinen sınırlama `medium` önemde bir borç olarak kaydedildi ve ayrı bir sürümde ele alınacak.
+
+  [v0.0.20.2]
+
+- @arkesoft/config@0.10.2
+  - @arkesoft/errors@0.10.2
+  - @arkesoft/themes-modern@0.1.5
+
+## 0.10.1
+
+### Patch Changes
+
+- @arkesoft/config@0.10.1
+  - @arkesoft/errors@0.10.1
+  - @arkesoft/themes-modern@0.1.4
+
+## 0.10.0
+
+### Minor Changes
+
+- Arkesoft ekibi için ayrı bir süper admin paneli eklendi. Platform yöneticileri artık
+  kendi girişleriyle (iki faktörlü doğrulama zorunlu) bu panelden tüm mağazaların
+  listesini (alan adı, plan, durum, oluşturulma tarihi) ve platform erişim denetim
+  kaydını görebiliyor. Bir mağazanın verisine erişim artık görünmez bir arka kapı
+  üzerinden değil, her erişimde iz bırakan açık bir kayıt mekanizmasıyla yapılıyor.
+  Mağaza sahiplerinin kendi panelleri bu değişiklikten etkilenmiyor. [v0.0.20]
+
+### Patch Changes
+
+- @arkesoft/config@0.10.0
+  - @arkesoft/errors@0.10.0
+  - @arkesoft/themes-modern@0.1.3
+
 ## 0.9.0
 
 ### Minor Changes

@@ -5,10 +5,15 @@
 // geçişte bu dosya DEĞİŞMEZ, `main.ts` dışında hiçbir kaynak dosya adaptöre
 // özgü tip/API görmez).
 //
-// K-A5 hatırlatması: `TenantContextMiddleware` (ST-5) middleware içinde ASLA
-// fırlatmaz — bu yüzden buraya düşen hatalar guard/interceptor/pipe/handler
-// katmanından gelir; middleware'in kendisi bu filter'a hiçbir zaman istisna
-// göndermez (NestJS mimarisinin kısıtı, middleware → filter yolu yok).
+// K-A5 hatırlatması (DÜZELTME, T-022/S2, A-A22-2 — ÖNCEKİ metin BAYATTI):
+// `TenantContextMiddleware` (ST-5) normal akışta FIRLATMAZ, ama bu "middleware
+// → filter yolu YOK" demek DEĞİL — ÖLÇÜLDÜ: Nest 12'de `RequestMethod.ALL`
+// ile bağlanan middleware `RouterProxy.createProxy` tarafından sarmalanır ve
+// middleware'den fırlayan HER istisna, controller'larla AYNI şekilde, BU
+// filtreye ULAŞIR (canlı HTTP kanıtı: `GET //`, bkz.
+// `tenant-context.middleware.ts:4-27`). Bu middleware'in burada fırlatmamasının
+// nedeni filtreye erişilemezlik değil, hatayı `TenantGuard`'a taşıyıp DOĞRU,
+// TİPLİ bir `AppError`'a çevirme isteğidir.
 //
 // SAVUNMA KARARI (bilinçli, spesifikasyondan ayrışma gerekçeli): `requestId`
 // için `tryGetRequestContext()` kullanılır (context yoksa yenisi üretilir) —

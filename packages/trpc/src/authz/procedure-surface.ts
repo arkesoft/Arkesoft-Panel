@@ -58,7 +58,15 @@ interface PermissionGatedProcedureEntry {
  * kaplarsa bu birleşimi genişletmek AÇIK bir karar olacak.
  */
 interface UngatedProcedureEntry {
-  readonly builder: 'publicTenant' | 'protected' | 'tenant'
+  // ROADMAP v0.0.20, T-021/S5 — `'platformAdmin'` EKLENDİ (architect "tRPC"
+  // bölümü, ADR-0023 Karar 1/2). ⚠⚠ Bu, dosya başı yorumunun "birleşim
+  // KAPALIDIR" uyarısının BİLEREK tetiklenmesidir: platform yöneticiliği bir
+  // İZİN değildir (`permissions.ts`'in kataloğuna girmez — platform yetkisi
+  // "satırın varlığı"dır, çeşitlenen bir izin kümesi değildir, ADR-0023
+  // Karar 1), bu yüzden `PermissionGatedProcedureEntry` DEĞİL, bu birleşimin
+  // YENİ bir üyesidir. Ölü bir üye DEĞİL — `platform.tenantList`/
+  // `platform.auditLog` bu sürümde onu TÜKETİR (aşağıda).
+  readonly builder: 'publicTenant' | 'protected' | 'tenant' | 'platformAdmin'
   readonly operation: ProcedureOperation
 }
 
@@ -104,4 +112,13 @@ export const PROCEDURE_SURFACE = {
   'registration.checkSlugAvailability': { builder: 'protected', operation: 'query' },
   'registration.createTenant': { builder: 'protected', operation: 'mutation' },
   'registration.onboardingChecklist': { builder: 'protected', operation: 'query' },
+  // ROADMAP v0.0.20, T-021/S5 — on beşinci/on altıncı/on yedinci kayıt
+  // (ADR-0023 Karar 1/2). `platform.session` BİLEREK `builder: 'protected'`
+  // (`tenant`/`platformAdmin` DEĞİL) — AC-4(a)'nın ön koşulu: 2FA'sı OLMAYAN
+  // bir platform yöneticisinin istemcisi bu ucu ÇAĞIRABİLMELİDİR, kapı onu
+  // DURDURAMAZ (architect "tRPC" bölümü madde 1). İKİSİ DE `platformAdmin`
+  // builder'ındadır — platform yetkisi + 2FA ikisi birden ZORUNLU.
+  'platform.session': { builder: 'protected', operation: 'query' },
+  'platform.tenantList': { builder: 'platformAdmin', operation: 'query' },
+  'platform.auditLog': { builder: 'platformAdmin', operation: 'query' },
 } as const satisfies Readonly<Record<string, ProcedureSurfaceEntry>>

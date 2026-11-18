@@ -29,5 +29,20 @@ export default defineConfig({
     sequence: {
       concurrent: false,
     },
+    // DÜZELTME (ROADMAP v0.0.20.3, T-024 fix turu 2, `qa` tur1 ÖLÇTÜ, D3 —
+    // medium) — ayrıntılı gerekçe: `apps/api/vitest.isolation.config.ts`'in
+    // BİREBİR İKİZİ (dosya başı yorumun kuralı burada da geçerli). Özet: bu
+    // dosya `fsModuleCachePath`'i hiç vermiyordu, Vitest VARSAYILANI ise
+    // monorepo ÇALIŞMA ALANI KÖKÜNDEKİ `node_modules/.vitest-cache`'e
+    // çözülüyor (ÖLÇÜLDÜ, `vitest/dist/chunks/cli-api.*.js`); bu dosya
+    // `apps/api`'nin AYNI isimdeki config'iyle AYNI dizini PAYLAŞIYORDU.
+    // `turbo.json`'daki `test:isolation` görevi `@arkesoft/api#test:
+    // isolation` ile `@arkesoft/db#test:isolation` arasına bağımlılık kenarı
+    // koymuyor ve `--concurrency=1` taşımıyor — turbo ikisini VARSAYILAN
+    // PARALEL çalıştırır; ikisi AYNI paylaşılan dizini eşzamanlı silip/
+    // oluşturunca `qa`'nın ölçtüğü `ENOTEMPTY` doğar. `vitest.config.ts`
+    // (`pnpm test`) bu SINIFI T-008/borç 1442'de paket-yerel yol vererek
+    // KAPATTI; bu dosya o düzeltmeyi hiç ALMAMIŞTI. Aynı deseni uygula.
+    fsModuleCachePath: 'node_modules/.vitest-cache',
   },
 })

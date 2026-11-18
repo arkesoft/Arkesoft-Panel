@@ -91,6 +91,32 @@ karşılamak zorundadır (ADR-0016 §6'nın dört koşulunun genelleştirilmiş 
   sınırı politikası yazılı olarak beyan edilir (ADR-0012 koşul D'nin genişletilmiş
   hâli).
 
+> ⚠⚠ **GÜNCELLEME (`docs`, T-021/v0.0.20, 2026-11-16) — KOŞUL E'NİN KABUL KRİTERİ
+> v0.1.0–v0.0.20 ARASINDA KARŞILANMIYORDU.**
+>
+> `security` gate'in T-021'de bulduğu bir yol-kanonikleştirme hatası (üç HTTP katmanının
+> — `normalizeRequestPath`, tRPC'nin kendi `fetchRequestHandler`'ı, Express rota
+> eşleştirmesi — yüzde-kodlama/büyük-küçük harf/sondaki eğik çizgi sayısı eksenlerinde
+> **farklı** kanonikleştirme yapması) üç kayıt rotasını (`registration.checkSlugAvailability`,
+> `registration.createTenant`, `registration.onboardingChecklist`) `//`gibi varyantlarla
+> çağırıldığında **oran sınırı politikasının hiç uygulanmamasına** yol açıyordu —
+> prosedürün kendisi normal şekilde çalışırken `resolveRateLimitPolicy` yolu tanımadığı
+> için `RateLimitGuard` Redis'e hiç dokunmadan geçiş veriyordu. ⇒ Koşul E'nin **beyan**
+> yarısı (yazılı politika) hep doğruydu; **uygulanma** yarısı bu eksende **v0.1.0'dan
+> (T-019, bu prosedürlerin doğduğu sürüm) beri** kırıktı — **T-021'in ürettiği bir
+> regresyon değil**, T-021'in `security` gate'inin **bulduğu**, önceden var olan bir
+> boşluktu. **T-019/v0.1.0 teknik borç tablosuna** bu regresyon olarak not düşüldü
+> (`ROADMAP.md` → _Vadesi v0.1.0 — Kayıt, tenant oluşturma ve alt alan adı kaynaklı
+> borçlar_), T-021'in kendi borcu olarak **değil**.
+>
+> **Kapanış:** T-021'in düzeltme turu 4'ü (`backend`, `security` tur 3→4) yol
+> kanonikleştirmesini tek bir fonksiyonda hizaladı ve bunu bir **değişmezlik testiyle**
+> pinledi (`normalize-request-path-trpc-invariant.test.ts`: `appRouter`'ın her
+> prosedürü × mutasyon jetonu kümesi için `tRPC'nin çözdüğü prosedür ⇒ normalizer'ın
+> ürettiği yol aynı`), gerçek `@trpc/server` handler'ına karşı sadakat ölçülerek
+> (816 aday, 0 yanlış-null/yanlış-pozitif) ve üç geri-alma mutasyonuyla kanıtlanarak.
+> Koşul E'nin kabul kriteri bu testle **bugün karşılanıyor**.
+
 `ADR-0009 madde 7`'ye bu ADR **adlandırılmış bir istisna** açar: _"`tenantId` prosedür
 girdisinden alınmaz"_ kuralı **kiracı host'tan çözülebildiği** prosedürler için
 yürürlükte kalır; çözülemediği hücrede koşul A+B birlikte aynı güvenlik garantisini

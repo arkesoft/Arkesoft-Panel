@@ -1,5 +1,40 @@
 # @arkesoft/admin
 
+## 0.10.2
+
+### Patch Changes
+
+- @arkesoft/errors@0.10.2
+  - @arkesoft/tenancy@0.10.2
+  - @arkesoft/ui@0.10.2
+  - @arkesoft/trpc@0.8.2
+
+## 0.10.1
+
+### Patch Changes
+
+- İki faktörlü kimlik doğrulama kurulum sihirbazında sayfa yeniden yüklendiğinde
+  QR kodunun ve gizli anahtarın değişmesine yol açan hata düzeltildi — artık devam
+  eden bir kuruluma aynı anahtarla sorunsuzca dönülüyor (yedek kodların bu durumda
+  tekrar gösterilemeyeceği açıkça belirtiliyor). Ayrıca iki iç bakım kalemi
+  kapatıldı: `//` ile başlayan isteklerin sunucuda beklenmeyen hataya (500) yol
+  açması engellendi; sürekli entegrasyon (CI) kontrolleri artık test
+  başarısızlıklarını daha güvenilir şekilde tespit ediyor. [v0.0.20.1]
+- @arkesoft/errors@0.10.1
+  - @arkesoft/tenancy@0.10.1
+  - @arkesoft/ui@0.10.1
+  - @arkesoft/trpc@0.8.1
+
+## 0.10.0
+
+### Patch Changes
+
+- Updated dependencies
+  - @arkesoft/trpc@0.8.0
+  - @arkesoft/errors@0.10.0
+  - @arkesoft/tenancy@0.10.0
+  - @arkesoft/ui@0.10.0
+
 ## 0.9.0
 
 ### Minor Changes

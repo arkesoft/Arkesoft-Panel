@@ -61,6 +61,9 @@
 //   fonksiyon varlığı (FIX turu 3, YENİ — security Tur 3 [medium] S-15
 //     bulgusu, Kaynak E — "varlık" ekseni, taksonomi-bağımsız, Kaynak D'nin
 //     deseniyle): UNEXPECTED_SECURITY_DEFINER_FUNCTION
+//   app rolü / tablo başına kapalı küme yetki beyanı (T-023/S2, YENİ —
+//     ROADMAP v0.0.20.2, K-A17 adım ②): APP_ROLE_MISSING_EXPECTED_PRIVILEGE,
+//     APP_ROLE_UNEXPECTED_PRIVILEGE
 //   fail-closed: EMPTY_CATALOG_SNAPSHOT
 //
 // FIX turu 1 (security Tur 1 [medium] S-1 bulgusu — KAYNAK C): Kaynak A
@@ -188,6 +191,42 @@
 //     başına koşulsuz bulgu" deseni, bunun için yardımcı fonksiyon yazmak
 //     ERKEN SOYUTLAMA olurdu (solid'in gerekçesi).
 
+// T-023/S2 (ROADMAP v0.0.20.2, K-A17 adım ①, architect "Veri modeli" +
+// "K-A17 SIRASI — BAĞLAYICI" bölümleri, kullanıcı kararı 2026-11-17):
+// `APP_ROLE_MISSING_EXPECTED_PRIVILEGE`/`APP_ROLE_UNEXPECTED_PRIVILEGE`
+// EKLENDİ. Beyan VERİ olarak `tenancy.ts`'teki `APP_ROLE_TABLE_PRIVILEGE_
+// EXPECTATIONS`'tan gelir — K-E5/AC9'un `AuthRoleTablePrivilegeExpectation`
+// için ZATEN kurulu deseni: bu dosya o modülü import ETMEZ, YAPISAL olarak
+// uyumlu bir yerel tip (`AppRoleTablePrivilegeExpectationLike`) üzerinden
+// `LintCatalogOptions.appRoleTablePrivilegeExpectations` PARAMETRESİ olarak
+// alır.
+//
+// `authRole` (ADR-0008/T-015) ALANINDAN FARKLI olarak bu alan OPSİYONEL
+// DEĞİL — ZORUNLU (F-NEW-4, architect): opsiyonel olsaydı DDL (S6) sonrası
+// `catalog-lint-live.isolation.test.ts`'in beş DONMUŞ çağrı noktası
+// SESSİZCE kırmızıya dönerdi (beyan geçirilmeden eski dört-DML kuralı
+// "kolon rejimi" çıkarımına benzer bir sessiz atlama yapmazdı — eski kural
+// HÂLÂ ateşlenir, ama YENİ ikisi hiç değerlendirilMEZ ve operatör bunu
+// FARK ETMEZ). Zorunlu alan bu sessizliği YAPISAL olarak kapatır: beyan
+// unutulursa `tsc` KIRILIR, çalışma zamanı sessizliği DEĞİL.
+//
+// K-A17 SIRASI, BU ALT GÖREVİN KALBİ (DÜZELTME, FIX turu 2, `solid` tur 2
+// [low] — bu paragraf GEÇİCİ bir ara durumu ("şu an BOŞ") kalıcı zamanla
+// anlatıyordu, S6 tamamlandıktan SONRA BAYATLADI): `APP_ROLE_TABLE_
+// PRIVILEGE_EXPECTATIONS` adım ①'de (bu kuralların eklendiği commit) BİLEREK
+// BOŞ (`[] as const`) başladı — boş beyanla bu dosyadaki
+// `lintAppRoleTablePrivilegeExpectations` hiçbir tabloyu DEĞERLENDİRMEZ
+// (döngü sıfır kez çalışır) ve `lintAppRoleDmlPrivileges`'in TEK SATIRLIK
+// tadili (aşağıda) hiçbir tabloyu ATLAMAZ — bu sayede adım ①'in canlı bulgu
+// kümesi o anki bugünküyle BAYT-BİREBİR AYNI kaldı (AC-11(a)'nın mekanik
+// kanıtı). Adım ③'te (S6, K-A17, AYNI commit'te DDL'le BİRLİKTE) iki satır
+// (`audit_log`/`platform_audit_log`) beyana EKLENDİ — bu satır artık o
+// GERÇEK, İKİ SATIRLIK beyanı anlatır (`tenancy.ts`'teki güncel hâli). Sıra
+// bozulsaydı (beyan DDL'den ÖNCE/SONRA yalnız eklenseydi) HER İKİ YÖNDE de
+// kırmızı pencere açılırdı (architect'in ölçtüğü, `pm`'in üç adımının
+// YETERSİZ kaldığı nokta) — bu, `rollback-audit-append-only.sql`
+// koşturulduğunda (beyan KOD'da kalır, katalog ÖNCEKİ duruma döner) KASITLI
+// olarak YENİDEN üretilen, belgelenmiş bir kırmızıdır (AC-15).
 import type { CatalogSnapshot } from './catalog-snapshot.js'
 
 /**
@@ -236,6 +275,14 @@ export const TENANT_ISOLATION_RULES = [
   // bağlayıcı gerekçesi: tek kod altında birleştirmek, ileride meşru bir
   // `SECURITY DEFINER` için allowlist açıldığında ikisini BİRLİKTE susturur.
   'UNEXPECTED_SECURITY_DEFINER_FUNCTION',
+  // T-023/S2, YENİ (ROADMAP v0.0.20.2, K-A17 adım ②/K2) — `arkesoft_app`'in
+  // bir tablo üzerindeki KAPALI küme yetki beyanı (`tenancy.ts`'teki
+  // `APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS`). İKİ kural TAMAMLAYICI: beyan
+  // edilmiş ama katalogda OLMAYAN bir fiil bu kodu, beyan EDİLMEMİŞ ama
+  // katalogda VAR olan bir fiil aşağıdaki kodu üretir — "en az" YOK, beş
+  // fiil birebir karşılaştırılır.
+  'APP_ROLE_MISSING_EXPECTED_PRIVILEGE',
+  'APP_ROLE_UNEXPECTED_PRIVILEGE',
   'EMPTY_CATALOG_SNAPSHOT',
 ] as const
 
@@ -288,6 +335,43 @@ type AuthRoleTablePrivilegeExpectationLike = {
 }
 
 /**
+ * T-023/S2 — `src/tenancy.ts`'teki `AppRoleTablePrivilegeExpectation` ile
+ * YAPISAL OLARAK uyumlu (import EDİLMEZ — `AuthRoleTablePrivilegeExpectationLike`'ın
+ * AYNI deseni, K-E5/AC9). `AuthRoleTablePrivilegeExpectationLike`'tan AYRI
+ * bir tiptir (architect'in gerekçesi, dosya başı notu): farklı rol, farklı
+ * semantik — beş fiil birebir karşılaştırılır, `columnLevel` kavramı YOKTUR.
+ */
+type AppRoleTablePrivilegeExpectationLike = {
+  readonly tableName: string
+  readonly canSelect: boolean
+  readonly canInsert: boolean
+  readonly canUpdate: boolean
+  readonly canDelete: boolean
+  readonly canTruncate: boolean
+}
+
+/**
+ * T-023/S2 — `AppRoleTablePrivilegeExpectationLike`'ın `tableName` DIŞINDAKİ
+ * her alanı. "Fiil tablosu tip-pinli" (DoD kanıtı): aşağıdaki
+ * `PRIVILEGE_VERB_LABELS`'ın `Record<PrivilegeVerbKey, string>` (opsiyonel
+ * DEĞİL, kapalı) olması — bir fiili bu kayıttan silmek `tsc`'yi KIRAR, bu
+ * yüzden unutulan bir fiil ÇALIŞMA ZAMANINDA değil DERLEME ZAMANINDA yakalanır.
+ */
+type PrivilegeVerbKey = keyof Omit<AppRoleTablePrivilegeExpectationLike, 'tableName'>
+
+/** {@link PrivilegeVerbKey}'in her üyesi için insan-okunur SQL yetki adı. */
+const PRIVILEGE_VERB_LABELS: Readonly<Record<PrivilegeVerbKey, string>> = {
+  canSelect: 'SELECT',
+  canInsert: 'INSERT',
+  canUpdate: 'UPDATE',
+  canDelete: 'DELETE',
+  canTruncate: 'TRUNCATE',
+}
+
+/** `PRIVILEGE_VERB_LABELS`'ın anahtarları — kapalı küme karşılaştırmasının döngü kümesi. */
+const PRIVILEGE_VERB_KEYS = Object.keys(PRIVILEGE_VERB_LABELS) as readonly PrivilegeVerbKey[]
+
+/**
  * T-015/ST-C, FIX turu 1 (qa Tur 1 [medium] QA-1 bulgusu) — auth rolüne özgü
  * ÜÇ girdi artık BAĞIMSIZ opsiyonel ALANLAR değil, TEK bir opsiyonel İÇ İÇE
  * nesnenin ÜYELERİ. "Hep ya da hiç" kısıtı böylece TİP SEVİYESİNDE zorlanır:
@@ -317,6 +401,19 @@ export type LintCatalogOptions = {
    * expand/contract).
    */
   readonly authRole?: AuthRoleLintInput
+  /**
+   * T-023/S2 (F-NEW-4, architect) — `arkesoft_app`'in tablo başına KAPALI
+   * küme yetki beyanı (`tenancy.ts`'teki `APP_ROLE_TABLE_PRIVILEGE_
+   * EXPECTATIONS`). `authRole`'ün TERSİNE OPSİYONEL DEĞİL — ZORUNLU: bu alan
+   * opsiyonel bırakılsaydı DDL (S6) sonrası `catalog-lint-live.isolation.test.ts`'in
+   * beş donmuş çağrı noktası SESSİZCE kırmızıya dönerdi (dosya başı notu).
+   * ⚠⚠ DÜZELTME (FIX turu 1 kuyruğu — bayat): bu alan K-A17 adım ①'de (S2)
+   * GEÇİCİ olarak her çağıran tarafından `[]` (BOŞ) geçiriliyordu — S6'dan
+   * (K-A17 adım ③) İTİBAREN dizi artık BOŞ DEĞİL: `tenancy.ts`'teki
+   * `APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS` iki satır (`audit_log`/
+   * `platform_audit_log`) taşıyor ve DDL (§9) ile AYNI oturumda eklendi.
+   */
+  readonly appRoleTablePrivilegeExpectations: readonly AppRoleTablePrivilegeExpectationLike[]
 }
 
 const EXPECTED_TENANT_ID_TYPE = 'text'
@@ -589,9 +686,22 @@ function lintAppRoleDmlPrivileges(
   classifiedTables: readonly string[],
   snapshot: CatalogSnapshot,
   appRoleName: string,
+  appRoleTablePrivilegeExpectations: readonly AppRoleTablePrivilegeExpectationLike[],
 ): LintFinding[] {
   const findings: LintFinding[] = []
   const columnGoverned = tablesWithColumnLevelGrants(snapshot)
+  // T-023/S2 — TEK SATIRLIK tadil (architect, `columnGoverned` deseninin
+  // BİREBİR aynısı): `APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS`'ta YER ALAN bir
+  // tablo artık BU (eski, "tam DML" bekleyen) kuralın öznesi DEĞİL — o
+  // tablonun durumu `lintAppRoleTablePrivilegeExpectations`'ın (YENİ, kapalı
+  // küme) öznesidir. ⚠⚠ DÜZELTME (FIX turu 1 kuyruğu — bayat): beyan K-A17
+  // adım ①'de (S2) BOŞTU — S6'dan (adım ③) İTİBAREN bu Set iki üye taşır
+  // (`audit_log`/`platform_audit_log`), yani bu kuralın aşağıdaki döngüsü
+  // bu iki tabloyu GERÇEKTEN ATLAR (eski "tam DML" beklentisi onlara
+  // UYGULANMAZ — AC-11(a)'nın bugünkü kapsamı yalnızca beyan-DIŞI tablolar).
+  const appRoleExpectedTables = new Set(
+    appRoleTablePrivilegeExpectations.map((expectation) => expectation.tableName),
+  )
 
   for (const tableName of classifiedTables) {
     // T-015/ST-C TADİLİ (ROADMAP madde 3): bir tablo kolon seviyesi hibe
@@ -601,7 +711,7 @@ function lintAppRoleDmlPrivileges(
     // öznesidir, bunun DEĞİL. DDL (ST-D) uygulanmadan önce `columnGrants`
     // BOŞTUR (ST-B'nin ölçtüğü taban) — bu dal o ana kadar HİÇ tetiklenmez,
     // eski davranış DEĞİŞMEZ.
-    if (columnGoverned.has(tableName)) {
+    if (columnGoverned.has(tableName) || appRoleExpectedTables.has(tableName)) {
       continue
     }
     const privilege = snapshot.privileges.find(
@@ -627,6 +737,69 @@ function lintAppRoleDmlPrivileges(
         tableName,
         message: `"${appRoleName}" rolü "${tableName}" üzerinde SELECT/INSERT/UPDATE/DELETE yetkilerinin tamamına sahip değil.`,
       })
+    }
+  }
+
+  return findings
+}
+
+/**
+ * T-023/S2, YENİ (ROADMAP v0.0.20.2, K-A17 adım ②, architect "İki yeni
+ * kural") — `APP_ROLE_MISSING_EXPECTED_PRIVILEGE`/`APP_ROLE_UNEXPECTED_
+ * PRIVILEGE`: `appRoleTablePrivilegeExpectations`teki HER giriş için beş
+ * fiilin (`PRIVILEGE_VERB_KEYS`) HER biri KAPALI küme olarak karşılaştırılır
+ * — beklenen `true` ama katalogda YOKSA (eksik) birinci kod, beklenen
+ * `false` ama katalogda VARSA (fazla) ikinci kod düşer. *"En az"* YOK —
+ * `lintAuthRoleTablePrivilegeExpectations`'ın (ADR-0008) emsalinin TERSİNE
+ * burada `columnLevel` ayrımı da YOK (architect'in gerekçesi: `arkesoft_app`
+ * için tasarım yalnızca TABLO bazlı yetkiyi konu ediyor).
+ *
+ * Tablo katalogda hiç yoksa (`privilege === undefined`) sessizce atlanır —
+ * bu durum `MISSING_TABLE`'ın öznesidir (platform/tenant taksonomisi
+ * genişlemesi, `lintPlatformLevelTableExistence`/`lintTenantScopedTable`),
+ * bu kuralın DEĞİL.
+ *
+ * ⚠⚠ DÜZELTME (FIX turu 1 kuyruğu — bayat): bu alt görevde (①, S2)
+ * `expectations` GEÇİCİ olarak BOŞ geçiriliyordu ve bu fonksiyon hiç bulgu
+ * ÜRETMİYORDU — S6'dan (adım ③) İTİBAREN `tenancy.ts`'teki
+ * `APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS` iki satır taşıyor, bu yüzden
+ * döngü artık o iki tablo için GERÇEKTEN çalışır ve yukarıdaki iki kural
+ * (eksik/beklenmeyen yetki) o tablolarda ateşlenebilir.
+ */
+function lintAppRoleTablePrivilegeExpectations(
+  snapshot: CatalogSnapshot,
+  appRoleName: string,
+  expectations: readonly AppRoleTablePrivilegeExpectationLike[],
+): LintFinding[] {
+  const findings: LintFinding[] = []
+
+  for (const expectation of expectations) {
+    const { tableName } = expectation
+    const privilege = snapshot.privileges.find(
+      (candidate) => candidate.roleName === appRoleName && candidate.tableName === tableName,
+    )
+    if (privilege === undefined) {
+      continue
+    }
+
+    for (const verb of PRIVILEGE_VERB_KEYS) {
+      const expectedValue = expectation[verb]
+      const actualValue = privilege[verb]
+      const verbLabel = PRIVILEGE_VERB_LABELS[verb]
+
+      if (expectedValue && !actualValue) {
+        findings.push({
+          rule: 'APP_ROLE_MISSING_EXPECTED_PRIVILEGE',
+          tableName,
+          message: `"${appRoleName}" rolü "${tableName}" üzerinde beklenen ${verbLabel} yetkisine sahip değil.`,
+        })
+      } else if (!expectedValue && actualValue) {
+        findings.push({
+          rule: 'APP_ROLE_UNEXPECTED_PRIVILEGE',
+          tableName,
+          message: `"${appRoleName}" rolü "${tableName}" üzerinde beklenmeyen ${verbLabel} yetkisine sahip (en az yetki ihlali).`,
+        })
+      }
     }
   }
 
@@ -826,14 +999,26 @@ function lintAppRoleSecretTablePrivileges(
     if (privilege === undefined) {
       continue
     }
-    if (privilege.canSelect || privilege.canInsert || privilege.canUpdate || privilege.canDelete) {
+    // T-023/S2 (M3b, po kararı) — `|| privilege.canTruncate` EKLENDİ: TRUNCATE
+    // RLS'i BAYPAS EDER (dosya başı R3 notu), bu yüzden bu "en az bir DML
+    // yetkisi" yüklemi TRUNCATE'i de kapsamalı. Bugün (M1 ölçümü) iki rol de
+    // TRUNCATE TAŞIMIYOR — bu satır SIFIR yeni bulgu üretir (+1 fixture ile
+    // S3'te kanıtlanır, D8 bu sürümde KAPANIR).
+    if (
+      privilege.canSelect ||
+      privilege.canInsert ||
+      privilege.canUpdate ||
+      privilege.canDelete ||
+      privilege.canTruncate
+    ) {
       findings.push({
         rule: 'APP_ROLE_RETAINS_SECRET_TABLE_PRIVILEGE',
         tableName,
         message:
           `"${appRoleName}" rolü sır taşıyan "${tableName}" tablosunda hâlâ en az bir DML ` +
           `yetkisine sahip (canSelect=${String(privilege.canSelect)}, canInsert=${String(privilege.canInsert)}, ` +
-          `canUpdate=${String(privilege.canUpdate)}, canDelete=${String(privilege.canDelete)}) — bu ` +
+          `canUpdate=${String(privilege.canUpdate)}, canDelete=${String(privilege.canDelete)}, ` +
+          `canTruncate=${String(privilege.canTruncate)}) — bu ` +
           `tabloda "${appRoleName}" için HİÇBİR yetki beklenmiyor (REVOKE uygulanmamış olabilir).`,
       })
     }
@@ -1016,7 +1201,16 @@ function lintAuthRoleUnexpectedTablePrivileges(
     ) {
       continue
     }
-    if (privilege.canSelect || privilege.canInsert || privilege.canUpdate || privilege.canDelete) {
+    // T-023/S2 (M3b, po kararı) — `|| privilege.canTruncate` EKLENDİ: AYNI
+    // gerekçe, `lintAppRoleSecretTablePrivileges`'in BİREBİR eşleniği
+    // (TRUNCATE RLS'i BAYPAS EDER, dosya başı R3 notu).
+    if (
+      privilege.canSelect ||
+      privilege.canInsert ||
+      privilege.canUpdate ||
+      privilege.canDelete ||
+      privilege.canTruncate
+    ) {
       findings.push({
         rule: 'AUTH_ROLE_EXCESS_TABLE_PRIVILEGE',
         tableName: privilege.tableName,
@@ -1279,7 +1473,25 @@ export function lintCatalog(
     ...options.taxonomy.tenantScopedTables,
     ...options.taxonomy.platformLevelTables,
   ]
-  findings.push(...lintAppRoleDmlPrivileges(classifiedTables, snapshot, options.appRoleName))
+  findings.push(
+    ...lintAppRoleDmlPrivileges(
+      classifiedTables,
+      snapshot,
+      options.appRoleName,
+      options.appRoleTablePrivilegeExpectations,
+    ),
+  )
+
+  // T-023/S2, YENİ — K-A17 adım ②/K2. `authRole` kapısının DIŞINDA/ÖNCESİNDE
+  // (Kaynak D/E'nin AYNI gerekçesi — bu alan ZORUNLU, dondurulmuş eski çağrı
+  // noktası DAHİL her çağrıda değerlendirilir).
+  findings.push(
+    ...lintAppRoleTablePrivilegeExpectations(
+      snapshot,
+      options.appRoleName,
+      options.appRoleTablePrivilegeExpectations,
+    ),
+  )
 
   findings.push(...lintCatalogToTaxonomy(snapshot, options.taxonomy))
 

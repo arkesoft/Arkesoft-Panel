@@ -28,11 +28,23 @@
 // bir özne YOK: bu sınıfın tek çağrı yeri AuthGuard'ın KENDİ aktörünü
 // reddetmesidir, `MemberService`'in hedef/aktör ayrımı BURADA GEÇERLİ
 // DEĞİLDİR).
-
+//
+// GÜNCELLEME (ROADMAP v0.0.20, T-021/S7, ADR-0023 Karar 2) — İKİNCİ çağrı
+// yeri EKLENDİ: `TrpcErrorsPortAdapter.twoFactorRequired()`
+// (`platformAdminProcedure`'ün ikinci adımı). ⚠⚠ YENİ SINIF YAZILMAZ kararı
+// (`packages/trpc/src/ports/trpc-error-factory.port.ts` dosya başı yorumu)
+// bu sınıfı PLATFORM bağlamında da kullanır, ama o portun fabrika yöntemi
+// (`twoFactorRequired(): AppError`) SIFIR parametre alır — `TrpcErrorsPortAdapter`
+// bu yüzden `userId`/`tenantId` İKİSİNİ de GEÇİREMEZ. İki parametre bu
+// yüzden OPSİYONEL yapıldı (`?`) — owner-2FA çağrı yeri (`two-factor-
+// compliance.service.ts`) DEĞİŞMEDEN iki argümanla çağırır; platform
+// çağrı yeri sıfır argümanla çağırır ve `context`'teki iki alan `undefined`
+// kalır (YALNIZCA LOGLANIR, tele hiç sızmaz — `AppError.context`'in
+// yapısal garantisi).
 import { AppError } from '@arkesoft/errors'
 
 export class TwoFactorRequiredError extends AppError {
-  constructor(userId: string, tenantId: string) {
+  constructor(userId?: string, tenantId?: string) {
     super({
       code: 'TWO_FACTOR_REQUIRED',
       httpStatus: 403,

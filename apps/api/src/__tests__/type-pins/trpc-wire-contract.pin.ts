@@ -48,6 +48,9 @@
 //      (ROADMAP v0.0.15, T-016/S7 — PİN 4/7/9/10'un ikizi).
 //  12. `SessionSecurityReadPortAdapter satisfies SessionSecurityReadPort`
 //      (ROADMAP v0.0.15, T-016 FIX turu 2/M-4 — PİN 4/7/9/10/11'in ikizi).
+//  15. ⚠ `PlatformAuditActionWire` ≡ `PlatformAuditAction` (@arkesoft/db) —
+//      PİN 1/5/8'in DÖRDÜNCÜ ikizi (ROADMAP v0.0.20, T-021/S7). Tip
+//      EŞİTLİĞİ + çalışma zamanı değer eşitliği (sıralanmış).
 //
 // PİN KANITI (DoD): `TenantSummary`'ye `planId` ekleyerek TEK kasıtlı mutasyon
 // yapılıp `pnpm --filter @arkesoft/api typecheck`'in KIRILDIĞI ölçüldü (çıktı
@@ -64,18 +67,25 @@
 import type { Job, Tenant } from '@arkesoft/db'
 import {
   JobStatus as JobStatusValue,
+  PlatformAuditAction as PlatformAuditActionValue,
   TenantRole as TenantRoleValue,
   TenantStatus as TenantStatusValue,
 } from '@arkesoft/db'
 import type {
   JobStatusWire,
   JobSummary,
+  PlatformAuditActionWire,
   SessionIdentity,
   TenantRoleWire,
   TenantStatusWire,
   TenantSummary,
 } from '@arkesoft/trpc'
-import { jobStatusSchema, tenantRoleSchema, tenantStatusSchema } from '@arkesoft/trpc'
+import {
+  jobStatusSchema,
+  platformAuditActionSchema,
+  tenantRoleSchema,
+  tenantStatusSchema,
+} from '@arkesoft/trpc'
 import type {
   JobReadPort,
   MemberWritePort,
@@ -501,4 +511,65 @@ export function pinDeletedExcludedFromTenantStatusWire(): {
   excluded: AssertDeletedExcludedFromTenantStatusWire
 } {
   return { excluded: true }
+}
+
+// ---------------------------------------------------------------------------
+// PİN 15 — PlatformAuditActionWire ≡ PlatformAuditAction (tip) + çalışma
+// zamanı değer eşitliği (ROADMAP v0.0.20, T-021/S7)
+// ---------------------------------------------------------------------------
+
+/**
+ * PİN 1/5/8'in BİREBİR ikizi: `platformAuditActionSchema`'nın (`@arkesoft/trpc`,
+ * YEREL bildirilir — `platform.schema.ts` dosya başı yorumu, ADR-0009
+ * madde 5) değer kümesi `@arkesoft/db`'nin Prisma `PlatformAuditAction`
+ * enum'undan SESSİZCE SAPABİLİR; bu pin o sapmayı derleme zamanında
+ * (anahtar kümesi) VE çalışma zamanında (değer kümesi, aşağıdaki fonksiyon)
+ * yakalar.
+ */
+type PlatformAuditActionKeys = keyof typeof PlatformAuditActionValue
+
+type ExtraWirePlatformAuditActions = Exclude<PlatformAuditActionWire, PlatformAuditActionKeys>
+type MissingWirePlatformAuditActions = Exclude<PlatformAuditActionKeys, PlatformAuditActionWire>
+
+type AssertNoExtraWirePlatformAuditActions = ExtraWirePlatformAuditActions extends never
+  ? true
+  : [
+      'FAZLA EYLEM — platformAuditActionSchema içinde olup PlatformAuditAction içinde olmayan',
+      ExtraWirePlatformAuditActions,
+    ]
+
+type AssertNoMissingWirePlatformAuditActions = MissingWirePlatformAuditActions extends never
+  ? true
+  : [
+      'EKSİK EYLEM — PlatformAuditAction içinde olup platformAuditActionSchema içinde olmayan',
+      MissingWirePlatformAuditActions,
+    ]
+
+/**
+ * ⚠ TİP PİNİ 15 — `PlatformAuditActionWire` ve `PlatformAuditAction`'ın
+ * anahtar kümesi TAM eşleşmeli. Migration ile enum'a yeni bir değer
+ * eklenirse VEYA tel şeması tek taraflı genişletilirse bu pin `pnpm
+ * typecheck`'i KIRAR. Hiçbir yerden çağrılmaz; varlığının derlenmesi
+ * yeterlidir.
+ */
+export function pinPlatformAuditActionWireKeysExactlyMatchPlatformAuditAction(): {
+  noExtra: AssertNoExtraWirePlatformAuditActions
+  noMissing: AssertNoMissingWirePlatformAuditActions
+} {
+  return { noExtra: true, noMissing: true }
+}
+
+/**
+ * ÇALIŞMA ZAMANI PİNİ 15 — `tenantStatusWireValuesMatchPrismaAtRuntime`'ın
+ * birebir ikizi. `../trpc-http.test.ts` bu fonksiyonu GERÇEKTEN ÇAĞIRIR;
+ * tip pini anahtar kümesini, bu fonksiyon DEĞER kümesini denetler.
+ */
+export function platformAuditActionWireValuesMatchPrismaAtRuntime(): boolean {
+  const wireValues = [...platformAuditActionSchema.options].sort()
+  const prismaValues = Object.values(PlatformAuditActionValue).sort()
+
+  return (
+    wireValues.length === prismaValues.length &&
+    wireValues.every((value, index) => value === prismaValues[index])
+  )
 }

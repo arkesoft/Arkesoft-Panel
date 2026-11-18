@@ -23,14 +23,15 @@
 // alanını KENDİSİ belirlemez — çağıran (`apps/admin`, `apps/storefront`,
 // v0.0.20'de `apps/superadmin`) kendi proje matrisini `overrides.projects`
 // ile verir ve bu fonksiyon onu olduğu gibi geçirir. `DESKTOP_DEVICE_NAME` /
-// `MOBILE_DEVICE_NAME` sabitleri çağıranın proje matrisini kurarken
-// kullanacağı ortak cihaz adlarıdır — v0.0.20 `superadmin` projesi bu
-// sabitleri ve bu fonksiyonu kullanarak TEK dosyayla (kendi
-// `playwright.config.ts`'i) katılabilir.
+// `MOBILE_DEVICE_NAME` sabitleri `desktopDevice`/`mobileDevice` kısayollarını
+// (aşağıda) üretmek için BU MODÜL İÇİNDE kullanılır — çağıranlar bu iki
+// kısayolu ve `createPlaywrightBaseConfig`'i import eder (ölçüldü,
+// v0.0.20.1/T-022: `apps/admin`, `apps/storefront`, `apps/superadmin`);
+// ham ad sabitlerinin kendisi dışa açılmaz (ROADMAP:3414, AC-6).
 import { defineConfig, devices, type PlaywrightTestConfig } from '@playwright/test'
 
 /** Masaüstü proje matrisinde kullanılacak ortak Playwright cihaz adı. */
-export const DESKTOP_DEVICE_NAME = 'Desktop Chrome'
+const DESKTOP_DEVICE_NAME = 'Desktop Chrome'
 
 /**
  * Mobil proje matrisinde kullanılacak ortak Playwright cihaz adı.
@@ -38,13 +39,29 @@ export const DESKTOP_DEVICE_NAME = 'Desktop Chrome'
  * belirgin ölçüde farklı viewport (duyarlı render'ı anlamlı şekilde ayırt
  * eder) — "çoklu viewport" kapsam maddesinin tek doğruluk kaynağı burası.
  */
-export const MOBILE_DEVICE_NAME = 'Pixel 7'
+const MOBILE_DEVICE_NAME = 'Pixel 7'
 
 /** `devices[DESKTOP_DEVICE_NAME]` kısayolu — proje matrisi kurarken kullanılır. */
 export const desktopDevice = devices[DESKTOP_DEVICE_NAME]
 
 /** `devices[MOBILE_DEVICE_NAME]` kısayolu — proje matrisi kurarken kullanılır. */
 export const mobileDevice = devices[MOBILE_DEVICE_NAME]
+
+/** WCAG 1.4.10 (reflow) referans genişliği — 320 CSS px. */
+const WCAG_REFLOW_VIEWPORT_WIDTH = 320
+
+/**
+ * `mobileDevice`'ın CİHAZ PROFİLİNİ (userAgent, isMobile, hasTouch,
+ * deviceScaleFactor, defaultBrowserType) KORUYAN, yalnızca `viewport`
+ * GENİŞLİĞİ WCAG 1.4.10'un referans genişliğine (320 CSS px) daraltılmış
+ * türevi (T-024, ROADMAP v0.0.20.3). `mobileDevice` (`Pixel 7`, 412 px)
+ * BİLEREK DEĞİŞMEDİ — `storefront-visual-mobile` onu tüketmeye DEVAM EDER,
+ * mobil görsel regresyon referans PNG'leri bu eklemeden ETKİLENMEZ.
+ */
+export const reflowMobileDevice = {
+  ...mobileDevice,
+  viewport: { width: WCAG_REFLOW_VIEWPORT_WIDTH, height: mobileDevice.viewport.height },
+}
 
 /**
  * Görsel regresyon karşılaştırma eşiği — ADR-0022 Karar 4'ün GEREKÇELİ
@@ -55,7 +72,7 @@ export const mobileDevice = devices[MOBILE_DEVICE_NAME]
  * SONRA kalan artık gürültüyü emer) — ancak gerçek bir renk/yerleşim
  * değişikliğini (AC-8'in mutasyon testi) GEÇİRMEYECEK kadar sıkıdır.
  */
-export const VISUAL_MAX_DIFF_PIXEL_RATIO = 0.002
+const VISUAL_MAX_DIFF_PIXEL_RATIO = 0.002
 
 /**
  * Görsel regresyon piksel-başı renk farkı toleransı — ADR-0022 Karar 4.
@@ -66,7 +83,7 @@ export const VISUAL_MAX_DIFF_PIXEL_RATIO = 0.002
  * olabilir", yukarı bkz.), `threshold` üzerinden DEĞİL — ikisini birden
  * gevşetmek AC-8'in mutasyon testinin tespit gücünü gereksiz yere düşürür.
  */
-export const VISUAL_THRESHOLD = 0.2
+const VISUAL_THRESHOLD = 0.2
 
 /**
  * Tüm Playwright projelerinde ortak taban ayarlar (ADR-0022 Karar 6).

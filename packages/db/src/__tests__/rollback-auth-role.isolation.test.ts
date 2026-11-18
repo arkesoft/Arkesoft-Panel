@@ -41,6 +41,7 @@ import { readCatalogSnapshot, type CatalogSnapshot } from '../catalog-snapshot.j
 import type { TransactionClient } from '../client.js'
 import { TENANT_CONTEXT_SETTING } from '../tenant-context.js'
 import {
+  APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS,
   AUTH_ROLE_TABLE_PRIVILEGE_EXPECTATIONS,
   AUTH_SECRET_BEARING_TABLES,
   PLATFORM_LEVEL_TABLES,
@@ -119,6 +120,15 @@ describe('kademe 4 geri alma — AC4 rollback yarısı (T-015/ST-G, DDL transact
       },
       tenantContextSetting: TENANT_CONTEXT_SETTING,
       appRoleName,
+      // GÜNCELLEME (T-023/S6, K-A17 adım ③): S2'de (adım ①) bu alan BİLEREK
+      // `[]` idi. S6 beyanı doldurduğu VE canlı §9 DDL'ini uyguladığı için bu
+      // dosya artık GERÇEK beyanı taşımak ZORUNDA — aksi halde kademe 4'ün
+      // "TAM VE BİREBİR" (45 bulgu) assert'i `audit_log`/`platform_audit_log`'un
+      // (bu dosyanın rollback'inin HİÇ dokunmadığı, hâlâ sertleştirilmiş)
+      // dört-DML bulgusuyla 47'ye YANLIŞ SEBEPLE şişerdi — bu dosyanın konusu
+      // `arkesoft_auth`'un kademe 4 geri alması, `arkesoft_app`'in append-only
+      // sertleştirmesi DEĞİL (o rollback AYRI bir dosyada, S7'nin işi).
+      appRoleTablePrivilegeExpectations: APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS,
       authRole: {
         roleName: authRoleName,
         secretBearingTables: AUTH_SECRET_BEARING_TABLES,

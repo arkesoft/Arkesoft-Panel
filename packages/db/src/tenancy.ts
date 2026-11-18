@@ -111,6 +111,23 @@
 // ⚠ `arkesoft_app`'in `plan`'da taşıdığı blanket DML yetkisi bu sürümde
 // DARALTILMADI (`theme`/`theme_release`/`platform_release`'in BİREBİR aynı
 // ertelemesi, ADR-0021 Sonuçlar) — `security` gate'ine bırakıldı.
+//
+// GENİŞLETME (ROADMAP v0.0.20, T-021/S3, architect VERİ MODELİ + ADR-0023
+// Karar 1/3): `platform_admin` (ON BİRİNCİ üye) ve `platform_audit_log`
+// (ON İKİNCİ üye) EKLENDİ → dizi ONDAN ON İKİYE çıktı. Platform yetkisi
+// kaydı ve platform yöneticisi eylem denetimi PLATFORMUN KENDİSİNE aittir,
+// kiracıya değil — `theme`/`plan`'ın BİREBİR aynı sınıflandırma ekseni
+// ("olgu KİME aittir"). ⭐ `TENANT_SCOPED_TABLES` (aşağıda) BU GENİŞLEMEYLE
+// DEĞİŞMEDİ — yeni bir kiracı tablosu YOK, prob tamlığı kapısı
+// (`tenant-isolation-suite.ts`) KIRMIZIYA DÖNMEDİ (v0.0.21/v0.1.0'ın BİREBİR
+// TERSİ). İki tablo da RLS politikası TAŞIMAZ (migration linter'ının
+// `TENANT_ID_ON_PLATFORM_TABLE` kuralı). ⚠ `arkesoft_app`'in bu iki tabloda
+// taşıdığı blanket DML yetkisi (`ALTER DEFAULT PRIVILEGES`) `theme`/`plan`
+// ile BİREBİR aynı ertelemeyle DARALTILMADI — kayıtlı borç (ROADMAP:3106),
+// bu sürümde BÜYÜTÜLDÜ (vade v0.0.20.1, kullanıcı kararı). ⚠⚠ CLAUDE.md §7
+// "dört liste" (`AUTH_SECRET_BEARING_TABLES` vb.) BU İKİSİNE DOKUNMAZ — ikisi
+// de parola özeti/token/TOTP sırrı/kurtarma kodu TAŞIMAZ (ölçülmüş karar,
+// architect T-021).
 export const PLATFORM_LEVEL_TABLES = [
   'tenant',
   'app_user',
@@ -122,6 +139,8 @@ export const PLATFORM_LEVEL_TABLES = [
   'theme',
   'theme_release',
   'plan',
+  'platform_admin',
+  'platform_audit_log',
 ] as const
 
 // GENİŞLETME (ROADMAP v0.0.14, T-014/S1, architect K-A0/K-A1): `audit_log`
@@ -257,3 +276,75 @@ export const AUTH_ROLE_TABLE_PRIVILEGE_EXPECTATIONS: readonly AuthRoleTablePrivi
     { tableName: 'two_factor', columnLevel: true, expectsTableDelete: true },
     { tableName: 'app_user', columnLevel: false, expectsTableDelete: false },
   ] as const
+
+// GENİŞLETME (ROADMAP v0.0.20.2, T-023/S2, architect "Veri modeli — beyan
+// VERİ" + K-A17 adım ①, kullanıcı kararı 2026-11-17): `arkesoft_app`'in bir
+// tablo üzerindeki BEKLENEN yetkisinin KAPALI küme beyanı — `AuthRoleTable
+// PrivilegeExpectation`'ın EMSALİ (v0.0.14.1, T-015/ST-C) ama AYRI BİR TİP
+// (farklı rol, farklı semantik: beş fiil birebir karşılaştırılır, "en az"
+// YOK — `columnLevel`'ı iki anlamda kullanmaya zorlamamak için tek tipe
+// SIKIŞTIRILMADI).
+//
+// TARİHSEL NOT (K-A17 SIRASI — adım ①, S2'de GEÇİCİ olarak BOŞ bırakılmıştı):
+// architect'in ölçtüğü "her iki yönde kırmızı pencere" sorununun çözümü —
+// beyan DDL'den ÖNCE eklenirse `APP_ROLE_UNEXPECTED_PRIVILEGE` (katalog
+// henüz REVOKE edilmedi), DDL'den SONRA eklenirse eski
+// `APP_ROLE_MISSING_DML_PRIVILEGE` ateşlenir (yeni kuralın `continue`u henüz
+// YOK). Boş beyanla AC-11(a)'nın kanıt mekanizması kuruldu: o adımda canlı
+// bulgu kümesi BAYT-BİREBİR bugünküyle AYNI kaldı. İki satır
+// (`audit_log`/`platform_audit_log`, `{canSelect: true, canInsert: true,
+// canUpdate: false, canDelete: false, canTruncate: false}`) S6'da (K-A17
+// adım ③, AŞAĞIDA) DDL'le (§9) AYNI OTURUMDA eklendi — dizi artık BOŞ DEĞİL.
+export type AppRoleTablePrivilegeExpectation = {
+  readonly tableName: string
+  readonly canSelect: boolean
+  readonly canInsert: boolean
+  readonly canUpdate: boolean
+  readonly canDelete: boolean
+  readonly canTruncate: boolean
+}
+
+// GENİŞLETME (ROADMAP v0.0.20.2, T-023/S6, architect K-A17 adım ③, kullanıcı
+// kararı 2026-11-17): dizi artık BOŞ DEĞİL — `audit_log` ve `platform_audit_log`
+// için KAPALI küme beyanı eklendi (`{SELECT, INSERT}` var, `{UPDATE, DELETE,
+// TRUNCATE}` yok). Bu iki satır `sql/bootstrap-roles.sql`'in YENİ §9'uyla
+// (`REVOKE UPDATE, DELETE, TRUNCATE ON audit_log/platform_audit_log FROM
+// arkesoft_app`) AYNI OTURUMDA eklendi — K-A17'nin "her iki yönde kırmızı
+// pencere" riskini önleyen BAĞLAYICI sıra (①②③④⑤) burada ③'ü tamamlıyor.
+// ⚠⚠ Bu iki satır DDL'den (§9) AYRI bir commit'e/oturuma BÖLÜNEMEZ — beyan
+// DDL'den önce tek başına eklenirse `APP_ROLE_UNEXPECTED_PRIVILEGE` (katalog
+// henüz REVOKE edilmedi), DDL'den sonra tek başına uygulanırsa (beyansız)
+// eski `APP_ROLE_MISSING_DML_PRIVILEGE` ateşlenir — ikisi de CI'ı kırıp
+// "beyanı geri al / linteri gevşet" baskısı doğurur (R-PO4, CLAUDE.md §10.6).
+// İKİ SQL DİZİSİYLE (bootstrap §9 + rollback-audit-append-only.sql) İKİ
+// YÖNLÜ tutarlılığı `__tests__/append-only-tables-sql-consistency.test.ts`
+// mekanik olarak doğrular — bu üçlünün (beyan + 2 SQL dizisi) CLAUDE.md §7
+// "dört liste" tuzağının KARDEŞİ olduğu `D11` borcuna (ROADMAP) not düşüldü.
+//
+// `as const satisfies` TERCİH EDİLDİ (açık tip bildirimi DEĞİL) — S3'ün
+// ampirik ölçtüğü sınıf: açık `: readonly AppRoleTablePrivilegeExpectation[]`
+// bildirimi `tableName`'i `string`'e GENİŞLETİR ve bu modülün DIŞINA taşan
+// her `Exclude<>` pin'ini (bu dosyadaki `AppRoleTablePrivilegeExpectation`
+// gibi bir tip üzerinden) KALICI OLARAK KIRMIZI yapardı (S3'ün pin dosyası
+// bu yüzden bir AYNA kullanmak zorunda kalmıştı, `V-S3-2`). `as const
+// satisfies` LİTERAL tipleri KORUR ve şekli yine DOĞRULAR — pin artık
+// aynaya değil GERÇEK sabite bağlanabilir (bkz.
+// `__tests__/type-pins/app-role-privilege-expectations.pin.ts`).
+export const APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS = [
+  {
+    tableName: 'audit_log',
+    canSelect: true,
+    canInsert: true,
+    canUpdate: false,
+    canDelete: false,
+    canTruncate: false,
+  },
+  {
+    tableName: 'platform_audit_log',
+    canSelect: true,
+    canInsert: true,
+    canUpdate: false,
+    canDelete: false,
+    canTruncate: false,
+  },
+] as const satisfies readonly AppRoleTablePrivilegeExpectation[]

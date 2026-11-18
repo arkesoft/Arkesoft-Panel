@@ -34,16 +34,34 @@
 //      çağrısı YOKTUR ve olmamalıdır.
 //   3. APPEND-ONLY SÖZLEŞMESİNİN İHLALİ DEĞİLDİR: append-only, "bu tabloya
 //      hangi SQL fiillerinin FİZİKSEL OLARAK uygulanabileceği" hakkında bir
-//      iddia değil (Postgres seviyesinde `arkesoft_app` dört DML yetkisinin
-//      dördüne de sahiptir — `catalog-lint.ts`'in `lintAppRoleDmlPrivileges`
-//      kuralı bunu ZORUNLU tutar), UYGULAMA KATMANININ hangi yazma yollarını
-//      AÇTIĞI hakkında bir iddiadır. Prob o yolu açmıyor; onun YOKLUĞUNDA
-//      ölçülemeyecek bir güvenlik özelliğini (RLS'in UPDATE/DELETE'i de
-//      filtrelediğini) ölçüyor. Tersi daha kötü olurdu: UPDATE/DELETE
-//      yollarını ÖLÇMEDEN bırakmak, politikanın `USING` yan tümcesinin
-//      SELECT dışındaki fiillerde de çalıştığını DOĞRULANMAMIŞ bırakırdı —
-//      oysa `WITH CHECK` ve `USING`'in ayrı ayrı doğru olması migration'ın
-//      kanonik politika metninin TAM OLARAK vaat ettiği şeydir.
+//      iddia değil, UYGULAMA KATMANININ hangi yazma yollarını AÇTIĞI
+//      hakkında bir iddiadır. ⚠⚠ DÜZELTME (FIX turu 1 kuyruğu — `:149-158`
+//      ile ÇELİŞEN bayat yorum SİLİNDİ): bu yorum ESKİDEN "Postgres seviyesinde
+//      `arkesoft_app` dört DML yetkisinin dördüne de sahiptir —
+//      `lintAppRoleDmlPrivileges` kuralı bunu ZORUNLU tutar" diyordu — bu
+//      ROADMAP v0.0.20.2/T-023/S6'DAN SONRA ARTIK YANLIŞ: `sql/bootstrap-
+//      roles.sql`'in §9'u `arkesoft_app`'ten `audit_log`/`platform_audit_log`
+//      tablolarında `UPDATE, DELETE, TRUNCATE`'i ÇEKTİ (SELECT/INSERT KALDI);
+//      bu iki tablonun `arkesoft_app` yetkisini artık eski `lintAppRoleDml
+//      Privileges` DEĞİL, `tenancy.ts`'teki `APP_ROLE_TABLE_PRIVILEGE_
+//      EXPECTATIONS` kapalı küme beyanı ZORUNLU tutar (bkz. aşağıdaki `:149-158`).
+//      Prob o yolu açmıyor; yalnızca İZOLASYON için vardır (madde 1).
+//      ⚠⚠ DÜZELTME (FIX turu 2, `solid` tur 2 [low] — bu paragraf "RLS'in
+//      UPDATE/DELETE'i de filtrelediğini ölçüyor" diyordu; bu cümle T-023/
+//      S6'dan SONRA BU TABLO İÇİN ARTIK YANLIŞ — "onun yokluğunda
+//      ölçülemeyecek bir güvenlik özelliğini ölçüyor" dedi ama o özellik
+//      BUGÜN ÖLÇÜLEMİYOR, çünkü `42501` RLS'e HİÇ GELMEDEN düşüyor, bkz.
+//      aşağıdaki `mutationRejection: 'privilege-denied'`): bu prob BUGÜN
+//      RLS'in `USING`'inin UPDATE/DELETE'te çalıştığını DEĞİL, `REVOKE
+//      UPDATE, DELETE, TRUNCATE`'in (bootstrap-roles.sql §9) rolü RLS'e HİÇ
+//      ULAŞTIRMADAN engellediğini ölçer — iki ayrı savunma katmanı (rol
+//      yetkisi + RLS) arasında doğru katmanda bulunduğunu KANITLAR. RLS'in
+//      UPDATE/DELETE'i de filtrelediği GÜÇLÜ garantisi hâlâ BAŞKA altı
+//      probun (`job`/`tenant_invitation`/`tenant_version_state`/
+//      `tenant_update_history`/`subscription`/`tenant_membership`,
+//      `mutationRejection: 'record-not-found'`de kalanlar) ölçtüğü şeydir —
+//      bu dosyanın güvenlik iddiası BUNLARA DEVREDİLİR, burada TEKRAR
+//      edilmez.
 //   4. ⚠ Bu gerekçe BURAYA yazıldı çünkü yazılmazsa prob, platformun
 //      T-013'ten devralan ana dersi olan "BEYAN ≠ GERÇEKLİK" kusur sınıfının
 //      ders kitabı örneği olurdu: şema "UPDATE yolu yoktur" DİYOR, kod ise
@@ -145,6 +163,17 @@ async function createAuditLogRow(tx: TransactionClient, tenantId: string): Promi
  */
 export const auditLogProbe: TenantScopedProbe = {
   tableName: 'audit_log',
+
+  // T-023/S6 — `sql/bootstrap-roles.sql`'in §9'u `arkesoft_app`'ten `audit_log`
+  // tablosunda `UPDATE, DELETE, TRUNCATE` yetkisini çektiği için bu probun
+  // senaryo 3/4 reddi artık RLS'in "bulunamadı" semantiği (P2025) ÜZERİNDEN
+  // DEĞİL, Postgres'in yetki reddi (`42501`, Prisma'da P2039) ÜZERİNDEN
+  // gerçekleşir — bkz. `tenant-isolation-suite.ts`'in `MutationRejectionKind`
+  // dosya başı yorumu. Diğer altı prob (`job`, `tenant_invitation`,
+  // `tenant_version_state`, `tenant_update_history`, `subscription`,
+  // `tenant_membership`) `'record-not-found'`DA KALIR — bu `REVOKE` yalnızca
+  // `audit_log`/`platform_audit_log`'u kapsar.
+  mutationRejection: 'privilege-denied',
 
   insertRow: (tx, tenantId) => createAuditLogRow(tx, tenantId),
 

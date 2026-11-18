@@ -113,6 +113,11 @@ async function createInvitationRow(tx: TransactionClient, tenantId: string): Pro
 export const tenantInvitationProbe: TenantScopedProbe = {
   tableName: 'tenant_invitation',
 
+  // ⚠ T-023/S5 — `mutationRejection` ZORUNLU alan. `tenant_invitation`
+  // `REVOKE` kapsamı DIŞINDA (K2: yalnızca `audit_log`/`platform_audit_log`)
+  // → her zaman `'record-not-found'`.
+  mutationRejection: 'record-not-found',
+
   insertRow: (tx, tenantId) => createInvitationRow(tx, tenantId),
 
   findRowById: async (tx, rowId) => {

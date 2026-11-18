@@ -53,6 +53,9 @@ export { DEMO_SEED } from './seed-data.js'
 // ZORUNDA (po, bağlayıcı — aksi hâlde S4 kurulu desenle çalışamaz).
 // `Plan`/`Subscription` (ROADMAP v0.1.0, T-019/S1) ADDITIVE eklendi — AYNI
 // desen: export'lar şemayla AYNI oturumda yazılmak ZORUNDA (po, bağlayıcı).
+// `PlatformAdmin`/`PlatformAuditLog` (ROADMAP v0.0.20, T-021/S3) ADDITIVE
+// eklendi — AYNI desen: export'lar şemayla AYNI oturumda yazılmak ZORUNDA
+// (S5/S7 barrel'dan ithal edecek, `job.probe.ts:20` deseni).
 export type {
   Tenant,
   User,
@@ -65,6 +68,8 @@ export type {
   TenantUpdateHistory,
   Plan,
   Subscription,
+  PlatformAdmin,
+  PlatformAuditLog,
 } from '#prisma'
 
 // Çalışma zamanı karşılaştırması + exhaustive switch için değer + tip.
@@ -83,6 +88,10 @@ export type {
 // eklendi. `SiteType` v0.1.0'da tele ÇIKAR (kayıt sihirbazı girdisi, S3/S9'un
 // işi) — bu, yukarıdaki beş enum'un "bu sürümde tele hiç çıkmaz" muafiyetinin
 // TERSİDİR. `SubscriptionStatus` BU sürümde tele ÇIKMAZ (tek değer, `active`).
+//
+// `PlatformAuditAction` (ROADMAP v0.0.20, T-021/S3) ADDITIVE eklendi — BU
+// enum tele ÇIKAR (`architect` tRPC tasarımı: `PlatformAuditActionWire`
+// parite pini GEREKİR), `SiteType` emsali.
 export {
   TenantStatus,
   UserStatus,
@@ -95,6 +104,7 @@ export {
   UpdateStatus,
   SiteType,
   SubscriptionStatus,
+  PlatformAuditAction,
 } from '#prisma'
 
 // `Prisma.TenantCreateInput` vb. yardımcı tipler için — yalnızca TİP
