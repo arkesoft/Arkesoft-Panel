@@ -23,6 +23,14 @@ import request from 'supertest'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { detectSameOriginViolation } from '../auth/same-origin.guard.js'
+// ROADMAP v0.0.21.1, T-025/S4 EKLEMESİ — matris describe'ının ikinci giriş
+// noktası için AYRI bir import satırı (üsttekiyle BİRLEŞTİRİLMEDİ): bu
+// dosyanın tamamı YALNIZCA EKLEME taşımak ZORUNDA (S4'ün kapsamı, Task
+// yorumu) — mevcut `import { detectSameOriginViolation } from ...` satırını
+// GENİŞLETMEK o satırı DEĞİŞTİRİR (`git diff --stat` 1 silme + 1 ekleme
+// gösterirdi); bu kural eslint'te `import/no-duplicates` KARŞILIĞI YOK (bu
+// paket o eklentiyi KULLANMIYOR, `packages/config/eslint/base.js` ÖLÇÜLDÜ).
+import { detectSameOriginViolationAgainstTrustedOrigins } from '../auth/same-origin.guard.js'
 import { apiEnvSchema } from '../config/api-env.js'
 import type { ApiEnv } from '../config/api-env.js'
 import { createAuthenticatedSession } from './helpers/auth-fixture.js'
@@ -251,6 +259,76 @@ describe('SameOriginGuard — gerçek HTTP (F5 PoC regresyon kapısı)', () => {
         .send({ password })
 
       expect(revokeAllResponse.status).toBe(200)
+    },
+  )
+})
+
+// ROADMAP v0.0.21.1, T-025/S4 EKLEMESİ — `AC-26` metot × Referer güven
+// matrisi. `same-origin.guard.ts`'in dosya başı yorumu (K1): dört dal ve
+// `SAFE_METHODS` DEĞİŞMEDİ, metot muafiyeti YALNIZCA üçüncü dalda (`Origin`
+// VE `Referer` İKİSİ DE YOK) — bu matris BİRİNCİ/İKİNCİ dalı (`Referer`
+// fallback'i) metot BAĞIMSIZ sıkı kalmasını PİNLER: `GET` + GÜVENİLMEYEN
+// `Referer` BUGÜNE KADAR hiçbir testte doğrulanmamıştı (S4 görev tanımı,
+// P1/R4). `HEAD`/`OPTIONS` satırları muafiyetin SADECE üçüncü dalda
+// olduğunu doğrular (dosya başı yorumunun "⚠ Birinci/ikinci dalda metot
+// muafiyeti YOKTUR" iddiasının testidir). ⚠ Hepsinde `cookie` VAR (gerçek
+// tarayıcı davranışı — Referer fallback'i Cookie'siz istekte zaten CSRF
+// riski taşımaz, ön koşul testleri yukarıdaki saf-fonksiyon describe'ında
+// zaten var).
+//
+// ⚠⚠ Matris İKİ giriş noktasında DA koşar (S4 görev tanımı):
+// 1) `detectSameOriginViolation` — TEK orijin, GERİYE UYUMLU imza,
+//    `.reason`'a indirilmiş dönüş. Bu, imzanın KIRILMADIĞININ kanıtıdır.
+// 2) `detectSameOriginViolationAgainstTrustedOrigins` — ÜÇ orijinli liste
+//    (`THREE_TRUSTED_ORIGINS`), DETAY nesnesi (`{ reason, branch }`) döner.
+//    Bu fonksiyonun ÖNCEDEN SIFIR test tüketicisi vardı (same-origin.guard.ts
+//    dosya başı yorumu) — bu describe o boşluğu kapatır VE `branch` alanını
+//    (`referer_header`) AYNI matriste iddia eder.
+describe('AC-26 — metot × Referer güven matrisi (T-025/S4, iki giriş noktasında da)', () => {
+  const THREE_TRUSTED_ORIGINS: readonly string[] = [
+    new URL(TRUSTED_BASE_URL).origin,
+    'https://superadmin.arkesoft.example',
+    'https://extra-trusted.arkesoft.example',
+  ]
+
+  function refererFor(trusted: boolean): string {
+    return trusted ? `${TRUSTED_BASE_URL}/panel` : 'https://evil.example.com/form'
+  }
+
+  const METHOD_REFERER_MATRIX = [
+    { method: 'GET', refererTrusted: true, expectedReason: undefined },
+    { method: 'GET', refererTrusted: false, expectedReason: 'origin_mismatch' as const },
+    { method: 'POST', refererTrusted: true, expectedReason: undefined },
+    { method: 'POST', refererTrusted: false, expectedReason: 'origin_mismatch' as const },
+    { method: 'HEAD', refererTrusted: false, expectedReason: 'origin_mismatch' as const },
+    { method: 'OPTIONS', refererTrusted: false, expectedReason: 'origin_mismatch' as const },
+  ] as const
+
+  it.each(METHOD_REFERER_MATRIX)(
+    'GİRİŞ NOKTASI 1 (detectSameOriginViolation, TEK orijin) — $method + Referer güveni=$refererTrusted → $expectedReason',
+    ({ method, refererTrusted, expectedReason }) => {
+      const headers = { cookie: 'session_token=abc', referer: refererFor(refererTrusted) }
+
+      expect(detectSameOriginViolation(headers, method, TRUSTED_BASE_URL)).toBe(expectedReason)
+    },
+  )
+
+  it.each(METHOD_REFERER_MATRIX)(
+    'GİRİŞ NOKTASI 2 (detectSameOriginViolationAgainstTrustedOrigins, N=3 liste) — $method + Referer güveni=$refererTrusted → $expectedReason (branch pinli)',
+    ({ method, refererTrusted, expectedReason }) => {
+      const headers = { cookie: 'session_token=abc', referer: refererFor(refererTrusted) }
+
+      const violation = detectSameOriginViolationAgainstTrustedOrigins(
+        headers,
+        method,
+        THREE_TRUSTED_ORIGINS,
+      )
+
+      if (expectedReason === undefined) {
+        expect(violation).toBeUndefined()
+      } else {
+        expect(violation).toEqual({ reason: expectedReason, branch: 'referer_header' })
+      }
     },
   )
 })

@@ -57,11 +57,19 @@
 // (POST) istekler; `SameOriginGuard`/Better Auth'un KENDİ Origin denetimi bu
 // durumda `Origin` başlığının GÜVENİLİR orijinlerden BİRİYLE eşleşmesini
 // ister (`trusted-origins.ts`, OKUNDU). Bu fixture gerçek TCP bağlantısının
-// PORTUNDAN BAĞIMSIZ olarak `Origin: http://superadmin.arkesoft.localhost:
-// 5174` başlığını AÇIKÇA EKLER — `SUPERADMIN_BASE_URL`'in ADR-0023 §4
-// varsayılan değeriyle (`.env.example`) BİREBİR aynı, `apps/admin`'in kendi
-// e2e'sinin `headers: { Origin: baseURL }` desenindeki AYNI teknik (ölçülü,
-// kopya DEĞİL — farklı bir sabitten BAĞIMSIZ türetilir).
+// PORTUNDAN BAĞIMSIZ olarak bir `Origin` başlığını AÇIKÇA EKLER.
+//
+// ⚠⚠ DÜZELTME (ROADMAP v0.0.21.1, T-025/S2, D22/AC-30): bu başlık ARTIK sabit
+// bir port JETONU TAŞIMIYOR — `resolveSuperadminDevPort(process.env['ARKESOFT_
+// SUPERADMIN_E2E_PORT'])`'TEN türetilir (`apps/superadmin/src/app/
+// superadmin-config.ts`'in SAF, fail-fast fonksiyonu — `vite.config.ts` VE
+// `playwright.config.ts`'in AYNI çağrısı, böylece üçü BİRLİKTE kayar). Sabit
+// port yüzünden süper admin dev sunucusu VARSAYILAN DIŞI bir portta koşarken
+// bu fixture'ın `Origin` başlığı gerçek orijini TAKLİT ETMİYORDU ve guard
+// `origin_mismatch` veriyordu (T-024'te AC-19/AC-20'nin superadmin ayağı BU
+// YÜZDEN yerelde doğrulanamadı). `ARKESOFT_SUPERADMIN_E2E_PORT` VERİLMEZSE
+// davranış BAYT-BİREBİR bugünküyle (`SUPERADMIN_DEV_PORT` varsayılanı) AYNIDIR
+// — CI bu env'i VERMEZ.
 import { randomUUID } from 'node:crypto'
 
 import { expect, type APIRequestContext } from '@playwright/test'
@@ -70,28 +78,42 @@ import { z } from 'zod'
 import { findVerificationToken } from '../../../../scripts/playwright/mailpit.js'
 import { generateTotpCode } from '../../../../scripts/playwright/totp.js'
 import { querySqlRows, runSql } from '../../../../scripts/playwright/sql.js'
+import { resolveSuperadminDevPort } from '../../src/app/superadmin-config.js'
 
 /** Bu fabrikanın paylaşılan modüle geçirdiği hata metni öneki. */
 const SQL_ERROR_LABEL = 'superadmin-platform-admin-fixture'
 
 /**
- * `SUPERADMIN_BASE_URL`'in ADR-0023 §4 varsayılanıyla BİREBİR aynı — gerçek
- * bağlantı portundan BAĞIMSIZ, yalnızca `Origin` başlığı için (dosya başı
- * notu (c)).
+ * Süper admin rezerve alt alan adı — bu dosyadaki TEK doğruluk kaynağı
+ * (T-025/S2 tekilleştirmesi). {@link SUPERADMIN_TRUSTED_ORIGIN} VE
+ * {@link resolveDirectApiBaseUrl} İKİSİ DE bu sabiti tüketir; host etiketi
+ * iki yerde AYRI AYRI yazılmaz.
  */
-const SUPERADMIN_TRUSTED_ORIGIN = 'http://superadmin.arkesoft.localhost:5174'
+const SUPERADMIN_HOST = 'superadmin.arkesoft.localhost'
+
+/**
+ * Yalnızca `Origin` başlığı için — gerçek TCP bağlantı portundan BAĞIMSIZ
+ * (dosya başı notu (c)). Port `resolveSuperadminDevPort`'tan türetilir:
+ * `ARKESOFT_SUPERADMIN_E2E_PORT` verilmezse `SUPERADMIN_DEV_PORT`'un (`.env.
+ * example`'daki `SUPERADMIN_BASE_URL` yorumuyla, ADR-0023 §4, AYNI) varsayılan
+ * değerine düşer; verilmişse `vite.config.ts`/`playwright.config.ts`'in AYNI
+ * anda dinlediği gerçek portla eşleşir (T-025/S2, D22/AC-30).
+ */
+const SUPERADMIN_TRUSTED_ORIGIN = `http://${SUPERADMIN_HOST}:${String(resolveSuperadminDevPort(process.env['ARKESOFT_SUPERADMIN_E2E_PORT']))}`
 
 /**
  * `apps/api`'ye DOĞRUDAN bağlanacak taban URL — Host `superadmin.arkesoft.
  * localhost` (çerez `Domain` eşleşmesi İÇİN, dosya başı notu (b)), PORT
  * `ARKESOFT_SUPERADMIN_DEV_API_TARGET`'tan (`vite.config.ts`'in AYNI
- * değişkeni, varsayılan `http://127.0.0.1:3000`).
+ * değişkeni, varsayılan `http://127.0.0.1:3000`). ⚠ Bu PORT, {@link
+ * SUPERADMIN_TRUSTED_ORIGIN}'in portuyla (dev sunucusunun portu) KARIŞTIRILMAZ
+ * — ikisi bağımsız eksenler (dosya başı notu (c)).
  */
 function resolveDirectApiBaseUrl(): string {
   const target = process.env['ARKESOFT_SUPERADMIN_DEV_API_TARGET'] ?? 'http://127.0.0.1:3000'
   const parsed = new URL(target)
   const port = parsed.port.length > 0 ? parsed.port : parsed.protocol === 'https:' ? '443' : '80'
-  return `${parsed.protocol}//superadmin.arkesoft.localhost:${port}`
+  return `${parsed.protocol}//${SUPERADMIN_HOST}:${port}`
 }
 
 /**

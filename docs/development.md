@@ -1133,6 +1133,75 @@ koşulu 2'nin cevabı — `AUTH_BASE_URL`'in **anlamı değişmez**, güvenilir 
 değerden listeye** geçer, `trusted-origins.ts`). Dev portu **5174**, sabit; e2e override
 `ARKESOFT_SUPERADMIN_E2E_PORT` (bkz. `docs/testing.md` port haritası).
 
+### Sessiz 403 teşhisi: `origin_mismatch`/`missing_origin_with_cookie` (v0.0.21.1+)
+
+`SameOriginGuard` bir isteği reddettiğinde yanıt gövdesi **her zaman** tek kod/tek gövde
+döner (`403 CROSS_SITE_REQUEST_REJECTED`) — isteğin `Origin`/`Referer` **değeri** ne
+gövdede ne logda görünür (bilinçli, kimlik avı/hedef alan adı sızıntısı riskine karşı,
+ADR-0026 Karar 3). Yanıt gövdesine bakarak _"yanlış yapılandırdım mı yoksa gerçekten
+yabancı bir orijinden mi geldi"_ sorusu **yanıtlanamaz** — bu ayrımı yapmak için sunucu
+logundaki (pino, `warn` seviyesi) dört teşhis alanına bakılır:
+
+```json
+{
+  "level": "warn",
+  "reason": "missing_origin_with_cookie",
+  "branch": "referer_header",
+  "trustedOriginCount": 1,
+  "trustedOriginSources": ["AUTH_BASE_URL"],
+  "msg": "aynı-orijin olmayan istek reddedildi"
+}
+```
+
+- **`branch`** — hangi karar dalı reddetti (`sec_fetch_site` | `origin_header` |
+  `referer_header` | `headers_absent`). `D24` sınıfı bir yanlış yapılandırmanın
+  imzası `branch: 'referer_header'`'dır: istek `Origin` taşımadı, `Referer`'ın orijini
+  güvenilir listede yoktu.
+- **`trustedOriginCount`** — o anda yürürlükte olan güvenilir orijin sayısı (1-8).
+- **`trustedOriginSources`** — bu sayıya katkıda bulunan **ortam değişkeni adları**
+  (değer değil): `'AUTH_BASE_URL'` her zaman var; `'SUPERADMIN_BASE_URL'` ve/veya
+  `'ADDITIONAL_TRUSTED_ORIGINS'` tanımlıysa eklenir.
+
+**Ayrım kuralı:**
+
+| Gözlem                                                                                                                   | Yorum                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `branch:'referer_header'` + `trustedOriginCount:1` + `trustedOriginSources:['AUTH_BASE_URL']`                            | **Eksik yapılandırma** — süper admin (veya eklenmesi beklenen başka bir) orijin hiç listeye girmemiş. `SUPERADMIN_BASE_URL` ve/veya `ADDITIONAL_TRUSTED_ORIGINS`'i kontrol et.                                             |
+| Aynı `branch` + `trustedOriginCount` **beklenenle eşleşiyor** (örn. 2 veya 3) + `trustedOriginSources` **dolu/beklenen** | **Gerçek yabancı orijin** — liste zaten doğru kurulu, gelen istek güvenilir listede olmayan bir yerden geliyor (ya gerçek bir çapraz-site denemesi ya da yeni bir ortamın güvenilir listeye **henüz eklenmemiş** orijini). |
+| `branch:'sec_fetch_site'`                                                                                                | Tarayıcı isteği zaten `Sec-Fetch-Site: cross-site` olarak işaretlemiş — çapraz-site. `trustedOriginCount`/`sources` bu dalda teşhis amaçlı değildir, istek listeye bakılmadan reddedilmiştir.                              |
+
+### Varsayılan olmayan portta superadmin e2e koşumu (`D22`/`D24`, v0.0.21.1+)
+
+Süper admin dev sunucusu **5174 dışında** bir portta koşarken (iki eşzamanlı Task/ajan
+koşumu, ikinci bir geliştirici makinesi vb.) `SUPERADMIN_TRUSTED_ORIGIN` artık ortamdan
+türetiliyor (`apps/superadmin/e2e/fixtures/platform-admin.ts`,
+`resolveSuperadminDevPort`) — port'u API tarafına **`ADDITIONAL_TRUSTED_ORIGINS`** ile
+bildirmek yeterli, `SUPERADMIN_BASE_URL`'i değiştirmeye gerek yok. `qa`/`S6`'nın (T-025)
+gerçekten kullandığı ve yeşil aldığı komut, birebir:
+
+```bash
+# Terminal A — apps/api (yalnızca kabuk override'ı; kök .env DEĞİŞTİRİLMEZ)
+API_PORT=3100 \
+ADDITIONAL_TRUSTED_ORIGINS=http://superadmin.arkesoft.localhost:5274 \
+SUPERADMIN_IP_ALLOWLIST=127.0.0.1 \
+REDIS_URL=redis://127.0.0.1:6379/9 \
+pnpm --filter @arkesoft/api dev
+
+# Terminal B
+ARKESOFT_SUPERADMIN_E2E_PORT=5274 \
+ARKESOFT_SUPERADMIN_DEV_API_TARGET=http://127.0.0.1:3100 \
+pnpm --filter @arkesoft/superadmin test:e2e
+```
+
+⚠⚠ **Yerel ortam dokunulmazları:** port **3000**, **5173**, **5174** ve kullanıcının
+kendi konteynerleri/kök `.env`'i **kullanılmaz** — yalnızca kabuk değişkeni override'ı
+(yukarıdaki gibi). `REDIS_URL`'in DB indeksini (örnekte `9`) değiştirmek kullanıcının
+varsayılan Redis veritabanıyla çakışmayı önler; kullanmadan önce `DBSIZE`'ı ölçüp not
+edin — bu DB kalıcı bir test havuzudur, sayaçlar koşumlar arasında **silinmez**.
+⚠ `pnpm --filter <paket> <script> -- <desen>` bu depoda filtre **uygulamıyor** (bkz.
+`AGENT_BASELINE.md` §6) — tek dosya koşturmak için paket dizininden
+`npx playwright test <dosya>` kullanın.
+
 ---
 
 ## Vitrin (`apps/storefront`) Geliştirme (v0.0.8+)
