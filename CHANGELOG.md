@@ -25,6 +25,20 @@ pnpm changeset
 
 <!-- Changesets bu çizginin altına yazar. Elle girdi eklemeyin. -->
 
+## 0.10.3 — 2026-11-19
+
+- Çapraz-site istek koruması (CSRF) güçlendirildi: `Referer` başlığı üzerinden yapılan
+  kontrol, güvenli HTTP metotlarında (`GET`/`HEAD`/`OPTIONS`) da sıkı kalacak şekilde
+  açıkça pinlendi ve testle doğrulandı. Operatörler artık güvenilir kaynak (origin)
+  listesine isteğe bağlı olarak ek alan adları ekleyebiliyor (yeni opsiyonel
+  `ADDITIONAL_TRUSTED_ORIGINS` ortam değişkeni, virgülle ayrılmış, en fazla 8 adet;
+  tanımlanmazsa davranış bugünküyle bayt-birebir aynı kalır). Yanlış yapılandırma
+  nedeniyle reddedilen istekler artık işletme kayıtlarında teşhis edilebiliyor (hangi
+  kontrolün reddettiği, kaç güvenilir kaynak tanımlı olduğu) — isteğin gerçek
+  `Origin`/`Referer` değeri hiçbir zaman kayda yazılmıyor. Süper admin uçtan uca
+  testleri artık varsayılan olmayan bir geliştirme portunda da sorunsuzca çalışabiliyor.
+  [v0.0.21.1]
+
 ## 0.10.2 — 2026-11-17
 
 - Platform denetim izi tablolarında (`audit_log`, `platform_audit_log`) uygulamanın çalışma zamanı rolünün (`arkesoft_app`) `UPDATE`/`DELETE`/`TRUNCATE` yetkisi veritabanı seviyesinde çekildi; katalog linter'ı artık tablo başına beklenen yetki kümesini kapalı küme olarak zorunlu tutuyor (fazla yetki de, eksik yetki de bulgu üretir). Denetim kaydı veritabanı seviyesinde yalnızca eklenebilir hâle geldi; uygulamanın çalışma zamanı rolünün güncelleme, silme ve `TRUNCATE` yetkisi yok.
