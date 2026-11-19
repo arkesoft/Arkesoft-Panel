@@ -16,6 +16,7 @@
     "lint:fix": "turbo run lint -- --fix",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "test:contract": "turbo run test:contract",
     "test:isolation": "turbo run test:isolation",
     "test:e2e": "turbo run test:e2e --concurrency=1 --continue",
     "test:visual": "turbo run test:visual --concurrency=1",

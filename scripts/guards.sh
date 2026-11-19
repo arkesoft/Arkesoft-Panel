@@ -1224,6 +1224,117 @@ check_actionlint_if_available() {
   actionlint
 }
 
+# ---------------------------------------------------------------------------
+# `pnpm test:contract` komut zinciri — script varlığı + sahte yeşil
+# dedektörü + üretilen sözleşme dosyasının/üretici-serileştirici script'lerinin
+# varlığı (ROADMAP v0.0.22, T-026/S3, devops).
+#
+# TEK `run_step` altında ÜÇ alt kontrol — emsal `check_adr22_k1d_shellout_
+# boundary` (yukarıda): bu üç kontrol birbirinden BAĞIMSIZ veri kaynağı
+# okusa da hepsi AYNI "test:contract komut zinciri çalışır durumda mı"
+# sorusuna hizmet eder; TEK adım olarak sayılır (22. adımın ÜZERİNE tek bir
+# 23. adım eklenir, üçe bölünmez).
+#
+# ⚠⚠ BAĞLAYICI KISIT (a) — `.github/ci-expected-test-packages.txt` DESENİ
+# BURADA KULLANILAMAZ: `check_fake_green_test_packages`/`check_fake_green_
+# isolation_packages` (yukarıda) beklenen paket kümesini `.github/` altında
+# bir beyan dosyasından okuyor, ama `.github/**` bu T-026 alt görevinde
+# DOKUNULMAZ (devops'un dosya listesi kök `package.json` + `packages/trpc/
+# package.json` + `turbo.json` + bu dosya ile SINIRLI). ⇒ beklenen küme
+# (`@arkesoft/trpc`) BİLİNÇLİ OLARAK bu script'in İÇİNE gömülüyor —
+# `packages/trpc/package.json`'ın BUGÜN `test:contract`'ı SAHİPLENEN TEK
+# paket olması (S1'in `contract:generate`'i ekleyişiyle AYNI yer, ölçüldü:
+# `pnpm exec turbo run test:contract --dry=json | jq -r '.tasks[]|
+# select(.task=="test:contract" and .command!="<NONEXISTENT>")|.package'`
+# → tam olarak `@arkesoft/trpc`) bu gömülü sabiti doğruluyor. Bu sabit
+# `.github/ci-expected-test-packages.txt`'e EKLENMEDİ çünkü o dosya
+# `.github/**`'in bir parçası — CI tarafının bu kümeyi KENDİ sahte yeşil
+# dedektöründe de doğrulaması gerekir, ama o değişiklik bu T-026/S3'ün
+# KAPSAMI DIŞINDA (CI parite boşluğu — handoff raporunda BİLDİRİLDİ,
+# `docs`/S4 vade v0.0.23 borcu yazacak).
+#
+# ⚠ BAĞLAYICI KISIT (b) — sayı pini (17 prosedür / 7 ad alanı) BURAYA
+# KONULMUYOR: bu sayılar `docs/api-contract-surface.json`'ın İÇİNDEN
+# okunsaydı bayat bir dosyanın kendi kendini doğrulaması olurdu (dosya
+# üretici koşturulmadan da eski hâliyle kalabilir). Tazeliği ancak CANLI
+# router kanıtlayabilir — o doğrulama `packages/trpc/src/__tests__/
+# contract-surface.test.ts`'te ZATEN var (S1 ekledi) ve `pnpm test:contract`
+# onu koşturur; bu script'in ÜÇÜNCÜ alt kontrolü yalnızca dosyanın VARLIĞINI
+# ve üretici/serileştirici script'lerin VARLIĞINI denetler (fail-closed),
+# İÇERİĞİN sayısal doğruluğunu DEĞİL.
+# ---------------------------------------------------------------------------
+check_test_contract_chain() {
+  local violation=false
+
+  # --- Alt kontrol 1: kök package.json scripts["test:contract"] DOLU ---
+  # (emsal: check_ac1_root_e2e_visual_scripts, satır ~543 — jq ile oku,
+  # boş/yok ise fail-closed İHLAL.)
+  local root_package_json="package.json"
+  if [ ! -f "$root_package_json" ]; then
+    echo "test:contract zinciri İHLALİ — $root_package_json bulunamadı — fail-closed."
+    violation=true
+  else
+    local root_script_value
+    if ! root_script_value="$(jq -r '.scripts["test:contract"] // ""' "$root_package_json")"; then
+      echo "test:contract zinciri taraması hata verdi: $root_package_json jq ile okunamadı — fail-closed."
+      violation=true
+    elif [ -z "$root_script_value" ]; then
+      echo "test:contract zinciri İHLALİ — kök $root_package_json 'scripts[\"test:contract\"]' tanımlı değil (boş veya yok)."
+      violation=true
+    else
+      echo "Alt kontrol 1: kök $root_package_json 'test:contract' script'i dolu (\"$root_script_value\")."
+    fi
+  fi
+
+  # --- Alt kontrol 2: sahte yeşil dedektörü — turbo görevini GERÇEKTEN
+  #     sahiplenen paket kümesi tam olarak "@arkesoft/trpc" (bilinçli gömülü
+  #     sabit, yukarıdaki (a) gerekçesi). Bu olmadan packages/trpc'den
+  #     script silinirse `pnpm test:contract` sıfır iş yapıp exit 0 verirdi.
+  local expected_contract_test_packages="@arkesoft/trpc"
+  local actual_contract_test_packages
+  if ! actual_contract_test_packages="$(pnpm exec turbo run test:contract --dry=json 2>/dev/null \
+    | jq -r '.tasks[] | select(.task == "test:contract" and .command != "<NONEXISTENT>") | .package' \
+    | sort -u)"; then
+    echo "test:contract zinciri İHLALİ: sahte yeşil dedektörü — turbo/jq hata verdi."
+    violation=true
+  elif [ "$actual_contract_test_packages" != "$expected_contract_test_packages" ]; then
+    echo "test:contract zinciri İHLALİ — sahte yeşil dedektörü: görevi GERÇEKTEN sahiplenen paket kümesi beklenenden SAPTI."
+    echo "Beklenen (bu script'in İÇİNE gömülü, (a) gerekçesi):"; printf '%s\n' "$expected_contract_test_packages"
+    echo "Gerçek:"; printf '%s\n' "$actual_contract_test_packages"
+    violation=true
+  else
+    echo "Alt kontrol 2: test:contract görevini GERÇEKTEN sahiplenen paket kümesi tam olarak \"$expected_contract_test_packages\"."
+  fi
+
+  # --- Alt kontrol 3: üretilen sözleşme dosyası + üretici/serileştirici
+  #     script'lerin VARLIĞI (fail-closed; İÇERİĞİN sayısal tazeliği DEĞİL —
+  #     (b) gerekçesi).
+  local contract_surface_file="docs/api-contract-surface.json"
+  local generator_script="packages/trpc/scripts/generate-contract-surface.ts"
+  local serializer_script="packages/trpc/scripts/serialize-contract-surface.ts"
+
+  if [ ! -s "$contract_surface_file" ]; then
+    echo "test:contract zinciri İHLALİ — $contract_surface_file yok veya boş."
+    violation=true
+  fi
+  if [ ! -f "$generator_script" ]; then
+    echo "test:contract zinciri İHLALİ — üretici script bulunamadı: $generator_script"
+    violation=true
+  fi
+  if [ ! -f "$serializer_script" ]; then
+    echo "test:contract zinciri İHLALİ — serileştirici script bulunamadı: $serializer_script"
+    violation=true
+  fi
+  if [ "$violation" != true ]; then
+    echo "Alt kontrol 3: $contract_surface_file var ve boş değil; $generator_script ve $serializer_script mevcut."
+  fi
+
+  if [ "$violation" = true ]; then
+    return 1
+  fi
+  return 0
+}
+
 run_step "AC13 — yasak jeton taraması" check_ac13_forbidden_tokens
 run_step "AC5 — sabit Node sürümü yazımı yasağı" check_ac5_node_version_file
 run_step "run: bloğu içi şablon ifadesi yasağı" check_run_block_template_expression
@@ -1246,6 +1357,7 @@ run_step "Çapraz-uygulama e2e oran sınırı bütçesi (admin ↔ superadmin, T
 run_step "Ham günlük ↔ artefakt yükleme + retention-days sınırı (T-022/S7 FIX2)" check_raw_log_upload_boundary
 run_step "actionlint (yerelde kuruluysa)" check_actionlint_if_available
 run_step "axe tek-kaynak taraması (T-024, A-T24-1)" check_axe_single_source
+run_step "test:contract komut zinciri — script + sahte yeşil + sözleşme dosyası (T-026/S3)" check_test_contract_chain
 
 echo ""
 echo "════════════════════════════════════════════════════════"

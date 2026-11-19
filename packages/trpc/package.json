@@ -24,7 +24,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "clean": "rm -rf dist .turbo",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:contract": "vitest run src/__tests__/contract-surface.test.ts",
+    "contract:generate": "node ./scripts/generate-contract-surface.ts"
   },
   "dependencies": {
     "@arkesoft/errors": "workspace:*",

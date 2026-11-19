@@ -3,11 +3,21 @@
   // yapılandırma dosyaları (vitest.config.ts) denetlenir. Derleme için ayrı
   // proje kullanılır: tsconfig.build.json (packages/errors deseni, ROADMAP
   // v0.0.6, T-007/ST-3 (S4)).
+  //
+  // GÜNCELLEME (ROADMAP v0.0.22, T-026/S1): `scripts/**/*` EKLENDİ —
+  // `packages/theme-sdk/tsconfig.json`'ın BİREBİR aynı gerekçesi: ESLint'in
+  // `projectService: true`'su (packages/config/eslint/base.js) her dosya
+  // için en yakın tsconfig'i kullanır; `include` dar kalırsa `scripts/`
+  // altındaki yeni I/O betikleri (`generate-contract-surface.ts`,
+  // `serialize-contract-surface.ts`) "projeye dahil değil" hatasıyla
+  // `pnpm lint`'i KIRAR. Derleme projesi (tsconfig.build.json) BU satırdan
+  // ETKİLENMEZ — `include` alanı orada HÂLÂ yalnızca `src/**/*` (scripts/
+  // ASLA dist/'e girmez, theme-sdk emsali).
   "extends": "@arkesoft/config/tsconfig/node.json",
   "compilerOptions": {
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src/**/*", "*.config.ts"],
+  "include": ["src/**/*", "scripts/**/*", "*.config.ts"],
   "exclude": ["node_modules", "dist"]
 }
