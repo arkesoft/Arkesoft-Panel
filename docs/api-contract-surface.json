@@ -1,0 +1,569 @@
+{
+  "formatVersion": 1,
+  "generator": { "trpcServer": "11.19.0", "zod": "4.6.7" },
+  "namespaceCount": 7,
+  "procedureCount": 17,
+  "procedures": {
+    "job.get": {
+      "input": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": { "jobId": { "minLength": 1, "type": "string" } },
+        "required": ["jobId"],
+        "type": "object"
+      },
+      "operation": "query",
+      "output": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "completedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                "type": "string"
+              },
+              { "type": "null" }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": { "code": { "type": "string" }, "message": { "type": "string" } },
+                "required": ["code", "message"],
+                "type": "object"
+              },
+              { "type": "null" }
+            ]
+          },
+          "id": { "type": "string" },
+          "progress": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                "type": "string"
+              },
+              { "type": "null" }
+            ]
+          },
+          "status": { "enum": ["queued", "running", "completed", "failed"], "type": "string" },
+          "type": { "type": "string" },
+          "updatedAt": {
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "completedAt",
+          "createdAt",
+          "error",
+          "id",
+          "progress",
+          "startedAt",
+          "status",
+          "type",
+          "updatedAt"
+        ],
+        "type": "object"
+      }
+    },
+    "job.list": {
+      "input": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "cursor": { "minLength": 1, "type": "string" },
+          "limit": { "default": 20, "maximum": 50, "minimum": 1, "type": "integer" },
+          "status": {
+            "items": { "enum": ["queued", "running", "completed", "failed"], "type": "string" },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "operation": "query",
+      "output": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "completedAt": {
+                  "anyOf": [
+                    {
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                      "type": "string"
+                    },
+                    { "type": "null" }
+                  ]
+                },
+                "createdAt": {
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                  "type": "string"
+                },
+                "error": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": { "type": "string" },
+                        "message": { "type": "string" }
+                      },
+                      "required": ["code", "message"],
+                      "type": "object"
+                    },
+                    { "type": "null" }
+                  ]
+                },
+                "id": { "type": "string" },
+                "progress": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "startedAt": {
+                  "anyOf": [
+                    {
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                      "type": "string"
+                    },
+                    { "type": "null" }
+                  ]
+                },
+                "status": {
+                  "enum": ["queued", "running", "completed", "failed"],
+                  "type": "string"
+                },
+                "type": { "type": "string" },
+                "updatedAt": {
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "completedAt",
+                "createdAt",
+                "error",
+                "id",
+                "progress",
+                "startedAt",
+                "status",
+                "type",
+                "updatedAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": { "type": ["string", "null"] }
+        },
+        "required": ["items", "nextCursor"],
+        "type": "object"
+      }
+    },
+    "member.acceptInvitation": {
+      "input": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": { "token": { "maxLength": 512, "minLength": 1, "type": "string" } },
+        "required": ["token"],
+        "type": "object"
+      },
+      "operation": "mutation",
+      "output": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": { "accepted": { "const": true, "type": "boolean" } },
+        "required": ["accepted"],
+        "type": "object"
+      }
+    },
+    "member.invite": {
+      "input": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "email": {
+            "format": "email",
+            "maxLength": 254,
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+            "type": "string"
+          },
+          "role": { "enum": ["admin", "staff", "support", "readonly"], "type": "string" }
+        },
+        "required": ["email", "role"],
+        "type": "object"
+      },
+      "operation": "mutation",
+      "output": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+            "type": "string"
+          },
+          "invitationId": { "type": "string" }
+        },
+        "required": ["expiresAt", "invitationId"],
+        "type": "object"
+      }
+    },
+    "member.remove": {
+      "input": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": { "userId": { "maxLength": 64, "minLength": 1, "type": "string" } },
+        "required": ["userId"],
+        "type": "object"
+      },
+      "operation": "mutation",
+      "output": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": { "userId": { "type": "string" } },
+        "required": ["userId"],
+        "type": "object"
+      }
+    },
+    "member.updateRole": {
+      "input": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "role": { "enum": ["owner", "admin", "staff", "support", "readonly"], "type": "string" },
+          "userId": { "maxLength": 64, "minLength": 1, "type": "string" }
+        },
+        "required": ["role", "userId"],
+        "type": "object"
+      },
+      "operation": "mutation",
+      "output": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "role": { "enum": ["owner", "admin", "staff", "support", "readonly"], "type": "string" },
+          "userId": { "type": "string" }
+        },
+        "required": ["role", "userId"],
+        "type": "object"
+      }
+    },
+    "platform.auditLog": {
+      "input": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "limit": { "default": 50, "maximum": 100, "minimum": 1, "type": "integer" }
+        },
+        "type": "object"
+      },
+      "operation": "query",
+      "output": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "enum": ["platform_admin_signed_in", "tenant_impersonation_started"],
+                  "type": "string"
+                },
+                "actorUserId": { "type": "string" },
+                "createdAt": {
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                  "type": "string"
+                },
+                "id": { "type": "string" },
+                "subject": { "type": "string" }
+              },
+              "required": ["action", "actorUserId", "createdAt", "id", "subject"],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": ["entries"],
+        "type": "object"
+      }
+    },
+    "platform.session": {
+      "input": null,
+      "operation": "query",
+      "output": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "isPlatformAdmin": { "type": "boolean" },
+          "twoFactorEnabled": { "type": "boolean" }
+        },
+        "required": ["isPlatformAdmin", "twoFactorEnabled"],
+        "type": "object"
+      }
+    },
+    "platform.tenantList": {
+      "input": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "limit": { "default": 20, "maximum": 50, "minimum": 1, "type": "integer" }
+        },
+        "type": "object"
+      },
+      "operation": "query",
+      "output": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "tenants": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "createdAt": {
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                  "type": "string"
+                },
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "planId": { "type": ["string", "null"] },
+                "planName": { "type": ["string", "null"] },
+                "slug": { "type": "string" },
+                "status": {
+                  "enum": ["pending", "provisioning", "active", "suspended"],
+                  "type": "string"
+                }
+              },
+              "required": ["createdAt", "id", "name", "planId", "planName", "slug", "status"],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": ["tenants"],
+        "type": "object"
+      }
+    },
+    "registration.checkSlugAvailability": {
+      "input": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": { "slug": { "maxLength": 63, "minLength": 1, "type": "string" } },
+        "required": ["slug"],
+        "type": "object"
+      },
+      "operation": "query",
+      "output": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "outcome": {
+            "enum": ["available", "taken", "reserved", "invalidFormat", "unreachable"],
+            "type": "string"
+          }
+        },
+        "required": ["outcome"],
+        "type": "object"
+      }
+    },
+    "registration.createTenant": {
+      "input": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "name": { "maxLength": 120, "minLength": 2, "type": "string" },
+          "siteType": { "enum": ["ecommerce", "corporate"], "type": "string" },
+          "slug": { "maxLength": 63, "minLength": 1, "type": "string" }
+        },
+        "required": ["name", "siteType", "slug"],
+        "type": "object"
+      },
+      "operation": "mutation",
+      "output": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "slug": { "type": "string" },
+          "status": { "enum": ["pending", "provisioning", "active", "suspended"], "type": "string" }
+        },
+        "required": ["slug", "status"],
+        "type": "object"
+      }
+    },
+    "registration.onboardingChecklist": {
+      "input": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": { "slug": { "maxLength": 63, "minLength": 1, "type": "string" } },
+        "required": ["slug"],
+        "type": "object"
+      },
+      "operation": "query",
+      "output": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "steps": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "key": {
+                  "enum": [
+                    "account",
+                    "store_identity",
+                    "site_type",
+                    "subscription",
+                    "provisioning"
+                  ],
+                  "type": "string"
+                },
+                "status": { "enum": ["done", "todo"], "type": "string" }
+              },
+              "required": ["key", "status"],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": ["steps"],
+        "type": "object"
+      }
+    },
+    "session.list": {
+      "input": null,
+      "operation": "query",
+      "output": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "browserFamily": {
+              "enum": [
+                "chrome",
+                "firefox",
+                "safari",
+                "edge",
+                "opera",
+                "samsung",
+                "other",
+                "unknown"
+              ],
+              "type": "string"
+            },
+            "createdAt": {
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+              "type": "string"
+            },
+            "expiresAt": {
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+              "type": "string"
+            },
+            "id": { "type": "string" },
+            "ipAddress": { "type": ["string", "null"] },
+            "isCurrent": { "type": "boolean" },
+            "lastSeenAt": {
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+              "type": "string"
+            },
+            "osFamily": {
+              "enum": ["windows", "macos", "linux", "ios", "android", "other", "unknown"],
+              "type": "string"
+            }
+          },
+          "required": [
+            "browserFamily",
+            "createdAt",
+            "expiresAt",
+            "id",
+            "ipAddress",
+            "isCurrent",
+            "lastSeenAt",
+            "osFamily"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "session.me": {
+      "input": null,
+      "operation": "query",
+      "output": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "sessionId": { "type": "string" },
+          "twoFactorEnabled": { "type": "boolean" },
+          "userId": { "type": "string" }
+        },
+        "required": ["sessionId", "twoFactorEnabled", "userId"],
+        "type": "object"
+      }
+    },
+    "storefront.currentTenant": {
+      "input": null,
+      "operation": "query",
+      "output": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "themeId": { "type": ["string", "null"] },
+          "themeVersion": { "type": ["string", "null"] }
+        },
+        "required": ["name", "themeId", "themeVersion"],
+        "type": "object"
+      }
+    },
+    "tenant.current": {
+      "input": null,
+      "operation": "query",
+      "output": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "primaryDomain": { "type": ["string", "null"] },
+          "requireTwoFactorForOwner": { "type": "boolean" },
+          "slug": { "type": "string" },
+          "status": { "enum": ["pending", "provisioning", "active", "suspended"], "type": "string" }
+        },
+        "required": ["id", "name", "primaryDomain", "requireTwoFactorForOwner", "slug", "status"],
+        "type": "object"
+      }
+    },
+    "tenant.updateSecurityPolicy": {
+      "input": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": { "requireTwoFactorForOwner": { "type": "boolean" } },
+        "required": ["requireTwoFactorForOwner"],
+        "type": "object"
+      },
+      "operation": "mutation",
+      "output": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": { "requireTwoFactorForOwner": { "type": "boolean" } },
+        "required": ["requireTwoFactorForOwner"],
+        "type": "object"
+      }
+    }
+  }
+}

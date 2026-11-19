@@ -357,6 +357,8 @@ kök sürüm 0.1.0 (DEĞİŞMEDİ, platform `fixed` grubuna dahil değil) · @ar
 ```
 
 **Versiyon etkisi:** `minor` — yalnızca `@arkesoft/theme-sdk`. Public API (`test:contract`) etkilenmedi.
+⭐ **Not (`docs`, T-026, v0.0.22 kapanışı):** `test:contract` bu sürümde henüz **yoktu**
+(v0.0.22'de kuruldu); bu iddia **v0.0.22'ye kadar** elle analizle doğrulandı.
 **Gate'ler:** `solid` FAIL(4m)→PASS(2m)→PASS(1m, kalan tek `medium` qa tarafından kapatıldı) ·
 `security` FAIL(2h)→FAIL(1h)→PASS(0) · `qa` PASS→PASS→PASS. Üç düzeltme turu koştu; 19 açık
 `low` + 10 güvenlik borç satırı [Teknik Borç → Vadesi v0.0.9](#teknik-borç) tablosuna kaydedildi.
@@ -403,7 +405,9 @@ AC1 ✔ temiz kabukta pnpm dev → vitrin 200 (<title>Demo Mağaza</title>), API
 **Versiyon etkisi:** `patch` — platform `fixed` grubu (kök `package.json` dahil) **0.1.0 → 0.1.1**
 (`release`/S8 `pnpm release:version` ile kesti, exit 0; `CHANGELOG.md`'de mükerrer başlık **yok**,
 tek `## 0.1.1` girdisi). Kırıcı değişiklik yok, yeni ana bağımlılık yok, public API yüzeyi değişmedi
-→ `pnpm test:contract` etkilenmedi. `@arkesoft/theme-sdk` **hareket etmedi** (0.1.0'da kaldı,
+→ `pnpm test:contract` etkilenmedi (⭐ **Not, `docs`, T-026, v0.0.22 kapanışı:** bu komut bu
+sürümde henüz **yoktu** — v0.0.22'de kuruldu; iddia **v0.0.22'ye kadar** elle analizle
+doğrulandı). `@arkesoft/theme-sdk` **hareket etmedi** (0.1.0'da kaldı,
 `packages/config`'e yalnızca `devDependency` üzerinden bağlı, changesets'in
 `updateInternalDependencies` kaskadı buna uygulanmaz). ⚠ **`@arkesoft/trpc` beklenenin AKSİNE
 0.1.1'e hareket etti** — `release`/S8 ölçtü: `trpc` `@arkesoft/errors`'a (fixed grup üyesi, bu
@@ -823,7 +827,10 @@ changeset yazılmazsa sözleşme paketi fixed grubun kaskadıyla **patch olarak*
 değişiklik yok, yeni ana bağımlılık yok (bağımlılık manifestoları ve kilit dosyası diff'i
 **boş**). ⚠ **Sözleşme snapshot koşumu (`pnpm test:contract`) hâlâ yok** (vade v0.0.22) → semver
 kararı **elle analizle** verildi; izin kataloğundaki bir daraltmanın mekanik olarak MAJOR
-tetiklemesi o sürümle gelecek. ⚠ **`TrpcPorts`'a zorunlu üye eklemek MAJOR değildir:** bunlar
+tetiklemesi o sürümle gelecek. ⭐ **Not (`docs`, T-026, v0.0.22 kapanışı):** bu iddia
+**v0.0.22'ye kadar** elle analizle doğrulandı — `pnpm test:contract` v0.0.22'de kuruldu,
+bu satırın "elle analiz" ifadesi bu sürümden **önceki** tüm versiyonlar için geçerlidir.
+⚠ **`TrpcPorts`'a zorunlu üye eklemek MAJOR değildir:** bunlar
 tel sözleşmesi değil, `apps/api`'nin uyduğu sunucu tarafı uygulama dikişidir ve repo dışı
 uygulayıcısı yok — emsal v0.0.11'de ölçüldü. **Dört birimin gerçekleşen sürümlerini `release`
 ölçecek, varsaymayacak.**
@@ -1736,20 +1743,140 @@ onayı sonrası commit akışının işi.
 
 ---
 
-## v0.0.22 — API sürümleme ve public sözleşme iskeleti
+## v0.0.22 — API sürümleme ve public sözleşme iskeleti ✅ (tamamlandı: 2026-11-19)
 
 **Hedef:** Dışa açık API'nin versiyon disiplini baştan kurulsun.
-**Kapsam:**
 
-- [ ] tRPC router'larının `v1` namespace'i altında toplanması
-- [ ] REST köprüsü iskeleti: `/api/v1/*` (OpenAPI üretimi ile)
-- [ ] Kullanımdan kaldırma (deprecation) mekanizması: `Deprecation` ve `Sunset` başlıkları, log uyarısı
-- [ ] Sözleşme anlık görüntüsü (snapshot) testi: router şeması dosyaya yazılır, kırıcı değişiklik CI'da yakalanır
-- [ ] `docs/api-versioning.md`
-      **Dokunulan paketler:** packages/trpc, apps/api, docs
-      **Kabul kriteri:** `pnpm test:contract` mevcut şemayla eşleşir; bir alanı zorunlu hale getirmek testi kırar ve major gerektiği mesajını verir.
-      **Bağımlılık:** v0.0.6, v0.0.21
-      **Tahmini büyüklük:** M
+⚠ **Kapsam daraltıldı (kullanıcı onayı, 2026-11-19, T-026/`pm`):** özgün beş maddelik
+kapsam `pm` tarafından **L** ölçüldü (orijinal tahmin **M**). Snapshot testi olmadan `v1`
+namespace'inin kırıcı olup olmadığı **ölçülemediği** için ikisi aynı sürümde yapılsaydı
+snapshot'ın kendi tasarım kusuru ~300 düzenlemelik bir taşımanın gürültüsünde görünmez
+kalırdı. Kapsam ikiye indirildi: sözleşme yüzeyi ölçümü (+ onu kuran komut) ve belge; `v1`
+namespace'i ve REST köprüsü **ertelendi** (aşağıda, **silinmedi**).
+
+**Kapsam (daraltılmış, beş madde):**
+
+- [x] `pnpm test:contract` komutunun **kurulması** — kök `package.json` + `turbo.json` +
+      `packages/trpc` script'i (önceden **yoktu** — `ROADMAP.md`'nin kendi borcu, aşağıda
+      kapatıldı)
+- [x] Sözleşme yüzeyi anlık görüntüsü: `packages/trpc`'nin router yüzeyi (**7 namespace /
+      17 prosedür**) — prosedür adı, işlem türü (`query`/`mutation`), girdi/çıktı şema
+      **şekli** — sürüm kontrolünde tek bir üretilmiş dosyaya (`docs/api-contract-surface.json`,
+      `z.toJSONSchema()` ile)
+- [x] Snapshot testi: mevcut şemayla bayt-birebir eşleşme (determinizm) **ve** sapmanın
+      semver sınıfına (`MAJOR`/`MINOR`/`PATCH`) **sınıflandırılması** (17 ayırt edici
+      `reason` kodu)
+- [x] Mekanik kapı bağlantısı: `pnpm guards`'a üç alt kontrollü "sözleşme yüzeyi" adımı
+      (22 → 23. adım) + CI
+- [x] `docs/api-versioning.md` — dört versiyonlanan birim, yol bazlı major kuralı, snapshot
+      yenileme prosedürü, kullanımdan kaldırma politikası, ertelenen üç kalemin adı ve vadesi
+
+⚠ **Ertelenen üç kalem — SİLİNMEDİ, taşındı:**
+
+| Kod  | Kalem                                                                             | Yeni vade                                                 |
+| ---- | --------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `X1` | tRPC router'larının `v1` namespace'i altında toplanması                           | **v0.0.23** (yalnızca kapsam slotu, bkz. aşağıdaki bölüm) |
+| `X2` | REST köprüsü iskeleti `/api/v1/*` (OpenAPI üretimi ile)                           | **v1.1.0**                                                |
+| `X3` | Kullanımdan kaldırma mekanizması (`Deprecation`/`Sunset` başlıkları, log uyarısı) | **v1.1.0**                                                |
+
+**Kabul kriteri:** `AC-33`..`AC-41` (T-026 Task dosyası) — `pnpm test:contract`
+değiştirilmemiş ağaçta exit 0; sözleşme yüzeyi 7 namespace/17 prosedürün **tamamını**
+kapsar (sayı pini); üretim komutu iki kez koşturulduğunda dosya bayt-birebir aynı (md5);
+mevcut bir opsiyonel alanı zorunlu yapan mutasyon testi kırar **ve** çıktıyı `MAJOR`
+adlandırır; katkısal (yeni opsiyonel alan) mutasyon `MINOR` adlandırır; `pnpm guards`
+sözleşme adımını ayrı satır raporlar; negatif kapsam pini (`/trpc/v1`, `/api/v1`, OpenAPI —
+kaynak ağacında eşleşme yok; 20 istemci çağrı noktası + 7 güvenlik politika tablosu/53
+giriş el değmemiş, `apps/**` bu sürümde **hiç** dokunulmadı) doğrulandı; changeset eklendi.
+
+**Dokunulan paketler:** `packages/trpc`, `docs` (⚠ `apps/*`'a **hiç** dokunulmadı — bu
+sürümün kasıtlı negatif kapsam pini, `AC-40`).
+
+**Bağımlılık:** v0.0.6 ✅, v0.0.21 ✅
+
+**Tahmini büyüklük:** M (daraltılmış kapsam gerçekleşen) — orijinal beş maddelik kapsam
+`pm` tarafından **L** ölçülmüştü; daraltma bu farkı kapattı.
+
+**Uygulama notları (`qa`/`security`/`solid` gate turları, T-026, 2026-11-19):**
+
+```
+pnpm test:contract      exit 0 · 34 test · 0.81s (perf eşiği 10s, tetiklenmedi)
+paket testleri          227/227 · classify 48 + contract-surface 34 = 82 (test:contract 34'ünü koşturur)
+artefakt md5            3671b25e253478b90a40cb86902a9064 (FIX 1/2/3 boyunca DEĞİŞMEDİ)
+7 namespace / 17 prosedür · generator: zod 4.6.7, trpcServer 11.19.0
+zorunlu kapı            6/6 exit 0 · guards 23/23 · tam depo format:check yeşil
+```
+
+Gate turları: `qa` PASS→PASS(dar) · `security` PASS→PASS(dar, özel/kritik-olmayan kapsam —
+artefaktın PUBLIC-okunabilirlik + içerik kapıları ekseni) · `solid`
+**FAIL→FAIL→FAIL→PASS** (üç düzeltme turu, `backend` FIX 1/2/3 — kök-şekil koruması, eksen
+gölgelemesi, `__proto__`/`in` güvenliği). ✅ **`ROADMAP.md`'nin kendi teknik borç
+tablosundaki satır** (_"kök `package.json` `test:contract` script'i yok"_, vade bu sürüm)
+**KAPANDI** — aşağıda işaretlendi; son yedi sürümdür elle yapılan semver analizi artık
+mekanik kapıyla ölçülebilir. ADR:
+`docs/adr/0027-public-api-sozlesme-yuzeyinin-olcumu-ve-semver-siniflandirmasi.md`. Gate
+turlarının ürettiği bulgular ve kalan sınırlar `docs/api-versioning.md` §9/§11'de ve
+aşağıdaki Teknik Borç tablosunda (`M1`, `D-CI`, `L1`-`L11`, release otomasyonu `A`/`B`).
+
+---
+
+## v0.0.23 — tRPC v1 namespace (⚠⚠ YALNIZCA KAPSAM — UYGULANMADI)
+
+**Hedef:** Borç `X1`'in kapanması — `packages/trpc` router yüzeyinin `v1` namespace'i
+altında toplanması (`session.me` → `v1.session.me` gibi). Uygulandığında `ADR-0027`'nin
+gözden geçirme koşulu 1'i tetikler: K1/K9/K11 yeni bir ADR'de yeniden kararlaştırılır, bu
+ADR'nin durumu `"Yerini aldı: ADR-00NN"` olarak güncellenir (ADR'ler geçmişe dönük
+düzenlenmez).
+
+⚠⚠ **Bu bölüm `v0.0.20.4` emsali gibi yalnızca KAPSAM kararıdır — bu sürümde
+UYGULANMAZ.** Kullanıcı onayı 2026-11-19 (T-026/`pm`): yalnızca kapsam kararlaştırılacak,
+uygulama ayrı bir Task'ın işidir.
+
+**Kapsam (taslak — uygulanacağı Task'ta netleşir):**
+
+- [ ] `packages/trpc` router yüzeyinin tamamının `v1` namespace'i altında toplanması —
+      ⚠⚠ mekanik bir yeniden adlandırma **değil**: prosedür yolu `apps/api`'de bir
+      **politika anahtarı** (aşağıdaki risk)
+- [ ] Yedi güvenlik politika tablosunun (53 giriş) `v1` yollarıyla **tablo bazında parite
+      testi** — bu Task'ın bağlayıcı kabul şartı (aşağıda)
+- [ ] `docs/api-contract-surface.json`'un yeniden üretilmesi
+      (`pnpm --filter @arkesoft/trpc run contract:generate`) ve sapmanın semver sınıfının
+      (muhtemelen `major`) sözleşme yüzeyi testiyle doğrulanması
+- [ ] 20 tipli istemci çağrı noktasının (`apps/admin`, `apps/superadmin`,
+      `apps/storefront`) ve 44 test dosyasının (305 eşleşme/51 dosya) güncellenmesi
+- [ ] `ADR-0027`'nin K1/K9/K11 maddelerinin yeni bir ADR'de yeniden kararlaştırılması
+
+⚠⚠ **Kayda geçmesi ZORUNLU risk** (`pm` ölçtü, Orkestratör bağımsız doğruladı): prosedür
+yolu `apps/api`'de yedi tabloda string anahtar olarak geçiyor:
+
+```
+tenant-exempt-paths.ts 25 · normalize-request-path.ts 13 · trpc-rate-limited-paths.ts 5
+auth-exempt-paths.ts 4 · rate-limit.policy.ts 3 · no-store-response-headers.ts 2
+platform-admin-ip.guard.ts 1                                    ⇒ 7 tablo / 53 giriş
+```
+
+`session.me` → `v1.session.me` taşımasında bu tablolardan **biri atlanırsa** oran sınırı,
+auth muafiyeti veya süper admin IP kapısı **sessizce eşleşmeyi bırakır** ⇒ **fail-open
+güvenlik regresyonu** — ve derleyici bunu **görmez** (string anahtarlar, tip sistemi
+yakalamaz). Bu yüzden uygulandığında `security` gate **`critical`** eşiğinde çalışır **ve**
+tablo bazında parite testi (her tabloda `v1.*` yolunun eski yoldan **eksiksiz**
+türetildiğini doğrulayan mekanik test) Task'ın **bağlayıcı** kabul şartıdır — bu test
+olmadan Task kapanmaz.
+
+**Kabul kriteri (taslak):** Yedi politika tablosunun `v1` yollarıyla tablo bazında parite
+testi yeşil; `pnpm test:contract` yeni yüzeyle (`v1.*`) yeniden üretilip determinizm +
+sınıflandırma testleri yeşil; 20 istemci çağrı noktası + 44 test dosyası güncellendi; eski
+(namespace'siz) yollar kaldırılırsa bu **major** olarak sınıflandırılır (public API yüzeyi
+değişir) — ⚠ `major` çıkarsa CLAUDE.md §4.5/2 gereği kullanıcıya sorulur.
+
+**Dokunulan paketler (tahmini):** `packages/trpc`, `apps/api` (yedi politika tablosu),
+`apps/admin`, `apps/superadmin`, `apps/storefront` (istemci çağrı noktaları), `docs`.
+
+**Bağımlılık:** v0.0.22 ✅ — snapshot testi olmadan `v1`'in kırıcı olup olmadığı
+**ölçülemezdi**; bu bağımlılık `v0.0.22`'nin iki sürüme bölünme gerekçesiydi (bkz. T-026
+Task dosyası, `pm` bölümü — "Sıralama gerekçesi").
+
+**Tahmini büyüklük:** L (305 eşleşme / 51 dosya + 7 güvenlik politika tablosu/53 giriş + 20
+istemci çağrı noktası + 44 test dosyası — `pm` T-026'da ölçtü).
 
 ---
 
@@ -3585,10 +3712,16 @@ tırnak içinde tire). (`security` T-012'nin üç `low`'unun ortak kökü — bk
   Yeniden adlandırma (`tenant-tables.isolation.test.ts`) bilinçli olarak yapılmadı (üç dosyada
   atıf var, kapsam dışı); dosya başına not yazıldı. **Sorumlu:** `db` · **Vade:** v0.0.17 ·
   **Kaynak:** S2 (R-S2-2)
-- **low** · kök `package.json` (`test:contract` script'i **yok**) — public API sözleşme
-  snapshot'ı mekanik olarak denetlenmiyor; v0.0.11'in Public API etkisi (`job` namespace'i +
-  port nesnesine zorunlu üye → **yalnızca ekleme**) **elle analizle** doğrulandı. **Sorumlu:**
-  `devops` · **Vade:** v0.0.22 · **Kaynak:** `pm` kapsam ölçümü + S8 notu
+- **low** · kök `package.json` (`test:contract` script'i **yok**) — **✅ KAPANDI (v0.0.22,
+  T-026).** Kök `package.json` + `turbo.json` + `packages/trpc` script'i kuruldu; sözleşme
+  yüzeyi (`docs/api-contract-surface.json`, 7 namespace/17 prosedür) `z.toJSONSchema()` ile
+  üretiliyor, sapma mekanik olarak `MAJOR`/`MINOR`/`PATCH` sınıflandırılıyor,
+  `pnpm guards`'ın 23. adımı (sahte yeşil dedektörü dahil) bağlıyor. Ayrıntı:
+  `docs/adr/0027-public-api-sozlesme-yuzeyinin-olcumu-ve-semver-siniflandirmasi.md`,
+  `docs/api-versioning.md`. Orijinal bulgu (artık tarihi): public API sözleşme snapshot'ı
+  mekanik olarak denetlenmiyordu; v0.0.11'in Public API etkisi (`job` namespace'i + port
+  nesnesine zorunlu üye → **yalnızca ekleme**) **elle analizle** doğrulanmıştı. **Sorumlu:**
+  `devops` + `backend` · **Vade:** v0.0.22 ✅ · **Kaynak:** `pm` kapsam ölçümü + S8 notu
 - **kapsam** (gate bulgusu değil) · Bull Board / kuyruk gözlemlenebilirliği — kapsam maddesi 6
   kullanıcı onayıyla **v0.15.0**'a taşındı (yukarıdaki v0.0.11 bölümü). ADR-0015 Karar 1'in
   dördüncü telafi ayağı bu yüzeyin yokluğuna dayandığı için, geldiğinde **ADR yeniden
@@ -4348,6 +4481,31 @@ Karar 4'te.
 | low    | `apps/api/src/__tests__/shutdown.test.ts`                                                  | Her koşuda `tsc -p tsconfig.build.json` ile `dist`'i **tazeliyor** (~0.5–3 sn); CI'da toplam test süresine sabit maliyet.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | backend                                                                                                                                                                                      | vadesiz | ST-7        |
 | low    | Node 25.8.1 × `vitest@5.0.5` engine aralığı (T-001)                                        | **R3 hâlâ açık.** ROADMAP A1'in "v0.0.4'ten önce yerel kurulumun 24 LTS'e çekilmesi" önerisi **uygulanmadı**; ST-0 spike'ı `npm warn EBADENGINE` ile bunu ampirik olarak gözledi (`required: ^22.12.0                                                                                                                                                                                                                                                                                                                                                                                                                                  |                                                                                                                                                                                              | ^24.0.0 |             | >=26.0.0`, `current: v25.8.1`). Üç soru yine de geçti, bloke edici değil. | devops | vadesiz | ST-0 |
 | low    | `CLAUDE.md` §6 (komut listesi)                                                             | **CLAUDE.md'nin KENDİ beyan/gerçeklik boşluğu — dosyaya dokunulmadı, kullanıcı onayı gerekir.** `pnpm test:visual` ve `pnpm test:visual:update` komutları §6'da listeleniyor ama `pm`/S1 T-012'de ölçtü: hiçbir `package.json`'da yok (kök `package.json:12-40` + tüm `**/package.json` taraması → 0 eşleşme). Aynı sınıfın ikinci örneği (ilki kök `test:e2e` script'i, `AGENT_BASELINE.md` §6'da zaten uyarılı). Düzeltme önerisi (uygulanmadı — CLAUDE.md'ye dokunmak kullanıcı onayı gerektirir): bu iki satırın önüne "v0.0.19'dan itibaren" notu eklenmeli, komutlar o sürümde (görsel regresyon altyapısı) gerçekten yazılacak. | docs (öneri) + kullanıcı (onay)                                                                                                                                                              | v0.0.19 | pm (T-012)  |
+
+## Vadesi v0.0.23 — API sürümleme ve public sözleşme iskeleti kaynaklı borçlar (T-026)
+
+> `docs`'un T-026'nın `solid` tur 4 gate raporundan (`.claude/workflow/reviews/T-026-solid-tur4.md`)
+> topladığı `M1`/`L1`/`L5`/`L7`-`L11` ve Orkestratör'ün bu Task'ta ölçtüğü `D-CI` ile release
+> otomasyonu bulguları `A`/`B` (T-026 Task dosyası, "Yan kalem" bölümü). `L2`/`L3`/`L4`/`L6`
+> bu listede **yok** — `L2` `ADR-0027`'nin Gözden geçirme notuna eklenerek, `L3`/`L4`/`L6`
+> `docs/api-versioning.md`'nin ilgili paragrafları düzeltilerek **bu turda kapatıldı**
+> (borca düşmedi).
+
+| SEV    | Konum                                                                                                      | Açıklama                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Sorumlu                    | Vade                                          | Kaynak gate / ajan     |
+| ------ | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | --------------------------------------------- | ---------------------- |
+| medium | `packages/trpc/src/contract/classify-contract-change.ts:719-721` (`nonNullHasProperties`) (`M1`)           | Kök-şekil korumasının artık fail-open'ı: `properties`'in **varlığını** sorar, **doluluğunu** sormaz. Zod v4.6.7'nin `objectProcessor`'ı boş şekilli bir nesne için bile `json.properties = {}` emit ediyor (ölçüldü: `json-schema-processors.cjs:440-441`) ⇒ `.input(z.object({}))` eklenmesi/kaldırılması (ve `z.array(z.object({}))` kökü) bu dalı **tetiklemez**, alan döngüsü de sıfır alan görür ⇒ **0 diff / `PATCH`** — gerçekte `MAJOR` olması gereken bir değişiklik. Bugün üretimde **erişilemez** (artefaktta boş `properties` eşleşmesi 0). Önerilen düzeltme ölçüldü ve monoton sıkılaştırma: `Object.keys(readSchemaProperties(...)).length > 0` — 8 testin hiçbirini kırmaz, artefaktı oynatmaz. | backend                    | v0.0.23 (en geç `v1` taşımasından önce)       | solid tur 4 (T-026)    |
+| medium | `.github/workflows/ci.yml:576` (`D-CI`)                                                                    | `ci.yml` `scripts/guards.sh`'i **ÇAĞIRMIYOR** (`po` ölçtü: dosyadaki tek eşleşme `:576`'daki bir **yorum**, çağrı değil) ⇒ yerel `pnpm guards`'ın 23. adımı (sözleşme yüzeyi + diğer 22 mekanik kontrol) CI'da **koşmuyor**, yalnızca yerelde koşuyor. `.github/**` bu sürümde (T-026) kapsam dışıydı.                                                                                                                                                                                                                                                                                                                                                                                                          | devops                     | v0.0.23                                       | po (T-026)             |
+| low    | `packages/trpc/src/contract/build-contract-surface.ts:116` ↔ `classify-contract-change.ts:641` (`L1`)      | `readProperty` (prototip zincirini **yürür**, `key in value` kullanır) ile `readOwnProperty` (**yalnızca öz** anahtar) aynı klasörde, neredeyse aynı adla, **zıt** semantikle yaşıyor; bir dosya `in`'i yasak ilan ederken (bkz. `:258`, `:369` — artık `ADR-0027`'nin Gözden geçirme notuna bağlı, geçerli atıf) kardeşi onu kullanıyor ve neden kabul edilebilir olduğunu yazmıyor (gerçek sebep: okunan anahtarlar sabit ve saldırgan kontrolünde değil). Öneri: `readProperty` → `readInheritedOrOwnProperty` + tek cümlelik gerekçe.                                                                                                                                                                       | backend                    | v0.0.23                                       | solid tur 4 (T-026)    |
+| low    | `packages/trpc/src/contract/classify-contract-change.ts:258`, `:369` — `in` yasağının mekanik koruması yok | Anahtar varlığı kontrolünde `in` operatörü kullanımı bugün yalnızca **yorumla** yasaklanıyor; mekanik bir kural (lint) yok ve yasak, kardeş dosyalarda (test yardımcıları dahil) **5 yerde** ihlal ediliyor — bugün zararsız (okunan anahtarlar literal/sabit, saldırgan kontrolünde değil). Kural eklenecekse **AST tabanlı** olmalı (`no-restricted-syntax`, `BinaryExpression[operator="in"]`); **asla grep** — grep kendi yasak-anlatan yorumunu da eşleştirir (literal-jeton kuralının bir örneği, `AGENT_BASELINE.md` §5).                                                                                                                                                                                | backend + devops           | v0.0.23                                       | Orkestratör (T-026)    |
+| low    | `packages/trpc/package.json:28` (`test:contract` script'i) (`L5`)                                          | `test:contract` yalnızca `contract-surface.test.ts`'i koşturuyor ⇒ sözleşme testlerinin **34/82**'si kapsanıyor (tur 3'te 34/75'ti — sınıflandırıcı tarafı büyüdükçe **gap büyüdü**); kural tablosunun tamamını kanıtlayan `classify-contract-change.test.ts`'in 48 testi odaklı takma adın **dışında**, yalnızca `pnpm test` koşturur. `AC-33`/`AC-36` yine de karşılanıyor (Katman-1 bağlantısı `test:contract` içinde).                                                                                                                                                                                                                                                                                      | devops                     | v0.0.23                                       | solid tur 4 (T-026)    |
+| low    | `packages/trpc/src/contract/canonicalize.ts:36-43` ↔ `classify-contract-change.ts:158-164` (`L7`)          | `isUnknownArray` ve `isJsonRecord` **birebir aynı** iki kopya; iki dosya aynı klasörde ve aralarında zaten bir ithalat kenarı var (`classify-contract-change.ts:61` → `canonicalize.js`) — gerçek tekrar, gerekçesiz. Öneri: `canonicalize.ts`'ten export et, `classify-contract-change.ts`'de ithal et.                                                                                                                                                                                                                                                                                                                                                                                                        | backend                    | v0.0.23                                       | solid tur 4 (T-026)    |
+| low    | `packages/trpc/src/__tests__/contract-surface.test.ts:469-487` ↔ `:530-546` (`L8`)                         | İki test **aynı belgeyi**, **aynı regex ve aynı dışlama listesiyle** tarayıp **aynı** `expect(leaks).toEqual([])` iddiasını yapıyor; ikinci test ayırt edici hiçbir şey iddia etmiyor. Öneri: `:530-546`'yı sil, `:497-518`/`:520-528` kalsın.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | backend                    | v0.0.23                                       | solid tur 4 (T-026)    |
+| low    | `packages/trpc/src/contract/classify-contract-change.ts:718-730` (`L9`)                                    | `null` sınırında **sınıf asimetrisi, belgesiz**: `output: null → z.array(z.string())` **MAJOR** (`OUTPUT_TYPE_NARROWED`, kök) ama `output: null → z.array(z.object({id}))` **MINOR** (`OUTPUT_REQUIRED_FIELD_ADDED`) — yapısal olarak aynı değişiklik (çıktı sözleşmesinin yokluktan varlığa geçmesi) iki sınıf uzakta raporlanıyor. Fail-open **değil** (MAJOR tarafı aşırı-sıkı olan), ama hiçbir yerde belgelenmemiş. Öneri: `docs/api-versioning.md` §9'a bir cümle.                                                                                                                                                                                                                                        | docs                       | v0.0.23                                       | solid tur 4 (T-026)    |
+| low    | `packages/trpc/src/contract/classify-contract-change.ts:454-458` (`L10`)                                   | Tur 3'te _"ulaşılabilir"_ olarak doğru yeniden belgelenen güvenlik ağı dalının **testi yok**; karşı örnek doğrulandı (`enum:['a','b'] → ['b','a']`) ama en yakın test (`['a','b'] → ['b','c']`) akıştan daha erken (`compareValueSets`) çıkıyor. Öneri: tek bir sentetik test (ham JSON Schema ile).                                                                                                                                                                                                                                                                                                                                                                                                            | backend                    | v0.0.23                                       | solid tur 4 (T-026)    |
+| low    | `packages/trpc/src/contract/classify-contract-change.ts:650-825` (`diffProcedureIo`) (`L11`)               | Fonksiyon artık **176 satır** (tur 2'de 107) ve dosyanın en büyük fonksiyonu, `buildDiff`'i (124 satır) geçti. Üç ayrılabilir sorumluluk taşıyor: (1) her-iki-record kök koruması, (2) `null`↔non-null kök koruması, (3) alan döngüsü. Bu Task'ta bölünmesi **önerilmedi** (son tur, risk > kazanç); bir sonraki dokunuşta `diffRootShape(...)` çıkarılmalı.                                                                                                                                                                                                                                                                                                                                                    | backend                    | v0.0.23                                       | solid tur 4 (T-026)    |
+| low    | `packages/trpc/src/contract/classify-contract-change.ts` (`GeneratorDriftReport.changed`)                  | `GENERATOR_DRIFT` genel `severity`'ye **katılmıyor**; yalnızca `classification.severity`'ye bakan programatik bir tüketici bir `zod`/`@trpc/server` generator sapmasını kaçırabilir. `formatContractChangeReport` metin raporuna her zaman ekliyor ama programatik tüketici ayrıca kontrol etmeli. `v0.0.23`'ün CI tüketicisi yazılırken bu okunmalı.                                                                                                                                                                                                                                                                                                                                                           | backend                    | v0.0.23                                       | security tur 1 (T-026) |
+| medium | `.github/workflows/release.yml` (işlev: `changeset version` + PR açma) (`A`)                               | **Actions PR açamıyor (sessiz arıza).** `release` iş akışı (`run 44510705787`) `changeset version`'ı koşturup commit'liyor, dalı force-push ediyor, dördüncü adımda `HttpError: GitHub Actions is not permitted to create or approve pull requests` ile ölüyor ⇒ dal güncellenir, **PR gelmez**; dalı izlemeyen biri sürüm PR'ını sonsuza kadar bekler. **Çözüm kullanıcıda:** depo ayarı (_Settings → Actions → General → Workflow permissions → "Allow GitHub Actions to create and approve pull requests"_) — bir ajan bu ayarı değiştiremez.                                                                                                                                                                | devops (+ kullanıcı ayarı) | v0.0.23 (kullanıcı ayarı değişene kadar açık) | Orkestratör (T-026)    |
+| medium | `.changeset/config.json` + Changesets'in markdown liste-öğesi gömme biçimi (`B`)                           | `changeset version` sonrası üretilen kök `CHANGELOG.md` `pnpm format:check`'i kırıyor (`run 44512371143`) — kök neden iki katmanlı: Changesets özeti markdown **liste öğesi** olarak gömüyor ve devam satırları 2 boşluk girinti istiyor; **çok satırlı** (elle sarılmış) bir changeset özeti bunu tetikliyor. Tek paragraf (sarılmamış) bir özet bunu **tetiklemez** — `T-026`'nın kendi changeset'i bu yüzden tek paragraf yazılmalı (`release`/`AC-41`). `58b9f04` ile geçici kapatıldı; akış dalı `--force` push ettiği için **kalıcı değil**, sonraki sürüm koşumunda üzerine yazılabilir.                                                                                                                 | devops                     | v0.0.23                                       | Orkestratör (T-026)    |
 
 ## Kapsam dışı kalan artık risk (bilinçli, architect beyanı — T-001)
 

@@ -69,6 +69,22 @@
       "outputs": ["coverage/**"],
       "cache": false
     },
+    // GEREKÇE (ROADMAP v0.0.22, T-026/S3, architect) — "test:contract"
+    // ikinci bir test MANTIĞI DEĞİL: `packages/trpc/src/__tests__/
+    // contract-surface.test.ts` zaten `vitest.config.ts`'in `include:
+    // ['src/**/*.test.ts']` glob'una girer, yani `pnpm test` bu dosyayı
+    // ZATEN koşturur. `test:contract` o AYNI dosyanın ODAKLI bir takma
+    // adıdır ("@arkesoft/trpc" `package.json`'daki "test:contract" script'i
+    // tek bu dosyayı hedefler) — zorunlu kapının altı komutluk sayısını
+    // (`lint && typecheck && test && test:isolation && build && guards`)
+    // YEDİNCİ bir komut olarak GENİŞLETMEZ (CLAUDE.md §6). `dependsOn`/
+    // `outputs`/`cache` "test" göreviyle AYNI — bayat-dist tuzağı (T-019'un
+    // beş kez önlediği sınıf) burada da aynı şekilde kapatılır.
+    "test:contract": {
+      "dependsOn": ["^build", "generate"],
+      "outputs": ["coverage/**"],
+      "cache": false
+    },
     "test:isolation": {
       // ROADMAP v0.0.13, T-005/S5 (architect riski 7 / PO riski 7) — "test"
       // ile AYNI bağımlılık biçimi ("^build" + "generate"), "dependsOn: [\"test\"]"
