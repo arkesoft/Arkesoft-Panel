@@ -9,14 +9,14 @@
 //     budur — bir geliştirici `TenantGuard`'ı atlayıp doğrudan `getTenantContext()`
 //     çağırırsa sessizce `undefined` almaz, 500 alır ve hata hemen görünür olur.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class RequestContextUnavailableError extends AppError {
   constructor(context?: Record<string, unknown>) {
     super({
       code: 'REQUEST_CONTEXT_UNAVAILABLE',
       httpStatus: 500,
-      userMessageKey: 'errors.requestContext.unavailable',
+      userMessageKey: ERROR_MESSAGE_KEYS.REQUEST_CONTEXT_UNAVAILABLE,
       // `exactOptionalPropertyTypes`: bkz. tenant-not-found.error.ts'teki aynı yorum.
       ...(context !== undefined ? { context } : {}),
       isRetryable: false,

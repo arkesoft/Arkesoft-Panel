@@ -14,7 +14,7 @@
 // (DB'ye hiç bakmadan) sağladığı davranışsal eşdeğerlikte: var olan/var
 // olmayan e-posta için status + gövde şekli + `Retry-After` AYIRT EDİLEMEZ.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export type RateLimitScope = 'account' | 'ip'
 
@@ -23,7 +23,7 @@ export class RateLimitExceededError extends AppError {
     super({
       code: 'RATE_LIMIT_EXCEEDED',
       httpStatus: 429,
-      userMessageKey: 'errors.auth.rateLimitExceeded',
+      userMessageKey: ERROR_MESSAGE_KEYS.RATE_LIMIT_EXCEEDED,
       context: { scope, retryAfterSeconds },
       isRetryable: false,
       httpHeaders: { 'Retry-After': String(retryAfterSeconds) },

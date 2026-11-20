@@ -127,12 +127,40 @@
 #     `"vitest run --passWithNoTests --fsModuleCachePath node_modules/.vitest-cache"`
 #     — `<NONEXISTENT>` DEĞİL. Sessiz boşluk doğmuyor; 11 → 12 satır.
 #
+# GÜNCELLEME (ROADMAP v0.0.18, T-027/S1 — devops): yeni paket
+# `@arkesoft/i18n` (mesaj kataloğu, hata metni çözümleyicisi, `Money`,
+# biçimlendiriciler, SAF — I/O yok) bir "test" script'i kazandı ("vitest
+# run"). Bugün tek üretim dosyası boş barrel `index.ts` (S5a/S5b dolduracak)
+# + `src/__tests__/purity.test.ts` — süit BOŞ DEĞİL (saflık + dependency
+# testi). Hangi CI hattının kapanışında:
+#
+#   - `admin` job'u (`filter: '@arkesoft/admin...'`, ci.yml:1006) —
+#     `apps/admin`'i `@arkesoft/i18n`'e `workspace:*` ile bağımlı yapıldı
+#     (S1, prod dependency) → paket "admin" hattının bağımlılık KAPANIŞINA
+#     giriyor. Bu job "run-test" için açıkça 'false' GEÇMİYOR → test adımı
+#     GERÇEKTEN koşuyor.
+#   - `superadmin` job'u (`filter: '@arkesoft/superadmin...'`, ci.yml:1030) —
+#     aynı gerekçe, `apps/superadmin`'e de prod dependency olarak eklendi.
+#   - `api` job'u (`filter: '@arkesoft/api...'`, ci.yml:917) —
+#     `packages/db`'ye **devDependency** olarak eklendi (AC-49'un iki yönlü
+#     drift testi `i18n`'in `SUPPORTED_CURRENCIES`'ini görmesi için;
+#     `db`'nin üretim grafiği değişmiyor) → paket `api` hattının kapanışına
+#     da giriyor.
+#
+#   Ölçüldü (`pnpm exec turbo run test --filter='@arkesoft/admin...'
+#   --dry=json`, aynısı `superadmin...` ve `api...` için): `@arkesoft/i18n`
+#   paketinin "test" komutu `"vitest run"` — `<NONEXISTENT>` DEĞİL. Sessiz
+#   boşluk doğmuyor; 12 → 13 satır. ⚠ `@arkesoft/config` EKLENMEDİ — onun
+#   "test" script'i yok (yukarıdaki `<NONEXISTENT>` notu, :102 ile aynı
+#   gerekçe).
+#
 # Satır başında # olan satırlar ve boş satırlar yorum sayılır, taranmaz.
 
 @arkesoft/admin
 @arkesoft/api
 @arkesoft/db
 @arkesoft/errors
+@arkesoft/i18n
 @arkesoft/storefront
 @arkesoft/superadmin
 @arkesoft/tenancy

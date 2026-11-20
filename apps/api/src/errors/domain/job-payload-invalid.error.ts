@@ -18,14 +18,14 @@
 // yapılandırmasına komşu veri taşıyabilir. Zod'un ham `issue.message`'ı da
 // doğrulanan DEĞERİ içerebildiği için loglanmaz.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class JobPayloadInvalidError extends AppError {
   constructor(jobName: string, invalidFieldPaths: readonly string[]) {
     super({
       code: 'JOB_PAYLOAD_INVALID',
       httpStatus: 400,
-      userMessageKey: 'errors.job.payloadInvalid',
+      userMessageKey: ERROR_MESSAGE_KEYS.JOB_PAYLOAD_INVALID,
       context: { jobName, invalidFieldPaths },
       // Aynı payload tekrar gönderilse AYNI şekilde reddedilir — yeniden
       // denemek anlamsız (kuyruk bu bayrağa göre karar verir,

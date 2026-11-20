@@ -13,14 +13,14 @@
 // içindir — `isRetryable: true` ileride (v0.0.11) bir kuyruk tüketicisi
 // için ÖNCEDEN doğru kodlanmış bayrak.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class AuthProviderFailedError extends AppError {
   constructor(cause: unknown) {
     super({
       code: 'AUTH_PROVIDER_FAILED',
       httpStatus: 503,
-      userMessageKey: 'errors.auth.providerFailed',
+      userMessageKey: ERROR_MESSAGE_KEYS.AUTH_PROVIDER_FAILED,
       isRetryable: true,
       cause,
     })

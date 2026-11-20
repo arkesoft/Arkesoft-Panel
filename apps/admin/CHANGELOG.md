@@ -1,5 +1,15 @@
 # @arkesoft/admin
 
+## 0.12.0
+
+### Patch Changes
+
+- @arkesoft/errors@0.12.0
+  - @arkesoft/i18n@0.12.0
+  - @arkesoft/tenancy@0.12.0
+  - @arkesoft/ui@0.12.0
+  - @arkesoft/trpc@0.8.5
+
 ## 0.11.0
 
 ### Patch Changes

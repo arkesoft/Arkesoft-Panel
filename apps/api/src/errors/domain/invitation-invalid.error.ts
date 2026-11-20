@@ -40,14 +40,14 @@
 // bilgisini üretir — oysa o kiracı bağlamı HİÇ DOĞRULANMADI. Teşhis için
 // gereken tek şey (`requestId` + hangi prosedür) istek logunda zaten var.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class InvitationInvalidError extends AppError {
   constructor() {
     super({
       code: 'INVITATION_INVALID',
       httpStatus: 404,
-      userMessageKey: 'errors.member.invitationInvalid',
+      userMessageKey: ERROR_MESSAGE_KEYS.INVITATION_INVALID,
       isRetryable: false,
     })
   }

@@ -19,14 +19,14 @@
 // TAŞIMAZ (kiracının BAŞKA owner'larının 2FA durumu bu hatanın KONUSU
 // DEĞİLDİR; architect gerekçesi port dosyasında yazılı).
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class TwoFactorSetupRequiredError extends AppError {
   constructor() {
     super({
       code: 'TWO_FACTOR_SETUP_REQUIRED',
       httpStatus: 409,
-      userMessageKey: 'errors.twoFactor.setupRequiredBeforeEnforcement',
+      userMessageKey: ERROR_MESSAGE_KEYS.TWO_FACTOR_SETUP_REQUIRED,
       isRetryable: false,
     })
   }

@@ -27,14 +27,14 @@
 // e-posta ne kullanıcı kimliği), yalnızca kalan kilit süresini saniye olarak
 // taşır.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class AccountTemporarilyLockedError extends AppError {
   constructor(retryAfterSeconds: number) {
     super({
       code: 'ACCOUNT_TEMPORARILY_LOCKED',
       httpStatus: 429,
-      userMessageKey: 'errors.auth.accountTemporarilyLocked',
+      userMessageKey: ERROR_MESSAGE_KEYS.ACCOUNT_TEMPORARILY_LOCKED,
       context: { retryAfterSeconds },
       isRetryable: false,
       httpHeaders: { 'Retry-After': String(retryAfterSeconds) },

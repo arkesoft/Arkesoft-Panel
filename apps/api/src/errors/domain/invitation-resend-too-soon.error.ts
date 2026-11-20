@@ -29,14 +29,14 @@
 // ayıran bayrak artık gözlemlenebilir (sayı BURADA TEKRARLANMIYOR; kardeş
 // sayısını kopyalayan bir cümle kaçınılmaz olarak bayatlar).
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class InvitationResendTooSoonError extends AppError {
   constructor(retryAfterSeconds: number) {
     super({
       code: 'INVITATION_RESEND_TOO_SOON',
       httpStatus: 409,
-      userMessageKey: 'errors.member.invitationResendTooSoon',
+      userMessageKey: ERROR_MESSAGE_KEYS.INVITATION_RESEND_TOO_SOON,
       context: { retryAfterSeconds },
       isRetryable: true,
     })

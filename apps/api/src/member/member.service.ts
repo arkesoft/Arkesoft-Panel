@@ -553,8 +553,12 @@ export class MemberService {
   /**
    * Davet e-postasını gönderir. ⚠ Metin KODDA SABİT YAZILMAZ (CLAUDE.md §4/
    * §10 md 17) — bir MESAJ ANAHTARI ile katalogdan istenir. Katalog bugün
-   * `apps/api` içindedir çünkü i18n paketi henüz YOK (v0.0.18); çağıran
-   * imzası o geçişte DEĞİŞMEYECEK biçimde seçildi.
+   * `apps/api` içindedir. ⚠ GÜNCELLEME (`docs`, T-027, 2026-11-20): i18n paketi
+   * ARTIK VAR (`packages/i18n`, v0.0.18) ama bu e-posta kataloğu TAŞINMADI —
+   * T-027'nin onaylı kapsamı (R4) yalnızca `errors.*` hata kodu anahtarlarını
+   * kapsadı. Taşıma vadesi bugün ROADMAP'te adıyla tanımlı değil; çağıran
+   * imzası o geçişte DEĞİŞMEYECEK biçimde zaten seçilmişti
+   * (`apps/api/src/auth/mail/messages.ts`).
    *
    * Başarısızlık YUTULMAZ: taşıyıcı `isRetryable: true` taşıyan bir
    * `AppError` fırlatır ve bu metot onu AYNEN yukarı iletir.

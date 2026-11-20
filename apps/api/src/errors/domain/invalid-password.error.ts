@@ -16,14 +16,14 @@
 // verisi/parola/token loglanmaz/saklanmaz; `session-not-found.error.ts`'in
 // AYNI disiplini).
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class InvalidPasswordError extends AppError {
   constructor() {
     super({
       code: 'INVALID_PASSWORD',
       httpStatus: 400,
-      userMessageKey: 'errors.auth.invalidPassword',
+      userMessageKey: ERROR_MESSAGE_KEYS.INVALID_PASSWORD,
       isRetryable: false,
     })
   }

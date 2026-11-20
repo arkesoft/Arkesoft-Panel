@@ -45,7 +45,7 @@
 // toplanır, tutarlılık `__tests__/theme-template-dispatch.test.ts`'teki
 // MEKANİK (grep tabanlı) drift pin testiyle sağlanır.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 import { modernTheme } from '@arkesoft/themes-modern'
 
@@ -171,7 +171,7 @@ export class ThemeResolutionError extends AppError {
     super({
       code: 'THEME_RESOLUTION_FAILED',
       httpStatus: 503,
-      userMessageKey: 'errors.theme.resolutionFailed',
+      userMessageKey: ERROR_MESSAGE_KEYS.THEME_RESOLUTION_FAILED,
       context: { themeId: selection.themeId, themeVersion: selection.themeVersion },
     })
   }

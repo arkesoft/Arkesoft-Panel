@@ -1,20 +1,23 @@
 // @arkesoft/api — e-posta mesaj katalogu (ROADMAP v0.0.5, T-006/S4, architect
 // K8)
 //
-// `packages/i18n` henüz yok (v0.0.18). Bu modül onun DEVRALACAĞI asgari
-// yüzeyi taşır: anahtar + değişkenler → {subject, text, html}. Konu/gövde
-// metni çağıran kodda (ileride `AuthModule`) HİÇBİR ZAMAN sabit yazılmaz
-// (CLAUDE.md §4/§10.17) — her e-posta bir MESAJ ANAHTARI ile istenir, metnin
-// TEK doğruluk kaynağı burasıdır.
+// ⚠ GÜNCELLEME (`docs`, T-027, 2026-11-20): `packages/i18n` ARTIK VAR (v0.0.18'de
+// geldi) ama bu modülün anahtarları TAŞINMADI — T-027'nin kullanıcı onaylı kapsamı
+// (R4) kataloğu yalnızca 35 `errors.*` hata kodu anahtarıyla sınırladı; e-posta
+// içerik anahtarları (`tenant.memberInvitation` vb.) bu sürümün dosya listesinde
+// yoktu. Bu modül onun DEVRALACAĞI asgari yüzeyi hâlâ taşır: anahtar + değişkenler
+// → {subject, text, html}. Konu/gövde metni çağıran kodda (`AuthModule`,
+// `MemberService`) HİÇBİR ZAMAN sabit yazılmaz (CLAUDE.md §4/§10.17) — her e-posta
+// bir MESAJ ANAHTARI ile istenir, metnin TEK doğruluk kaynağı burasıdır.
 //
 // AC11 — eksik/yanlış yazılmış anahtar SESSİZCE boş içerik DÖNMEZ, throw
 // eder: "e-posta gönderildi ama içi boştu" sınıfı hata çalışma anında GÖRÜNÜR
 // olur, production'da sessizce yutulmaz.
 //
-// v0.0.18 taşıması: `MAIL_MESSAGE_CATALOG`'un girdileri `packages/i18n`'in
-// mesaj kataloğuna BİREBİR taşınır; `renderMailMessage`'ın çağıran imzası
-// (anahtar + değişkenler → {subject,text,html}) AYNI kalır — bu modülü
-// tüketen kod (ileride `AuthModule`) o geçişte DEĞİŞMEZ.
+// Taşıma (vade belirtilmedi, bugün ROADMAP'te adıyla tanımlı bir sürüm yok):
+// `MAIL_MESSAGE_CATALOG`'un girdileri `packages/i18n`'in mesaj kataloğuna BİREBİR
+// taşınacak; `renderMailMessage`'ın çağıran imzası (anahtar + değişkenler →
+// {subject,text,html}) AYNI kalacak — bu modülü tüketen kod o geçişte DEĞİŞMEYECEK.
 //
 // Türkçe karakter notu (ş/ğ/İ/ı): RFC 2047 başlık kodlaması SMTP istemci
 // kütüphanesinin işidir (bkz. smtp-mail-transport.ts — TEK import noktası);

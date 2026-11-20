@@ -9,7 +9,7 @@
 // artık `error-mapping.ts`'teki merkezi bir `instanceof` zincirinden değil,
 // bu sınıfın `override get publicDetails()`'inden gelir.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 /** Tek bir bağımlılık kontrolünün sonucu. */
 export type DependencyCheckStatus = 'up' | 'down'
@@ -21,7 +21,7 @@ export class DependencyUnavailableError extends AppError {
     super({
       code: 'DEPENDENCY_UNAVAILABLE',
       httpStatus: 503,
-      userMessageKey: 'errors.dependency.unavailable',
+      userMessageKey: ERROR_MESSAGE_KEYS.DEPENDENCY_UNAVAILABLE,
       context: { checks },
       isRetryable: true,
     })

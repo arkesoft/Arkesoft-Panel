@@ -18,14 +18,14 @@
 // da taşınmaz — gözlemlenebilirlik `same-origin-guard.ts`'in KENDİ `warn`
 // logunda (sorumlu dosyada) kalır.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class CrossSiteRequestRejectedError extends AppError {
   constructor() {
     super({
       code: 'CROSS_SITE_REQUEST_REJECTED',
       httpStatus: 403,
-      userMessageKey: 'errors.auth.crossSiteRequestRejected',
+      userMessageKey: ERROR_MESSAGE_KEYS.CROSS_SITE_REQUEST_REJECTED,
       context: {},
       isRetryable: false,
     })

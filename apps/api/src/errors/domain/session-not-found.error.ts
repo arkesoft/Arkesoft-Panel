@@ -9,14 +9,14 @@
 // ya da kime ait olduğu NE TELE NE log bağlamına yazılır (ikisi de başka bir
 // kullanıcının oturum kimliğini SIZDIRABİLİRDİ).
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class SessionNotFoundError extends AppError {
   constructor() {
     super({
       code: 'SESSION_NOT_FOUND',
       httpStatus: 404,
-      userMessageKey: 'errors.auth.sessionNotFound',
+      userMessageKey: ERROR_MESSAGE_KEYS.SESSION_NOT_FOUND,
       isRetryable: false,
     })
   }

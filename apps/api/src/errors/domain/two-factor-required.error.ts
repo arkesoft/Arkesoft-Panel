@@ -41,14 +41,14 @@
 // çağrı yeri sıfır argümanla çağırır ve `context`'teki iki alan `undefined`
 // kalır (YALNIZCA LOGLANIR, tele hiç sızmaz — `AppError.context`'in
 // yapısal garantisi).
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class TwoFactorRequiredError extends AppError {
   constructor(userId?: string, tenantId?: string) {
     super({
       code: 'TWO_FACTOR_REQUIRED',
       httpStatus: 403,
-      userMessageKey: 'errors.auth.twoFactorRequiredForOwner',
+      userMessageKey: ERROR_MESSAGE_KEYS.TWO_FACTOR_REQUIRED,
       context: { userId, tenantId },
       isRetryable: false,
     })

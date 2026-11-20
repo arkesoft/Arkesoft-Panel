@@ -21,7 +21,7 @@
 // yalnızca LOGLANIR, `toErrorBody` tele ASLA serileştirmez. Ham ioredis
 // nesnesi/bağlantı dizesi BURADA YOK, `cause` olarak zincirlenir.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 import { describeErrorCause } from '../describe-error-cause.js'
 
@@ -31,7 +31,7 @@ export class RateLimitStoreUnavailableError extends AppError {
     super({
       code: 'RATE_LIMIT_STORE_UNAVAILABLE',
       httpStatus: 503,
-      userMessageKey: 'errors.auth.rateLimitStoreUnavailable',
+      userMessageKey: ERROR_MESSAGE_KEYS.RATE_LIMIT_STORE_UNAVAILABLE,
       context: { causeCode: described.causeCode, causeMessage: described.causeMessage },
       isRetryable: true,
       cause,

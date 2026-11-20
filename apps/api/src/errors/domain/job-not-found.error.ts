@@ -26,14 +26,14 @@
 // loguna girer. Parametre ileride (ör. imleç çözümlemesinde) gerekirse
 // ARAYÜZ HAZIR; `TenantNotFoundError` ile birebir aynı imza.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class JobNotFoundError extends AppError {
   constructor(context?: Record<string, unknown>) {
     super({
       code: 'JOB_NOT_FOUND',
       httpStatus: 404,
-      userMessageKey: 'errors.job.notFound',
+      userMessageKey: ERROR_MESSAGE_KEYS.JOB_NOT_FOUND,
       // `exactOptionalPropertyTypes` (CLAUDE.md §4): `context` yalnızca
       // GERÇEKTEN verildiğinde eklenir — `context: undefined` yazmak optional
       // alanı açıkça `undefined`'a eşitler, bu derleme hatası verir.

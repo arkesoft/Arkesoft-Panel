@@ -33,6 +33,7 @@
 import { z } from 'zod'
 
 import type { AppError } from './app-error.js'
+import { ERROR_MESSAGE_KEYS } from './error-message-keys.js'
 
 /**
  * HTTP/tRPC hata gövdesinin tel şeması. Tam olarak dört alan — CLAUDE.md §4 ve
@@ -85,11 +86,15 @@ export function toErrorBody(error: AppError, requestId: string): AppErrorBody {
  * `apps/api`'nin HTTP yolu VE v0.0.6'nın `packages/trpc`'si AYNI fonksiyonu
  * çağırır — literal kopyası yok; "iki yüzey birebir aynı gövde" şartı test
  * değil YAPI ile sağlanır (AC10).
+ *
+ * `message` ROADMAP v0.0.18 (T-027/S2)'den itibaren `ERROR_MESSAGE_KEYS`
+ * defterinden OKUNUR, literal yazılmaz — değer `'errors.http.generic'` ile
+ * BİREBİR AYNI kalır (tel sözleşmesi DEĞİŞMEDİ, AC-51).
  */
 export function genericTransportErrorBody(requestId: string): AppErrorBody {
   return {
     code: 'HTTP_EXCEPTION',
-    message: 'errors.http.generic',
+    message: ERROR_MESSAGE_KEYS.HTTP_EXCEPTION,
     details: {},
     requestId,
   }
@@ -99,11 +104,15 @@ export function genericTransportErrorBody(requestId: string): AppErrorBody {
  * Sınıflandırılamayan (bilinmeyen) her hata için jenerik tel gövdesi
  * fabrikası (ADR-0010 §2, ROADMAP v0.0.6 T-007/ST-1). Ham mesaj/yığın izi bu
  * gövdeye ASLA girmez — yalnızca çağıranın `logContext`'ine gider.
+ *
+ * `message` ROADMAP v0.0.18 (T-027/S2)'den itibaren `ERROR_MESSAGE_KEYS`
+ * defterinden OKUNUR, literal yazılmaz — değer `'errors.internal.unknown'`
+ * ile BİREBİR AYNI kalır (tel sözleşmesi DEĞİŞMEDİ, AC-51).
  */
 export function unknownErrorBody(requestId: string): AppErrorBody {
   return {
     code: 'INTERNAL_ERROR',
-    message: 'errors.internal.unknown',
+    message: ERROR_MESSAGE_KEYS.INTERNAL_ERROR,
     details: {},
     requestId,
   }

@@ -1,44 +1,69 @@
 // @arkesoft/admin — Panelin TEK Türkçe mesaj kataloğu (ROADMAP v0.0.7,
 // T-008/S4, architect K4). Kullanıcıya dönük HİÇBİR Türkçe literal
-// JSX/bileşen kodunda yazılmaz — yalnızca burada (V3: `packages/i18n`
-// v0.0.18'e kadar bu modül panelin TEK doğruluk kaynağıdır).
+// JSX/bileşen kodunda yazılmaz — yalnızca burada.
 //
 // SIRALI PAYLAŞIMLI dosya — bu alt görev BİRİNCİL yazıcıdır. S5 bu dosyaya
 // YALNIZCA EKLER (ekran metinleri: boş durum, form etiketleri, buton +
 // A-A5'in gerçek uca vurarak ölçeceği ek giriş hatası kodları).
-// `resolveErrorMessage`'ın GÖVDESİ ve kapalı dünya (`PANEL_ERROR_CODES` +
-// `ERROR_MESSAGES`) burada DEĞİŞMEZ — S5 yalnızca satır ekler.
 //
-// DÜRÜST KAYIT (architect K4): `apps/admin` `@arkesoft/api`'ye bağımlı
-// OLAMAZ (CLAUDE.md §3 — bağımlılık yönü apps/* → packages/*, başka bir
-// apps/* paketine ASLA) → aşağıdaki platform kodu listesi
-// `apps/api/src/errors/domain/*.error.ts`'in ELLE TUTULAN bir AYNASIDIR;
-// otomatik çapraz kontrol MÜMKÜN DEĞİL. Doğruluk kaynağı HER ZAMAN o dizin
-// (+ `packages/errors/src/error-body.ts`'in iki jenerik kodu). Yeni borç:
-// bu kayıt defteri `packages/errors`'a taşınmalı (vade v0.0.18, sorumlu
-// architect — bkz. ROADMAP).
+// ⚠⚠ GÜNCELLEME (ROADMAP v0.0.18, T-027/S7, architect R-1 KARARI) — borç
+// KAPANDI: dosya başının eski hâli bu modülü "`packages/i18n` v0.0.18'e
+// kadar panelin TEK doğruluk kaynağı" ve platform kodu listesini
+// "`apps/api/src/errors/domain/*.error.ts`'in ELLE TUTULAN bir AYNASI;
+// otomatik çapraz kontrol MÜMKÜN DEĞİL" olarak tanımlıyordu. Artık DEĞİL:
+// platform ailesi (32 domain kodu + 2 jenerik + storefront kodu, TOPLAM 35
+// i18n anahtarı) `packages/errors/src/error-message-keys.ts`'in
+// `ERROR_MESSAGE_KEYS` defterinden VE `@arkesoft/i18n`'in `tr-TR`
+// kataloğundan (`TR_TR_ERROR_MESSAGES`) MEKANİK olarak çözülür (aşağıdaki
+// "ÇÖZÜMLEME MERDİVENİ" bölümü) — elle kopyalanmış İKİNCİ bir platform
+// kodu/metin listesi BURADA YOK.
 //
-// ÖLÇÜLMEYENİ UYDURMAK YASAK (architect K4): kataloğa yalnızca GERÇEKTEN
-// grep edilen platform kodları ve GERÇEK uca vurularak ölçülen Better Auth
-// kodları yazılır. Eksik/yeni bir kod jenerik mesaja düşer — AC8 YİNE
-// geçer, çünkü `PanelError`'ın hiçbir alanı ham sunucu metni TAŞIMAZ
-// (bkz. ../errors/panel-error.ts).
+// `PANEL_ERROR_CODES`/`ERROR_MESSAGES` artık YALNIZCA Better Auth ailesini
+// taşır (ADR-0010:232'nin "ikinci tablo"su) — bu aile KALICI KAPSAM DIŞI:
+// `errors.*` anahtarı TAŞIMIYORLAR, doğruluk kaynağı üçüncü taraf
+// kütüphanenin KENDİ kaynak kodu, mekanik türetme MÜMKÜN DEĞİL. Aşağıdaki
+// liste hâlâ ELLE TUTULAN bir ölçümdür (GERÇEK uca vurularak/kaynak kodu
+// okunarak) ama kapsamı artık yalnızca bu KALICI aileyle SINIRLI.
+//
+// ÖLÇÜLMEYENİ UYDURMAK YASAK (architect K4): kataloğa yalnızca GERÇEK uca
+// vurularak ölçülen Better Auth kodları yazılır. Eksik/yeni bir kod jenerik
+// mesaja düşer — AC8 YİNE geçer, çünkü `PanelError`'ın hiçbir alanı ham
+// sunucu metni TAŞIMAZ (bkz. ../errors/panel-error.ts).
 
 /**
- * Kaynak — 2026-10-31 tarihinde grep edildi:
- *   - `apps/api/src/errors/domain/*.error.ts` (15 dosya, 15 kod)
- *   - `packages/errors/src/error-body.ts` → `genericTransportErrorBody`
- *     (`HTTP_EXCEPTION`) + `unknownErrorBody` (`INTERNAL_ERROR`) (2 kod)
- *   = 17 platform kodu.
- * Ayrıca GERÇEK uca vurularak ölçülen üç Better Auth kodu (S3/backend,
- * architect K3 + bu alt görevin handoff'u): `INVALID_EMAIL_OR_PASSWORD`
- * (401), `EMAIL_NOT_VERIFIED` (403 — platform listesinde de VAR, aynı
- * semantik, TEK satır), `INVALID_ORIGIN` (403).
+ * Kaynak — Better Auth ailesi (ADR-0010:232'nin "ikinci tablo"su, KALICI
+ * KAPSAM DIŞI — bkz. dosya başı yorumu). ⚠⚠ Platform ailesi (eski 17 kod:
+ * 15 domain + 2 jenerik) 2026-11-19'da (ROADMAP v0.0.18, T-027/S7) BURADAN
+ * KALDIRILDI — artık `resolvePanelErrorMessage`'ın ÇÖZÜMLEME MERDİVENİ'nin
+ * 2./3. basamağından `packages/errors`/`@arkesoft/i18n` üzerinden MEKANİK
+ * olarak gelir (aşağıda). `EMAIL_NOT_VERIFIED` İSTİSNA — platform ailesinde
+ * DE kayıtlı (`ERROR_MESSAGE_KEYS.EMAIL_NOT_VERIFIED`) ama GERÇEK uca
+ * vurularak Better Auth'un KENDİSİNDEN de doğrudan dönebildiği ÖLÇÜLDÜĞÜ
+ * için burada da KALDI — iki yoldan da AYNI metne ulaşır (`tr-tr-errors.ts`
+ * BİREBİR aynı dize taşır).
+ *   - GERÇEK uca vurularak ölçülen üç Better Auth kodu (S3/backend,
+ *     architect K3): `INVALID_EMAIL_OR_PASSWORD` (401), `EMAIL_NOT_VERIFIED`
+ *     (403), `INVALID_ORIGIN` (403).
+ *   - `better-auth@1.7.14`'ün `plugins/two-factor` KAYNAK KODU okunarak
+ *     ölçülen altı kod (ROADMAP v0.0.15, T-016/S10, 2026-11-06):
+ *     `INVALID_CODE`, `INVALID_BACKUP_CODE`,
+ *     `TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE`, `ACCOUNT_TEMPORARILY_LOCKED`,
+ *     `INVALID_TWO_FACTOR_COOKIE`, `INVALID_PASSWORD`.
+ *   = 9 Better Auth kodu (architect'in ölçtüğü "Better Auth ailesi (9)").
  */
 // DÜZELTME TURU 2 (`solid` L-N8 — bağlayıcı): `import type` burada, dosya
 // BAŞINDA (diğer tüm modüllerin konvansiyonu — `L-N8`'in şikayet ettiği
 // "259 satırlık dosyanın 242. satırı" sapması düzeltildi). `assertNever`
 // `resolvePanelErrorMessage`'ın EXHAUSTIVE `switch`'i için (aşağıda).
+//
+// GÜNCELLEME (ROADMAP v0.0.18, T-027/S7, architect R-1 KARARI):
+// `ERROR_MESSAGE_KEYS` (`@arkesoft/errors`) platformun `code → i18n anahtarı`
+// defteri — çözümleme merdiveninin 3. basamağı. `createMessageResolver`/
+// `DEFAULT_LOCALE`/`TR_TR_ERROR_MESSAGES` (`@arkesoft/i18n`) 2./3. basamağın
+// ortak metin kaynağı.
+import { ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
+import type { ErrorMessageKey } from '@arkesoft/errors'
+import { createMessageResolver, DEFAULT_LOCALE, TR_TR_ERROR_MESSAGES } from '@arkesoft/i18n'
 import { registrationFieldErrorKeySchema } from '@arkesoft/trpc'
 import type { RegistrationFieldErrorKey } from '@arkesoft/trpc'
 
@@ -46,33 +71,9 @@ import type { PanelError } from '../errors/panel-error.js'
 
 import { assertNever } from '../errors/assert-never.js'
 
-// GÜNCELLEME (ROADMAP v0.0.15, T-016/S10, 2026-11-06): ALTI yeni Better Auth
-// kodu EKLENDİ — `better-auth@1.7.14`'ün `plugins/two-factor` kaynağı
-// DOĞRUDAN OKUNARAK ölçüldü (`node_modules/.pnpm/.../plugins/two-factor/
-// {error-code,totp/index,backup-codes/index}.mjs`, `@better-auth/core`'un
-// `BASE_ERROR_CODES.INVALID_PASSWORD`) — docs/ux/T-016'nın kategori (2)
-// disiplini (HTTP ile canlı DOĞRULANMADI, kaynak kodundan ÖLÇÜLDÜ).
 export const PANEL_ERROR_CODES = [
-  // --- apps/api/src/errors/domain/*.error.ts (15) ---
-  'AUTH_PROVIDER_FAILED',
-  'CROSS_SITE_REQUEST_REJECTED',
-  'DEPENDENCY_UNAVAILABLE',
-  'EMAIL_NOT_VERIFIED',
-  'MAIL_DELIVERY_FAILED',
-  'RATE_LIMIT_STORE_UNAVAILABLE',
-  'REQUEST_CONTEXT_UNAVAILABLE',
-  'RATE_LIMIT_EXCEEDED',
-  'TENANT_MEMBERSHIP_REQUIRED',
-  'SESSION_NOT_FOUND',
-  'TENANT_NOT_FOUND',
-  'TENANT_CONTEXT_REQUIRED',
-  'TENANT_RESOLUTION_FAILED',
-  'UNAUTHENTICATED',
-  'VALIDATION_ERROR',
-  // --- packages/errors/src/error-body.ts jenerik kodları (2) ---
-  'HTTP_EXCEPTION',
-  'INTERNAL_ERROR',
   // --- Better Auth, GERÇEK uca vurularak ölçüldü (3) ---
+  'EMAIL_NOT_VERIFIED',
   'INVALID_EMAIL_OR_PASSWORD',
   'INVALID_ORIGIN',
   // --- Better Auth `two-factor` eklentisi, KAYNAK KODU okunarak ölçüldü (6) ---
@@ -100,29 +101,8 @@ const GENERIC_ERROR_MESSAGE = 'Beklenmeyen bir hata oluştu. Lütfen daha sonra 
  * da kırılır).
  */
 const ERROR_MESSAGES = {
-  AUTH_PROVIDER_FAILED:
-    'Kimlik doğrulama sağlayıcısında beklenmeyen bir sorun oluştu. Lütfen daha sonra tekrar deneyin.',
-  CROSS_SITE_REQUEST_REJECTED:
-    'Bu istek güvenlik nedeniyle reddedildi. Sayfayı yenileyip tekrar deneyin.',
-  DEPENDENCY_UNAVAILABLE:
-    'Sistem şu anda geçici olarak kullanılamıyor. Lütfen daha sonra tekrar deneyin.',
   EMAIL_NOT_VERIFIED:
     'Hesabınızın e-posta adresi henüz doğrulanmadı. Giriş yapabilmek için e-postanızı doğrulayın.',
-  MAIL_DELIVERY_FAILED: 'E-posta gönderilemedi. Lütfen daha sonra tekrar deneyin.',
-  RATE_LIMIT_STORE_UNAVAILABLE: 'Sistem şu anda yoğun. Lütfen birkaç dakika sonra tekrar deneyin.',
-  REQUEST_CONTEXT_UNAVAILABLE: 'İsteğiniz işlenemedi. Lütfen sayfayı yenileyip tekrar deneyin.',
-  RATE_LIMIT_EXCEEDED: 'Çok fazla deneme yapıldı. Lütfen birkaç dakika sonra tekrar deneyin.',
-  TENANT_MEMBERSHIP_REQUIRED: 'Bu işlem için bir mağazaya üye olmanız gerekiyor.',
-  SESSION_NOT_FOUND: 'Oturumunuz bulunamadı. Lütfen tekrar giriş yapın.',
-  TENANT_NOT_FOUND: 'İstenen mağaza bulunamadı.',
-  TENANT_CONTEXT_REQUIRED: 'Bu işlem için mağaza bağlamı gerekiyor.',
-  TENANT_RESOLUTION_FAILED:
-    'Mağaza bilgisi şu anda çözümlenemedi. Lütfen daha sonra tekrar deneyin.',
-  UNAUTHENTICATED: 'Bu işlemi yapabilmek için giriş yapmanız gerekiyor.',
-  VALIDATION_ERROR:
-    'Girdiğiniz bilgilerde bir sorun var. Lütfen alanları kontrol edip tekrar deneyin.',
-  HTTP_EXCEPTION: 'İsteğiniz işlenemedi. Lütfen tekrar deneyin.',
-  INTERNAL_ERROR: 'Beklenmeyen bir hata oluştu. Lütfen daha sonra tekrar deneyin.',
   // Better Auth yanlış parola VE var olmayan kullanıcı için AYNI kodu
   // döndürür (kullanıcı sayımını — enumeration — bilinçli engeller). Bu
   // Türkçe metin de o ayrımı SIZDIRMAZ; "böyle bir kullanıcı yok" YAZMAZ.
@@ -206,6 +186,77 @@ export function formatSupportCodeLine(requestId: string | null): string | null {
     return null
   }
   return `Destek kodu: ${requestId}`
+}
+
+// ---------------------------------------------------------------------------
+// ÇÖZÜMLEME MERDİVENİ (ROADMAP v0.0.18, T-027/S7, architect R-1 KARARI).
+// `PanelError.known`'ın Türkçe metne çözülmesi artık DÖRT basamaklı:
+//   1. `kind: 'unknown'` (kodsuz, gerçek ağ hatası)      → jenerik Türkçe
+//      (bu basamak `resolvePanelErrorMessage`'ın kendisinde, aşağıda).
+//   2. `messageKey !== null`                              → TELDEN gelen
+//      anahtar `@arkesoft/i18n`'in `tr-TR` kataloğundan çözülür — en güçlü
+//      sinyal, sunucu HANGİ metni istediğini zaten söylemiş.
+//   3. `messageKey === null`, `code` `packages/errors`'ın defterinde KAYITLI
+//      → `ERROR_MESSAGE_KEYS[code]` ile anahtara çevrilir, AYNI i18n
+//      kataloğundan çözülür. ⚠ Bu basamak ÖLÜ DEĞİL — sunucu geçersiz/eski
+//      bir `messageKey` gönderdiğinde (veya `messageKey` alanı hiç
+//      doldurulmadığında) erişilir; M7'nin ("superadmin'in aynası sessizce
+//      bayat") defektini MEKANİK olarak kapatan tam basamak budur.
+//   4. `code` bu panelin Better Auth sağlayıcı tablosunda (`PANEL_ERROR_CODES`)
+//      KAYITLI → `resolveErrorMessage` (ADR-0010:232'nin KALICI "ikinci
+//      tablo"su, bu Task'ın kapsamı DIŞI).
+//   5. Aksi hâlde                                          → jenerik Türkçe.
+// 2. VE 3. basamak AYNI defterden (`@arkesoft/i18n`'in `tr-TR` kataloğu)
+// beslenir — tek doğruluk kaynağı, iki taşıma yolu (biri tel, biri derleme
+// zamanı defteri).
+
+/** 2./3. basamağın ortak çözümleyicisi — `DEFAULT_LOCALE`'e CURRY'lenmiş (A-S5a-1). */
+const resolveTrTrErrorMessage = createMessageResolver(
+  { [DEFAULT_LOCALE]: TR_TR_ERROR_MESSAGES },
+  DEFAULT_LOCALE,
+)(DEFAULT_LOCALE)
+
+/**
+ * `code`'un `packages/errors`'ın `ERROR_MESSAGE_KEYS` defterinde kayıtlı bir
+ * ANAHTARI olup olmadığını runtime'da daraltır (emsal:
+ * `apps/storefront/src/themes/registry.ts`'in `isThemeRegistryKey`'i —
+ * `Object.hasOwn` tabanlı, AYNI desen).
+ */
+function isRegisteredPlatformCode(code: string): code is keyof typeof ERROR_MESSAGE_KEYS {
+  return Object.hasOwn(ERROR_MESSAGE_KEYS, code)
+}
+
+/** Merdivenin tek bir sonucu — EXHAUSTIVE `switch` ile tüketilir (aşağıda). */
+type ErrorResolutionStep =
+  | { readonly step: 'networkUnknown' }
+  | { readonly step: 'wireMessageKey'; readonly messageKey: ErrorMessageKey }
+  | { readonly step: 'registryMessageKey'; readonly messageKey: ErrorMessageKey }
+  | { readonly step: 'providerCode'; readonly code: PanelErrorCode }
+  | { readonly step: 'genericFallback' }
+
+/**
+ * `PanelError`'ı merdivenin BEŞ basamağından birine sınıflandırır — saf,
+ * AĞSIZ, yan etkisiz. `resolvePanelErrorMessage` bu sınıflandırmayı
+ * EXHAUSTIVE `switch` ile metne çevirir.
+ */
+function classifyErrorResolutionStep(error: PanelError): ErrorResolutionStep {
+  if (error.kind === 'unknown') {
+    return { step: 'networkUnknown' }
+  }
+
+  if (error.messageKey !== null) {
+    return { step: 'wireMessageKey', messageKey: error.messageKey }
+  }
+
+  if (isRegisteredPlatformCode(error.code)) {
+    return { step: 'registryMessageKey', messageKey: ERROR_MESSAGE_KEYS[error.code] }
+  }
+
+  if (isPanelErrorCode(error.code)) {
+    return { step: 'providerCode', code: error.code }
+  }
+
+  return { step: 'genericFallback' }
 }
 
 // ---------------------------------------------------------------------------
@@ -633,26 +684,34 @@ export const MESSAGES = {
 // burada: iki kopya silindi, ikisi de bu fonksiyonu çağırıyor.
 
 /**
- * `PanelError` → ekranda gösterilecek Türkçe metin. `kind: 'known'` ise
- * {@link resolveErrorMessage} (kapalı dünya + güvenli geri düşüş, kod ASLA
- * ekrana basılmaz); `kind: 'unknown'` HİÇBİR kod taşımaz (gerçek ağ hatası /
- * istek hiç tamamlanamadı YA DA tanınmayan gövde) → `MESSAGES.errors.network`.
+ * `PanelError` → ekranda gösterilecek Türkçe metin (ROADMAP v0.0.18,
+ * T-027/S7, architect R-1 KARARI — ÇÖZÜMLEME MERDİVENİ, yukarıda tanımlı).
+ * `classifyErrorResolutionStep` ÖNCE `PanelError`'ı BEŞ basamaktan birine
+ * sınıflandırır, bu fonksiyon EXHAUSTIVE `switch` ile metne çevirir.
  * `PanelError`'ın hiçbir alanı ham sunucu metni TAŞIMAZ (bkz.
  * ../errors/panel-error.ts) — bu fonksiyon da aynı fail-closed garantiyi
  * korur; AC8 bu yapısal garantiden BAĞIMSIZ olarak hâlâ sağlanıyor.
  *
  * DÜZELTME TURU 2 (`solid` L-N8 — bağlayıcı, CLAUDE.md §4): `if`/`return`
- * yerine EXHAUSTIVE `switch` + `assertNever` — `PanelError`'a üçüncü bir
- * `kind` eklenirse (bugün yok) bu fonksiyon artık SESSİZCE
- * `MESSAGES.errors.network`'e DÜŞMEZ, `pnpm typecheck` KIRILIR.
+ * yerine EXHAUSTIVE `switch` + `assertNever` — `ErrorResolutionStep`'e yeni
+ * bir basamak eklenirse bu fonksiyon artık SESSİZCE jenerik mesaja DÜŞMEZ,
+ * `pnpm typecheck` KIRILIR.
  */
 export function resolvePanelErrorMessage(error: PanelError): string {
-  switch (error.kind) {
-    case 'known':
-      return resolveErrorMessage(error.code)
-    case 'unknown':
+  const resolutionStep = classifyErrorResolutionStep(error)
+
+  switch (resolutionStep.step) {
+    case 'networkUnknown':
       return MESSAGES.errors.network
+    case 'wireMessageKey':
+      return resolveTrTrErrorMessage.t(resolutionStep.messageKey)
+    case 'registryMessageKey':
+      return resolveTrTrErrorMessage.t(resolutionStep.messageKey)
+    case 'providerCode':
+      return resolveErrorMessage(resolutionStep.code)
+    case 'genericFallback':
+      return GENERIC_ERROR_MESSAGE
     default:
-      return assertNever(error, 'messages.ts: PanelError.kind')
+      return assertNever(resolutionStep, 'messages.ts: ErrorResolutionStep')
   }
 }

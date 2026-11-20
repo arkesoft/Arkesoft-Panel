@@ -34,7 +34,7 @@
 // varsayılan, orada ÖNCEKİ davranışı (`context: {userId, tenantId}`) BİREBİR
 // korur. Hedef özneli çağıran `'target'`ı AÇIKÇA geçirmek zorundadır.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 /**
  * Reddin ÖZNESİ — `context`'in kullanıcı alanının ADINI belirler. Kapalı
@@ -48,7 +48,7 @@ export class TenantMembershipRequiredError extends AppError {
     super({
       code: 'TENANT_MEMBERSHIP_REQUIRED',
       httpStatus: 403,
-      userMessageKey: 'errors.auth.tenantMembershipRequired',
+      userMessageKey: ERROR_MESSAGE_KEYS.TENANT_MEMBERSHIP_REQUIRED,
       context: subject === 'actor' ? { userId, tenantId } : { targetUserId: userId, tenantId },
       isRetryable: false,
     })

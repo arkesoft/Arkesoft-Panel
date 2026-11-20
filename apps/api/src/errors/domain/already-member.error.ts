@@ -18,14 +18,14 @@
 // kimliği henüz BİLİNMEZ (üyelik e-posta üzerinden eşleşti), bu yüzden
 // parametre opsiyoneldir.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class AlreadyMemberError extends AppError {
   constructor(context?: Record<string, unknown>) {
     super({
       code: 'ALREADY_MEMBER',
       httpStatus: 409,
-      userMessageKey: 'errors.member.alreadyMember',
+      userMessageKey: ERROR_MESSAGE_KEYS.ALREADY_MEMBER,
       // `exactOptionalPropertyTypes` (CLAUDE.md §4): `context: undefined`
       // yazmak opsiyonel alanı açıkça `undefined`'a eşitler ve derleme
       // hatası verir — `JobNotFoundError`'ın birebir aynı deseni.

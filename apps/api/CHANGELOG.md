@@ -1,5 +1,19 @@
 # @arkesoft/api
 
+## 0.12.0
+
+### Minor Changes
+
+- Admin ve süper admin panellerindeki hata mesajları artık merkezi, sürüm kontrollü bir metin kataloğundan geliyor; bu sayede bazı hata durumları (davet ve üyelik işlemleri, iş kuyruğu bildirimleri gibi) artık jenerik bir mesaj yerine duruma özel, daha anlaşılır bir Türkçe açıklama gösteriyor. Platforma ayrıca para tutarlarını her zaman kuruş cinsinden tam sayı olarak işleyen, taşma ve yuvarlama hatalarını güvenli biçimde yakalayan bir para (Money) bileşeni ve bir para birimi kaydı (bugün için TRY) eklendi; bu altyapı kullanıcıya bu sürümde görünür bir fiyatlandırma özelliği getirmiyor ama ileride fiyat, ödeme ve kargo gibi para ile ilgili özelliklerin sağlam ve hatasız bir temel üzerine kurulmasını sağlıyor. Çoklu dil içeriği (İngilizce metinler) ve döviz kuru desteği bu sürümde yok, ileride ayrı bir sürümde geliyor. [v0.0.18]
+
+### Patch Changes
+
+- @arkesoft/config@0.12.0
+  - @arkesoft/db@0.12.0
+  - @arkesoft/errors@0.12.0
+  - @arkesoft/tenancy@0.12.0
+  - @arkesoft/trpc@0.8.5
+
 ## 0.11.0
 
 ### Minor Changes
