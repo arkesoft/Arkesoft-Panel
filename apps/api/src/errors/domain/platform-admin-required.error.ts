@@ -23,14 +23,14 @@
 // çağırabilsin diye parametre `?` yapıldı — `TwoFactorRequiredError`'ın
 // AYNI gerekçesi.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class PlatformAdminRequiredError extends AppError {
   constructor(userId?: string) {
     super({
       code: 'PLATFORM_ADMIN_REQUIRED',
       httpStatus: 403,
-      userMessageKey: 'errors.platform.adminRequired',
+      userMessageKey: ERROR_MESSAGE_KEYS.PLATFORM_ADMIN_REQUIRED,
       context: { userId },
       isRetryable: false,
     })

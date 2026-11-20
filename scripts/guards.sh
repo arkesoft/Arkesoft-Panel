@@ -1335,6 +1335,187 @@ check_test_contract_chain() {
   return 0
 }
 
+# ---------------------------------------------------------------------------
+# AC-45 + AC-46 — hata i18n anahtarı kataloğu drift kapısı (ROADMAP v0.0.18,
+# T-027/S8). TEK adım, ÜÇ alt kontrol — emsal `check_adr22_k1d_shellout_
+# boundary`/`check_test_contract_chain` (yukarıda): üç bağımsız ölçüm AYNI
+# "35 anahtarlık katalog defterden okuma GERÇEKTEN korunuyor mu" sorusuna
+# hizmet eder; TEK adım olarak sayılır (23. adımın ÜZERİNE tek bir 24. adım
+# eklenir, üçe bölünmez).
+#
+# Alt kontrol 1 — literal atama taraması. Üretim kodu artık ERROR_MESSAGE_
+# KEYS.<KOD> (@arkesoft/errors) kayıt defterinden okuyor (T-027/S2+S3); bir
+# hata gövdesinin kullanıcı mesajı anahtarı alanına DOĞRUDAN bir dize
+# literali atanması defterin atlandığı anlamına gelir ve katalog drift
+# testini (AC-45) BAYPAS EDER. Bu, AC4'ün (yukarıda) BİREBİR KARDEŞİ — ikisi
+# de "bir alan yalnızca TEK bir kaynaktan okunur" garantisini mekanik olarak
+# zorluyor; bu kontrol `pnpm lint`'teki AYNI kısıtı denetleyen ESLint
+# seçicisinden (alt kontrol 2) BAĞIMSIZ bir ikinci kanıt.
+#
+# ⚠⚠ KAPSAM KARARI (ölçülmüş, T-027/S3+S4): `apps/*/src`+`packages/*/src`
+# genelinde bu literal atama BUGÜN 26 — hepsinin konumu `__tests__/` altı ve
+# hepsi gerçek 35'lik katalogdan AYRIK sentetik PROBE anahtarları kullanıyor
+# (S2'nin `errorMessageKeySchema.safeParse` negatif kanıtı bu ayrıklığı
+# zaten gösteriyor — bkz. `packages/errors/src/error-message-keys.ts`).
+# `__tests__` DIŞINDA bu alan ZATEN sıfır — bu yüzden yasak ÜRETİM yollarına
+# uygulanıyor (S4'ün ESLint kapsamıyla BİREBİR aynı dizin istisnası,
+# `PRODUCTION_ONLY_IGNORES`). Hedef küme `apps/*/src` + `packages/*/src`
+# (themes kapsam DIŞI — R6/A-T27-5, i18n hiç almıyor).
+#
+# Jeton BİLEREK iki parçaya bölünmüş kuruluyor (literal-jeton kuralı,
+# AGENT_BASELINE.md §5 — bu disiplin YORUMLARA da uygulanır, bu yüzden bu
+# yorum da taranan hata gövdesi alanının adını bitişik YAZMAZ). Bu kural
+# `pnpm guards`'ı ÜÇ KEZ kırdı (T-014, T-015×2) — AC4/AC8/AC16 ile AYNI
+# disiplin.
+#
+# Alt kontrol 2 — ESLint seçicisinin `packages/config/eslint/base.js`'teki
+# VARLIĞI, TEKLİĞİ ve kural dizisine GERÇEKTEN BAĞLI olması. Seçici silinirse
+# `pnpm lint` SESSİZCE yeşil kalır (tam bir sahte yeşil) — emsal BİREBİR:
+# `check_axe_single_source`, `check_slug_grammar_single_source` (yukarıda).
+#
+# ⚠⚠ ÖLÇÜLMÜŞ KÖR NOKTA (bu alt kontrolün KENDİ geliştirme turunda
+# mutasyonla bulundu — AC seçicisinin DEĞER metnini (`Property[key.name=...]
+# > Literal`) aramak YETERSİZ: `const <ad>LiteralSelector = {...}` TANIMI
+# dursa ama `no-restricted-syntax` DİZİSİNDEN SİLİNSE (kural adı değişmez,
+# seçici artık hiçbir TS dosyasına uygulanmaz), seçicinin METNİ dosyada
+# HÂLÂ bir kez geçtiği için ESKİ kontrol YANLIŞ YEŞİL verirdi — tam S4'ün
+# flat-config notunun ("sonraki eşleşen blok öncekini TAMAMEN geçersiz
+# kılıyor") KARDEŞİ bir kaçış yolu. Düzeltme: seçiciyi TAŞIYAN DEĞİŞKEN
+# ADININ (tanım + kullanım) dosyadaki TOPLAM geçiş sayısı sayılır — tanım
+# TEK başına kalırsa (kullanımdan düşmüşse) sayı 1'e iner ve İHLAL verir.
+#
+# Alt kontrol 3 — `MONEY_NAME_SOURCE`'un TEK kopya olması (üç kopya = üç ayrı
+# drift kaynağı, T-027/S4'ün dosya başı yorumu) + altı float-para fixture
+# dosyasının VARLIĞI (`packages/config/eslint/__fixtures__`).
+#
+# ⚠⚠ DÜZELTME (T-027/S8 düzeltme turu 1, M2): alt kontrol 3'ün ilk hâli
+# yalnızca `MONEY_NAME_SOURCE` ATAMASININ tekliğini sayıyordu; `moneyRestricted
+# SyntaxSelectors`'ı TAŞIYAN değişkenin `no-restricted-syntax` KURAL DİZİSİNE
+# GERÇEKTEN BAĞLI olup olmadığını denetlemiyordu — alt kontrol 2'nin kendi
+# geliştirme turunda bulduğu kör nokta bu kardeş kontrole TAŞINMAMIŞTI. `qa`
+# mutasyonla kanıtladı: dizideki `...moneyRestrictedSyntaxSelectors,`
+# kullanım satırı silinirse tanım dosyada DURUR, eski 3a "tek kopya" der,
+# `pnpm lint` SESSİZCE yeşil kalır ve AC-47'nin float-para koruması TAMAMEN
+# kaybolur. Alt kontrol 3a-ii (aşağıda) bunu alt kontrol 2 ile BİREBİR AYNI
+# desenle kapatır: değişken adının (tanım + kullanım) TOPLAM geçiş sayısı
+# sayılır. Beklenen sayı her değişken için AYRI ÖLÇÜLÜR — `rawSqlRestricted
+# SyntaxSelectors`'ın kendi geçiş sayısı (1 tanım + 2 kullanım = 3) buraya
+# KÖRLEMESİNE kopyalanmaz.
+#
+# Tarama `-r` taşıyor (AGENT_BASELINE.md §5: "komut çıktısızlığı ≠ bulgu
+# yokluğu" — bayraksız/derinliksiz bir tarama sessizce tek seviyede kalıp
+# boş çıktıyı "temiz" sandırabilirdi).
+# ---------------------------------------------------------------------------
+check_ac45_ac46_error_catalog_and_money_lint_guards() {
+  local violation=false
+
+  # --- Alt kontrol 1: literal atama taraması (apps/*/src + packages/*/src,
+  #     __tests__ HARİÇ) — SIFIR bekleniyor. ---
+  local key_token_a='userMessage'
+  local key_token_b='Key'
+  local key_token="${key_token_a}${key_token_b}"
+  local literal_matches
+  literal_matches="$(grep -rnE --include='*.ts' --exclude-dir=__tests__ -- \
+    "${key_token}:[[:space:]]*(['\"\`])" apps/*/src packages/*/src 2>/dev/null || true)"
+  if [ -n "$literal_matches" ]; then
+    echo "AC-45 alt kontrol 1 İHLALİ — hata gövdesinin kullanıcı mesajı anahtarı alanına üretim kodunda DOĞRUDAN bir dize literali atanmış (kayıt defteri ERROR_MESSAGE_KEYS.<KOD>, @arkesoft/errors, ATLANMIŞ):"
+    printf '%s\n' "$literal_matches"
+    violation=true
+  else
+    echo "AC-45 alt kontrol 1: apps/*/src + packages/*/src (__tests__ hariç) genelinde literal atama bulunamadı."
+  fi
+
+  # --- Alt kontrol 2: ESLint seçicisinin varlığı + kural dizisine BAĞLI
+  #     olması. Seçiciyi taşıyan değişken adı İKİ KEZ geçmeli: bir
+  #     `const <ad> = {...}` TANIMI + bir `no-restricted-syntax` dizisi
+  #     İÇİNDE bir KULLANIM. Tanım TEK başına kalırsa (1) ya da seçici
+  #     TAMAMEN silinirse (0) İHLAL — yalnızca seçici METNİNİ aramak bu
+  #     ikisini AYIRT EDEMEZDİ (yukarıdaki ⚠⚠ notu). ---
+  local eslint_base_file="packages/config/eslint/base.js"
+  if [ ! -f "$eslint_base_file" ]; then
+    echo "AC-45 alt kontrol 2 taraması hata verdi: $eslint_base_file bulunamadı — fail-closed."
+    violation=true
+  else
+    local selector_var_name="${key_token}LiteralSelector"
+    local selector_ref_count
+    selector_ref_count="$(grep -cE -- "\\b${selector_var_name}\\b" "$eslint_base_file" || true)"
+    if [ "$selector_ref_count" != "2" ]; then
+      echo "AC-45 alt kontrol 2 İHLALİ — $eslint_base_file'ta literal yasağı seçicisinin değişkeni (tanım + kural dizisindeki kullanım) TAM İKİ geçiş bekleniyordu, $selector_ref_count kez bulundu (0 ise seçici silinmiş; 1 ise tanım dururken kural dizisinden DÜŞÜRÜLMÜŞ — sessiz sahte yeşil; >2 ise ikinci bir kopya doğmuş)."
+      violation=true
+    else
+      echo "AC-45 alt kontrol 2: literal yasağı seçicisi $eslint_base_file'ta tanımlı VE kural dizisine bağlı (tam iki geçiş)."
+    fi
+  fi
+
+  # --- Alt kontrol 3a: MONEY_NAME_SOURCE ataması TEK kopya. ---
+  if [ -f "$eslint_base_file" ]; then
+    local money_source_decl_count
+    money_source_decl_count="$(grep -cE 'MONEY_NAME_SOURCE[[:space:]]*=' "$eslint_base_file" || true)"
+    if [ "$money_source_decl_count" != "1" ]; then
+      echo "AC-46 alt kontrol 3 İHLALİ — MONEY_NAME_SOURCE ataması $eslint_base_file'ta TAM BİR kez bekleniyordu, $money_source_decl_count kez bulundu (birden fazla kopya üç ayrı drift kaynağı açar)."
+      violation=true
+    else
+      echo "AC-46 alt kontrol 3: MONEY_NAME_SOURCE $eslint_base_file'ta tek kopya."
+    fi
+  fi
+
+  # --- Alt kontrol 3a-ii (T-027/S8 düzeltme turu 1, M2 — bu kardeş kontrole
+  #     alt kontrol 2'nin dersi UYGULANMAMIŞTI): yukarıdaki 3a yalnızca
+  #     `MONEY_NAME_SOURCE` ATAMASININ tekliğini sayıyordu — üç float-para
+  #     seçicisini TAŞIYAN `moneyRestrictedSyntaxSelectors` değişkeninin
+  #     `no-restricted-syntax` KURAL DİZİSİNE GERÇEKTEN BAĞLI olup olmadığını
+  #     DENETLEMİYORDU. `qa` mutasyonla kanıtladı: dizideki
+  #     `...moneyRestrictedSyntaxSelectors,` kullanım satırı SİLİNİRSE tanım
+  #     (`const moneyRestrictedSyntaxSelectors = [...]`) dosyada DURUR, 3a
+  #     hâlâ "tek kopya" der, `pnpm lint` SESSİZCE yeşil kalır ve AC-47'nin
+  #     float-para koruması tamamen kaybolur. Düzeltme alt kontrol 2'yle
+  #     BİREBİR AYNI desen: değişken ADININ (tanım + kullanım) TOPLAM geçiş
+  #     sayısı sayılır.
+  #
+  #     ⚠⚠ Beklenen sayı KÖRLEMESİNE kopyalanmaz — ÖLÇÜLÜR. Bugün dosyada
+  #     `moneyRestrictedSyntaxSelectors` TAM İKİ kez geçiyor (`:190` tanım +
+  #     `:386` kural dizisi içi kullanım) ⇒ beklenen 2. (Kardeş
+  #     `rawSqlRestrictedSyntaxSelectors`'ın kendi geçiş sayısı FARKLI —
+  #     bir tanım + İKİ kullanım yeri (`:254`, `:384`) = 3 — bu yüzden o
+  #     sabite buradaki "2" sayısı KOPYALANMAZ; bu kontrol yalnızca
+  #     `moneyRestrictedSyntaxSelectors`'ı denetler.)
+  if [ -f "$eslint_base_file" ]; then
+    local money_selectors_var_name="moneyRestrictedSyntaxSelectors"
+    local money_selectors_ref_count
+    money_selectors_ref_count="$(grep -cE -- "\\b${money_selectors_var_name}\\b" "$eslint_base_file" || true)"
+    if [ "$money_selectors_ref_count" != "2" ]; then
+      echo "AC-46 alt kontrol 3a-ii İHLALİ — $eslint_base_file'ta float-para seçicilerinin değişkeni ($money_selectors_var_name; tanım + kural dizisindeki kullanım) TAM İKİ geçiş bekleniyordu, $money_selectors_ref_count kez bulundu (0 ise seçiciler silinmiş; 1 ise tanım dururken kural dizisinden DÜŞÜRÜLMÜŞ — sessiz sahte yeşil, AC-47'nin TÜM float-para koruması kaybolur; >2 ise ikinci bir kopya doğmuş)."
+      violation=true
+    else
+      echo "AC-46 alt kontrol 3a-ii: float-para seçicilerinin değişkeni ($money_selectors_var_name) $eslint_base_file'ta tanımlı VE kural dizisine bağlı (tam iki geçiş)."
+    fi
+  fi
+
+  # --- Alt kontrol 3b: altı float-para fixture dosyasının VARLIĞI. ---
+  local fixture_dir="packages/config/eslint/__fixtures__"
+  local required_fixtures=(
+    "money-pozitif-1.ts" "money-pozitif-2.ts" "money-pozitif-3.ts"
+    "money-negatif-1.ts" "money-negatif-2.ts" "money-negatif-3.ts"
+  )
+  local fixture_violation=false
+  local fixture_name
+  for fixture_name in "${required_fixtures[@]}"; do
+    if [ ! -f "$fixture_dir/$fixture_name" ]; then
+      echo "AC-46 alt kontrol 3 İHLALİ — beklenen float-para fixture'ı bulunamadı: $fixture_dir/$fixture_name"
+      fixture_violation=true
+      violation=true
+    fi
+  done
+  if [ "$fixture_violation" = false ]; then
+    echo "AC-46 alt kontrol 3: altı float-para fixture'ı ($fixture_dir) mevcut."
+  fi
+
+  if [ "$violation" = true ]; then
+    return 1
+  fi
+  return 0
+}
+
 run_step "AC13 — yasak jeton taraması" check_ac13_forbidden_tokens
 run_step "AC5 — sabit Node sürümü yazımı yasağı" check_ac5_node_version_file
 run_step "run: bloğu içi şablon ifadesi yasağı" check_run_block_template_expression
@@ -1358,6 +1539,7 @@ run_step "Ham günlük ↔ artefakt yükleme + retention-days sınırı (T-022/S
 run_step "actionlint (yerelde kuruluysa)" check_actionlint_if_available
 run_step "axe tek-kaynak taraması (T-024, A-T24-1)" check_axe_single_source
 run_step "test:contract komut zinciri — script + sahte yeşil + sözleşme dosyası (T-026/S3)" check_test_contract_chain
+run_step "AC-45 + AC-46 — hata i18n anahtarı kataloğu drift kapısı (T-027/S8)" check_ac45_ac46_error_catalog_and_money_lint_guards
 
 echo ""
 echo "════════════════════════════════════════════════════════"

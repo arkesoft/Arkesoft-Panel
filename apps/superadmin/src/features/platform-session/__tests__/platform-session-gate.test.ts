@@ -22,7 +22,12 @@ describe('resolvePlatformSessionGateOutcome', () => {
       resolvePlatformSessionGateOutcome({
         status: 'error',
         data: undefined,
-        error: { kind: 'known', code: 'PLATFORM_NETWORK_NOT_ALLOWED', requestId: null },
+        error: {
+          kind: 'known',
+          code: 'PLATFORM_NETWORK_NOT_ALLOWED',
+          requestId: null,
+          messageKey: null,
+        },
       }),
     ).toEqual({ kind: 'networkBlocked' })
   })
@@ -32,7 +37,7 @@ describe('resolvePlatformSessionGateOutcome', () => {
       resolvePlatformSessionGateOutcome({
         status: 'error',
         data: undefined,
-        error: { kind: 'known', code: 'INTERNAL_ERROR', requestId: null },
+        error: { kind: 'known', code: 'INTERNAL_ERROR', requestId: null, messageKey: null },
       }),
     ).toEqual({ kind: 'error' })
   })
@@ -85,7 +90,12 @@ describe('resolvePlatformSessionGateOutcome', () => {
     const outcome = resolvePlatformSessionGateOutcome({
       status: 'error',
       data: { isPlatformAdmin: true, twoFactorEnabled: true },
-      error: { kind: 'known', code: 'PLATFORM_NETWORK_NOT_ALLOWED', requestId: null },
+      error: {
+        kind: 'known',
+        code: 'PLATFORM_NETWORK_NOT_ALLOWED',
+        requestId: null,
+        messageKey: null,
+      },
     })
     expect(outcome).toEqual({ kind: 'networkBlocked' })
   })

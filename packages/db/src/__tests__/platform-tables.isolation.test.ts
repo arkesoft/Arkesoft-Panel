@@ -57,10 +57,16 @@ import { isPrivilegeDeniedError } from './helpers/tenant-isolation-suite.js'
 import { testAppPrisma, testMigrationPrisma } from './helpers/test-client.js'
 
 describe('platform_admin / platform_audit_log — PLATFORM SEVİYESİ kanıtı (ADR-0023 Karar 1/3)', () => {
-  it('taksonomi: iki yeni tablo PLATFORM_LEVEL_TABLES içinde (12), TENANT_SCOPED_TABLES YEDİDE kaldı', () => {
+  // GÜNCELLEME (ROADMAP v0.0.18, T-027/S6, architect VERİ MODELİ — AC-48/
+  // AC-49): `currency` eklendiği için bu pin 12'den 13'e çıktı —
+  // `PLATFORM_LEVEL_TABLES`'ın ON ÜÇÜNCÜ üyesi `prisma/schema.prisma` →
+  // `Currency` model doc'unda; bu dosya S6'nın "YALNIZCA bunlar" dosya
+  // listesinin DIŞINDA ama pin mekanik olarak bu satırı kırıyordu (S7/T-027
+  // emsali — "mekanik zorunluluk", davranış/iş mantığı DEĞİŞMEDİ).
+  it('taksonomi: iki yeni tablo PLATFORM_LEVEL_TABLES içinde, uzunluk pini ON ÜÇE güncellendi (T-027/S6, `currency`), TENANT_SCOPED_TABLES YEDİDE kaldı', () => {
     expect(PLATFORM_LEVEL_TABLES).toContain('platform_admin')
     expect(PLATFORM_LEVEL_TABLES).toContain('platform_audit_log')
-    expect(PLATFORM_LEVEL_TABLES.length).toBe(12)
+    expect(PLATFORM_LEVEL_TABLES.length).toBe(13)
     // ⭐ Bu satır DoD'un 3. maddesinin (prob kapısı kırılmadı) canlı kanıtıdır.
     expect(TENANT_SCOPED_TABLES.length).toBe(7)
     expect(TENANT_SCOPED_TABLES).not.toContain('platform_admin')

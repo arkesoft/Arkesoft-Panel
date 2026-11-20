@@ -9,6 +9,7 @@
       "@arkesoft/config",
       "@arkesoft/db",
       "@arkesoft/errors",
+      "@arkesoft/i18n",
       "@arkesoft/integrations",
       "@arkesoft/storefront",
       "@arkesoft/superadmin",

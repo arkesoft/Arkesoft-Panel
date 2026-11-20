@@ -15,7 +15,7 @@
 // DEĞİLDİR — hangi e-postanın (doğrulama/sıfırlama) gönderilemediğini
 // loglamaya yeter, kime gönderilmeye çalışıldığını SIZDIRMAZ.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class MailDeliveryFailedError extends AppError {
   readonly messageKey: string
@@ -24,7 +24,7 @@ export class MailDeliveryFailedError extends AppError {
     super({
       code: 'MAIL_DELIVERY_FAILED',
       httpStatus: 503,
-      userMessageKey: 'errors.mail.deliveryFailed',
+      userMessageKey: ERROR_MESSAGE_KEYS.MAIL_DELIVERY_FAILED,
       context: { messageKey },
       isRetryable: true,
       cause,

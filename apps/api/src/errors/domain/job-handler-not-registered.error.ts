@@ -21,7 +21,7 @@
 // `httpStatus: 500` — kullanıcı girdisi hatası değil, yapılandırma/programlama
 // hatası. `context` yalnızca iş adını ve sebebi taşır (PII yok).
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 /** Kapının hangi değişmezin kırıldığını ayırt etmesi için (loga gider). */
 export type JobHandlerRegistrationFailureReason = 'missing-handler' | 'topology-mismatch'
@@ -31,7 +31,7 @@ export class JobHandlerNotRegisteredError extends AppError {
     super({
       code: 'JOB_HANDLER_NOT_REGISTERED',
       httpStatus: 500,
-      userMessageKey: 'errors.job.handlerMissing',
+      userMessageKey: ERROR_MESSAGE_KEYS.JOB_HANDLER_NOT_REGISTERED,
       context: { jobName, reason },
       // Worker kayıt defteri süreç ömrü boyunca sabittir → yeniden denemek
       // aynı sonucu verir (`app-error.ts:16`).

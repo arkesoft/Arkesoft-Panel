@@ -17,14 +17,14 @@
 // `httpStatus: 500` — kullanıcı girdisi hatası değil, altyapı değişmezinin
 // ihlali. `context` yalnızca iş adını taşır (PII yok; payload OKUNMAZ).
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class JobIdentifierMissingError extends AppError {
   constructor(jobName: string) {
     super({
       code: 'JOB_IDENTIFIER_MISSING',
       httpStatus: 500,
-      userMessageKey: 'errors.job.identifierMissing',
+      userMessageKey: ERROR_MESSAGE_KEYS.JOB_IDENTIFIER_MISSING,
       context: { jobName },
       isRetryable: false,
     })

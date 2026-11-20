@@ -34,7 +34,7 @@
 // (`trpc.ts` → `logAppError`); 409 bir 4xx olduğu için seviye `warn` ve
 // `reason` kaydın `context` alanının altında görünüyor.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 /**
  * Reddin hangi kuralı koruduğu. Kapalı birleşim: yeni bir redde ihtiyaç
@@ -49,7 +49,7 @@ export class OwnerMembershipProtectedError extends AppError {
     super({
       code: 'OWNER_MEMBERSHIP_PROTECTED',
       httpStatus: 409,
-      userMessageKey: 'errors.member.ownerMembershipProtected',
+      userMessageKey: ERROR_MESSAGE_KEYS.OWNER_MEMBERSHIP_PROTECTED,
       context: { reason },
       isRetryable: false,
     })

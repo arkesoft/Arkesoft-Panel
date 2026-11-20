@@ -30,10 +30,22 @@
 // z.string()}` şemasına DA uyar. 3 DAHA DAR (message/details/requestId'yi
 // DA zorunlu kılar) ve bu yüzden ÖNCE denenir; aksi hâlde zarf (a) hiçbir
 // zaman 3'e ulaşmadan 4'e (zarf c, `requestId: null`) yanlış sınıflanırdı.
+//
+// GÜNCELLEME (ROADMAP v0.0.18, T-027/S7, architect R-1 KARARI): zarf (a)/(b)
+// `AppErrorBody.message` artık `errorMessageKeySchema` KAPALI kümesinden
+// `safeParse` EDİLİR ve `PanelError.known.messageKey`'e YAZILIR —
+// `extractAllowlistedFields`'in (aşağıda) `fields` kanalında kurduğu AYNI
+// tek filtreleme noktası deseni. Kümenin DIŞINDAKİ her değer (ham sunucu
+// metni, boş dize, uydurma anahtar) `null`'a elenir; `panel-error.ts`'in
+// madde 1 garantisi (ham metin ASLA taşınmaz) bu yüzden GEVŞEMEZ. Zarf (c)
+// (Better Auth'un KENDİ gövdesi) `message` alanını HİÇ PARSE ETMEZ —
+// `messageKey` o dalda HER ZAMAN `null`'dır (zaten savunma derinliği: o
+// gövdenin `message`'ı HAM İngilizcedir, kapalı kümeye hiçbir koşulda
+// uymaz).
 import { z } from 'zod'
 
-import { appErrorBodySchema } from '@arkesoft/errors'
-import type { AppErrorBody } from '@arkesoft/errors'
+import { appErrorBodySchema, errorMessageKeySchema } from '@arkesoft/errors'
+import type { AppErrorBody, ErrorMessageKey } from '@arkesoft/errors'
 import { registrationFieldErrorKeySchema, trpcErrorDataSchema } from '@arkesoft/trpc'
 import type { RegistrationFieldErrorKey } from '@arkesoft/trpc'
 
@@ -85,12 +97,24 @@ function extractAllowlistedFields(
   return Object.keys(allowlisted).length > 0 ? allowlisted : null
 }
 
-/** {@link AppErrorBody}'den `PanelError`'ın `known` dalını üretir — mesaj alanı ASLA taşınmaz. */
+/**
+ * `body.message`'ı `errorMessageKeySchema`'nın KAPALI kümesinden geçirerek
+ * süzer (architect R-1 KARARI). Kümenin DIŞINDAKİ her değer (ham sunucu
+ * metni dahil) `null`'a elenir — `extractAllowlistedFields`'in TEK
+ * filtreleme noktası deseninin `messageKey` kanalındaki karşılığı.
+ */
+function parseMessageKey(message: string): ErrorMessageKey | null {
+  const parsed = errorMessageKeySchema.safeParse(message)
+  return parsed.success ? parsed.data : null
+}
+
+/** {@link AppErrorBody}'den `PanelError`'ın `known` dalını üretir — mesaj alanı HAM olarak ASLA taşınmaz. */
 function toKnownFromAppErrorBody(body: AppErrorBody): PanelError {
   return {
     kind: 'known',
     code: body.code,
     requestId: body.requestId,
+    messageKey: parseMessageKey(body.message),
     fields: extractAllowlistedFields(body.details),
   }
 }
@@ -129,8 +153,18 @@ export function normalizePanelError(input: unknown): PanelError {
   if (betterAuthBody.success) {
     const parsedBetterAuthBody = betterAuthBody.data
     // Better Auth'un gövdesi `details` TAŞIMAZ → `fields` HER ZAMAN `null`
-    // (uydurulmaz — borç 1445 kısıtının `fields` karşılığı).
-    return { kind: 'known', code: parsedBetterAuthBody.code, requestId: null, fields: null }
+    // (uydurulmaz — borç 1445 kısıtının `fields` karşılığı). `message`'ı da
+    // HİÇ PARSE ETMEZ → `messageKey` HER ZAMAN `null` (architect R-1 KARARI
+    // — o gövdenin `message`'ı HAM İngilizcedir, kapalı kümeye hiçbir
+    // koşulda uymaz; `messages.ts`'in merdiveni bu kodu kendi Better Auth
+    // sağlayıcı tablosundan çözer).
+    return {
+      kind: 'known',
+      code: parsedBetterAuthBody.code,
+      requestId: null,
+      messageKey: null,
+      fields: null,
+    }
   }
 
   // 5. Fail-closed — hiçbir probe eşleşmedi, FIRLATMAZ.

@@ -159,7 +159,13 @@ Tüm hata yanıtları aşağıdaki yapıyı taşır:
 ```
 
 - **`code`:** Makine okunur hata tanımlayıcısı (SCREAMING_SNAKE_CASE)
-- **`message`:** v0.0.18'e kadar **i18n anahtarı** (Türkçe metin değil)
+- **`message`:** **i18n anahtarı** (Türkçe metin değil) — ⚠ **DÜZELTME (`docs`, T-027,
+  2026-11-20):** bu satır önceden _"v0.0.18'e kadar"_ diyordu, bu yanlıştı/bayattı. `v0.0.18`
+  (T-027, ADR-0028) tel sözleşmesinin kendisini **değiştirmedi** — `message` alanı **hiçbir
+  zaman** çözülmüş Türkçe metne dönüşmeyecek, kalıcı olarak bir i18n anahtarı taşıyacak
+  (ADR-0010 madde 3.6, ADR-0010 Ek v0.0.18). Çözümleme **istemcide** kalır: panel bu
+  anahtarı `@arkesoft/i18n`'in kataloğundan okuyup Türkçe metne çevirir
+  (`packages/i18n/src/tr-tr-errors.ts`), tel üstünde hiçbir değişiklik olmaz.
 - **`details`:** Taliye verisi (doğrulama hataları `details.fields` altında)
 - **`requestId`:** İstekte benzersiz kimlik (log korelasyonu için)
 - **`context` alanı asla yanıta yazılmaz** — yalnızca server log'unda görülür
@@ -901,7 +907,7 @@ E-posta mesajları `apps/api/src/auth/mail/messages.ts`'te tanımlanmış anahta
 - `auth.emailVerification` — doğrulama e-postası
 - `auth.passwordReset` — şifre sıfırlama e-postası
 
-**PM riski 5:** `packages/i18n` modülü v0.0.18'de geliyor. Bu anahtarlar v0.0.18 öncesinde **bu dosyada kalır**; migrasyon sırasında birebir `packages/i18n` kataloguna taşınmalıdır. Aksi takdirde ilk sürümde e-postalar **boş içerik gönderir**.
+**PM riski 5 — ✅ `packages/i18n` modülü v0.0.18'de geldi (T-027, 2026-11-20), ⚠ bu anahtarlar TAŞINMADI.** T-027'nin onaylı kapsamı (R4, kullanıcı kararı) kataloğu yalnızca **35 `errors.*` hata kodu anahtarıyla** sınırladı; e-posta içerik anahtarları (`auth.emailVerification`, `auth.passwordReset`) bu sürümün dosya listesinde **yoktu** ve `apps/api/src/auth/mail/messages.ts`'te **kalmaya devam ediyor** (bkz. o dosyanın başındaki not, aynı oturumda güncellendi). Risk gerçekleşmedi çünkü `renderMailMessage`'ın çağıran imzası hiç değişmedi ve bu dosya kendi kapalı kümesini (`satisfies`) hâlâ taşıyor — anahtarlar **boş içerik üretmiyor**, yalnızca henüz merkezi katalogda değiller. Migrasyon için **bugün ROADMAP'te adıyla tanımlı bir sürüm yok**; `architect`/`pm` bir sonraki i18n dokunuşunda bu taşımayı planlamalı.
 
 ### ⚠️ Tohumlanmış Kullanıcı Giriş Yapamaz
 

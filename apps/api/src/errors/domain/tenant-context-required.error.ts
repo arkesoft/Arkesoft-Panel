@@ -18,14 +18,14 @@
 // taşıyacağı hiçbir ek bilgi yok, override etmemek yanlışlıkla PII/sır
 // sızdırma riskini de yapısal olarak ortadan kaldırır.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class TenantContextRequiredError extends AppError {
   constructor() {
     super({
       code: 'TENANT_CONTEXT_REQUIRED',
       httpStatus: 401,
-      userMessageKey: 'errors.tenant.contextRequired',
+      userMessageKey: ERROR_MESSAGE_KEYS.TENANT_CONTEXT_REQUIRED,
       context: {},
       isRetryable: false,
     })

@@ -1,5 +1,13 @@
 # @arkesoft/db
 
+## 0.12.0
+
+### Patch Changes
+
+- @arkesoft/config@0.12.0
+  - @arkesoft/errors@0.12.0
+  - @arkesoft/themes-modern@0.1.8
+
 ## 0.11.0
 
 ### Patch Changes

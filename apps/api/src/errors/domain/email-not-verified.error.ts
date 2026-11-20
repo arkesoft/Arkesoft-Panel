@@ -21,14 +21,14 @@
 // VEYA `AuthContextMiddleware` bu sınıfı tüketebilir — o güne kadar
 // KULLANILMAYAN ama hiyerarşiyi eksiksiz tutan bir sınıf.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class EmailNotVerifiedError extends AppError {
   constructor(userId: string) {
     super({
       code: 'EMAIL_NOT_VERIFIED',
       httpStatus: 403,
-      userMessageKey: 'errors.auth.emailNotVerified',
+      userMessageKey: ERROR_MESSAGE_KEYS.EMAIL_NOT_VERIFIED,
       context: { userId },
       isRetryable: false,
     })

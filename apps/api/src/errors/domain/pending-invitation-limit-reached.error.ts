@@ -27,14 +27,14 @@
 // `logAppError`): 409 bir 4xx olduğu için seviye `warn` ve iki sayı kaydın
 // `context` alanının altında görünüyor.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class PendingInvitationLimitReachedError extends AppError {
   constructor(pendingCount: number, limit: number) {
     super({
       code: 'PENDING_INVITATION_LIMIT_REACHED',
       httpStatus: 409,
-      userMessageKey: 'errors.member.pendingInvitationLimitReached',
+      userMessageKey: ERROR_MESSAGE_KEYS.PENDING_INVITATION_LIMIT_REACHED,
       context: { pendingCount, limit },
       isRetryable: false,
     })

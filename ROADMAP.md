@@ -1189,21 +1189,49 @@ iddiasının `twoFactorEnabled` için geçerliliğini kaybettiğini kayda geçir
 
 ---
 
-## v0.0.18 — Çoklu dil ve para birimi altyapısı
+## v0.0.18 — Çoklu dil ve para birimi altyapısı ✅ (tamamlandı: 2026-11-20)
 
 **Hedef:** Metin ve para biçimlendirmesi tek merkezden gelsin (içerik çevirisi 1.5.0'da).
 **Kapsam:**
 
-- [ ] `packages/i18n`: mesaj kataloğu formatı, `tr-TR` varsayılan, `en-US` ikinci dil
-- [ ] Admin ve storefront için çeviri yükleyicisi, eksik anahtar tespiti
-- [ ] `Money` değer nesnesi: tamsayı kuruş, para birimi kodu, toplama/çarpma, yuvarlama kuralları
-- [ ] Biçimlendirme yardımcıları: para, tarih, sayı (Intl üzerinden)
-- [ ] `Currency` ve `ExchangeRate` tabloları (TRY varsayılan)
-- [ ] Float ile para tutmayı yasaklayan ESLint kuralı
-      **Dokunulan paketler:** packages/i18n, packages/db, tüm apps
-      **Kabul kriteri:** `pnpm --filter @arkesoft/i18n test` yeşil; `Money` testleri yuvarlama ve para birimi uyuşmazlığı hatalarını kapsar; eksik çeviri anahtarı CI'da uyarı üretir.
-      **Bağımlılık:** v0.0.7
+- [x] `packages/i18n`: mesaj kataloğu formatı, `tr-TR` varsayılan, `en-US` ikinci dil —
+      ⚠ **kullanıcı onaylı kapsam daraltması (T-027, R1):** `en-US` **içeriği** v1.5.0'a
+      ertelendi (üretimde dil seçici/`Accept-Language` tüketicisi **0**, ölçüldü). **Format
+      çok-dilli kaldı** — sentetik `'xx-XX'` locale fixture'ıyla kanıtlandı
+      (`message-resolver.test.ts`).
+- [x] Admin ve storefront için çeviri yükleyicisi, eksik anahtar tespiti — ⚠ **kısmen:**
+      `apps/admin` **ve** `apps/superadmin` yükleyiciyi aldı (`po`'nun A-T27-2 revizyonu;
+      `apps/superadmin` ROADMAP lafzında yoktu, 267 satırlık ikinci ayna da taşındığı için
+      dahil edildi). **`apps/storefront` `@arkesoft/i18n` ALMADI** (A-T27-5): onaylı R4
+      kataloğu `errors.*` ile sınırlı ve storefront bu anahtarı hiçbir yerde render etmiyor
+      (`apps/storefront/src/themes/registry.ts:163-167`). Eksik anahtar tespiti **uyarı
+      değil, HATA** (exit 1) olarak sertleştirildi — kullanıcı onayı, R5, gerekçe CLAUDE.md
+      §6.
+- [x] `Money` değer nesnesi: tamsayı kuruş, para birimi kodu, toplama/çarpma, yuvarlama
+      kuralları — `BigInt` tabanlı, iki yuvarlama modu (`half-up`/`half-even`, `mode`
+      zorunlu). Gate fazında bulunan güvenli-tamsayı asimetrisi (`solid`+`security`+`qa`,
+      bkz. ADR-0028) düzeltildi.
+- [x] Biçimlendirme yardımcıları: para, tarih, sayı (Intl üzerinden) — gerçek tüketicisi
+      `apps/superadmin/src/lib/format-platform-date.ts` (AC-50).
+- [x] `Currency` ve `ExchangeRate` tabloları (TRY varsayılan) — ⚠ **kullanıcı onaylı kapsam
+      daraltması (T-027, R2):** `Currency` **TRY seed'li olarak İÇİNDE**; `ExchangeRate`
+      (boş olgu tablosu, yazıcısı yok) **v1.5.0'a ertelendi**. `Currency`'nin tek doğruluk
+      kaynağı `packages/i18n`'in `SUPPORTED_CURRENCIES`'idir, veritabanı değil (ADR-0028
+      Karar 3).
+- [x] Float ile para tutmayı yasaklayan ESLint kuralı — ⚠ **kullanıcı onaylı kapsam
+      genişletmesi (T-027, R6):** ESLint AST kuralı **+ şema tarafı yasak**
+      (`packages/db/src/__tests__/float-money-ban.test.ts`) ikisi de teslim edildi ("para
+      **tutmak**" = saklama ekseni; ESLint `.prisma` dosyasını görmüyordu).
+      **Dokunulan paketler:** packages/i18n (yeni paket), packages/errors, packages/db, packages/config, apps/api, apps/admin, apps/superadmin
+      **Kabul kriteri:** `pnpm --filter @arkesoft/i18n test` yeşil (ölçüldü, PASS); `Money` testleri yuvarlama ve para birimi uyuşmazlığı hatalarını kapsar (ölçüldü, AC-43 10/10); eksik çeviri anahtarı CI'da **hata** üretir (`pnpm guards` 24. adım, R5 ile sertleştirildi).
+      **Bağımlılık:** v0.0.7 ✅
       **Tahmini büyüklük:** M
+      **Not (`docs`, T-027):** `v1.5.0`'a ertelenen üç kalem: `en-US` **içeriği**,
+      `ExchangeRate` tablosu, döviz kuru sağlayıcısı/ucu. Kapsam dışı bırakılan tek kalem:
+      ≈954 satırlık app microcopy'sinin (`admin` 638 + `superadmin` 267 + `storefront` 49)
+      kataloğa taşınması — bu sürümün kataloğu **yalnızca 35 `errors.*` anahtarı** taşır.
+      Teknik borç ve ADR: `docs/adr/0028-*.md`; 22 `low` bulgu → Teknik Borç → "v0.0.18
+      kaynaklı borçlar (T-027 gate sonuçları)".
 
 ---
 
@@ -3267,6 +3295,56 @@ bildirdiği varsayımlardır. İkisi de `v0.0.21.1`'in kabul edildiği T-025'te 
   `DOĞRULANAMADI` listesine de aynı maddeyi yazdı). Etki: v0.0.21.1 — `devops`'un bir
   sonraki CI dokunuşunda teyit etmesi gerekir.
 
+**Etiket notu (T-027):** `A-T27-1`…`A-T27-6` `pm`'in/`architect`'in, `A-PO27-1`…`A-PO27-3`
+`po`'nun, `A-S5a-1` `backend`'in (S5a) bildirdiği varsayımlardır. Tümü `v0.0.18`'in kabul
+edildiği T-027'de kayıtlıdır.
+
+- **A-T27-1 (T-027) — TEYİT EDİLDİ, varsayım değil artık.** Tel sözleşmesi
+  (`appErrorBodySchema`'nın dört alanı) değişmedi; `message: error.userMessageKey` birebir
+  korundu. Ölçüldü: 33 üretim yazıcısının eski literal ↔ yeni defter değeri 33/33 eşleşti,
+  `pnpm test:contract --force` 34/34, `docs/api-contract-surface.json` diff **boş** ⇒
+  public API `major` almadı. Etki: v0.0.18, `@arkesoft/trpc` `0.8.4`'te kaldı.
+- **A-T27-2 (T-027) — REVİZE EDİLDİ.** `apps/superadmin` yalnızca AC-50 (tarih
+  biçimlendirme) için değil, **i18n yükleyicisinin tamamı için** dahil edildi — 267
+  satırlık ikinci ayna da (platform-kodu süzgeci, çözümleme merdiveni) merkezi deftere
+  taşındı. Kapsam sınırı aşılmadı; Orkestratör raporladı, sormadı (`architect`'in
+  gerekçesi: tek yazar aynı çözümleme merdivenini iki ajana paralel yazdırmanın
+  "superadmin'in aynası sessizce bayat" riskini yeniden üretmemesi için). Etki: v0.0.18.
+- **A-T27-3 (T-027) — KARARA BAĞLANDI.** Yuvarlama modu kümesi iki üye: `half-up`,
+  `half-even`; `mode` parametresi zorunlu, varsayımı yok (mutasyon kanıtı: `mode`'suz
+  çağrı `tsc`'yi `TS2554` ile kırar). Etki: v0.0.18.
+- **A-T27-4 (T-027) — KORUNDU.** `Currency`'nin bu sürümde çalışma zamanı okuyucusu yok
+  (`grep -rn "Currency\." apps/` → 0); ilk okuyucu **v0.4.0** (ilk fiyat kolonu).
+  Etki: v0.0.18 → v0.4.0.
+- **A-T27-5 (T-027) — YENİ, teyit edildi.** `apps/storefront` `@arkesoft/i18n` **almadı**.
+  Onaylı R4 kataloğu `errors.*` ile sınırlı ve storefront bu anahtarı hiçbir yerde
+  kullanıcıya render etmiyor (`registry.ts:163-167`: _"bu anahtar bugün HİÇBİR yerde
+  kullanıcıya doğrudan render EDİLMEZ"_). ROADMAP'in "admin **ve storefront** için çeviri
+  yükleyicisi" lafzı bu yüzden **kısmen** karşılanıyor. Etki: v0.0.18.
+- **A-T27-6 (T-027) — YENİ, teyit edildi.** `@arkesoft/i18n` `0.11.0` ile doğdu (`0.1.0`
+  değil) ve `.changeset/config.json`'ın fixed grubuna girdi (11 → 12 üye). `devops`
+  (S1) `sync-platform-version.ts --check` exit 0 **ve** fixed grup içi sürüm sapması
+  UYARI'sının **0 eşleşme** olduğunu ölçtü. Etki: v0.0.18.
+- **A-PO27-1 (T-027) — teyit edildi.** S1'in üç `package.json` bağımlılık kaydı
+  (`apps/admin`, `apps/superadmin` prod · `packages/db` dev) hiçbir "kullanılmayan
+  bağımlılık" kapısını tetiklemedi — repoda `depcheck`/`no-extraneous-dependencies`
+  kapısı **yok** (ölçüldü). Etki: v0.0.18.
+- **A-PO27-2 (T-027) — bilinçli tasarım kısıtı, uygulandı.** S2'nin kayıt defterindeki
+  2 `Money` kodunun (`FRACTIONAL_MINOR_UNIT`, `CURRENCY_MISMATCH`) yazıcıları S5b'de
+  doğacağı için "her defter kodunun bir yazıcısı var" testi S2'de **yazılmadı** — yazılsaydı
+  S2→S5b arası kırmızı pencere açardı. Yazıcı tamlığı tek yönlü (literal yasağı) olarak
+  S8'de zorlandı. Etki: v0.0.18.
+- **A-PO27-3 (T-027) — teyit edildi.** Hiçbir alt görevin Tamamlanma Tanımı'nda
+  `pnpm test:e2e` yoktu; taşınan 17 Türkçe metnin hiçbiri e2e'de pinli değil (tek pinli
+  metin, `'E-posta veya parola hatalı.'`, Better Auth ailesine ait ve bu sürümde
+  değişmedi — `security` tur 1 bağımsız doğruladı). `qa` bu gerekçeyle `pnpm test:e2e`'yi
+  koşturmadı. Etki: v0.0.18.
+- **A-S5a-1 (T-027, `backend`/S5a) — DOĞRULANDI (`frontend`/S7).** `createMessageResolver`'ın
+  gerçek üretim çağrısının tip argümanına ihtiyaç duymayacağı varsayımı (`L` tek üyeli
+  olacak, `defaultLocale` `DEFAULT_LOCALE` sabitinden gelecek) S7'nin gerçek çağrısıyla
+  (`createMessageResolver({[DEFAULT_LOCALE]: TR_TR_ERROR_MESSAGES}, DEFAULT_LOCALE)
+(DEFAULT_LOCALE)`) doğrulandı. Etki: v0.0.18.
+
 ## Sürüm ve kilometre taşı ayrışması (v0.0.12'den başlayarak)
 
 **Karar (v0.0.12):** ROADMAP kilometre taşı numarası ile paket sürümü v0.0.12'den itibaren **ayrışabilir**.
@@ -3843,7 +3921,7 @@ tırnak içinde tire). (`security` T-012'nin üç `low`'unun ortak kökü — bk
 **Taşınan ve kapsam dışı bırakılan iki mimari borç:**
 
 - **medium** · `packages/db/src/__tests__/helpers/migration-set.ts` (`DESTRUCTIVE_STATEMENT` kuralı) · `packages/db/prisma/schema.prisma` (`TenantMembership`'in kullanıcı yabancı anahtarı) — **sahipsiz kiracı borcunun (R-A10) VERİTABANI SEVİYESİ KAPANIŞI YAPILMADI.** Bu borç v0.0.14 vadeliydi; AC7 **kod + kapı** seviyesinde karşılandı (sahiplik değişmezi karşılaştır-ve-değiştir ile zorlanıyor; üretimde kullanıcı hard delete yolu olmadığı bir grep kapısıyla pinli) ama ⚠ **hiç kimse _"R-A10 kapandı"_ DEMEDİ** — `qa` bunu repo geneli aramayla teyit etti (**0 eşleşme**). İki ölçülmüş engel: yabancı anahtar aksiyonunu değiştirmek `ALTER TABLE … DROP CONSTRAINT` gerektiriyor ve migration kümesi linter'ının yıkıcı ifade kuralı buna bulgu üretiyor (kuralı kendi değişikliğimizi geçirmek için gevşetmek **CLAUDE.md §10 madde 6 ihlalidir**); alternatif olan `BEFORE DELETE` trigger'ı ise `FORCE ROW LEVEL SECURITY` altında kiracı GUC'u yokken **her zaman sıfır satır** gördüğü için değişmezi **sessizce onaylar**. Vasıta: yıkıcı ifade kuralının **iki yönlü testle** rafine edilmesi + yabancı anahtarın `Restrict`'e çevrilmesi. **Sorumlu:** `db` + `architect` · **Vade:** panel kullanıcısı silme yüzeyinin açıldığı sürüm — ⚠ **bugün ROADMAP'te tanımlı değil** (bkz. yukarıdaki not) · **Kaynak:** `architect` R-A2/K-A12, S1, S5, `qa` tur 1
-- **medium** · `packages/trpc/src/trpc.ts` (`errorFormatter`'ın ayrıştırma-başarısız dalı) · `packages/trpc/src/schemas/member.schema.ts` — **alan bazlı doğrulama hatası sözleşmesi tRPC yüzeyinde YOK.** Tel şeması hatası uygulama hata sınırının `AppError` dalına **hiç girmiyor**, jenerik gövdeye düşüyor ve her hatalı girdi bir uyarı kaydı üretiyor; CLAUDE.md §4'ün `{ code: 'VALIDATION_ERROR', fields: { … } }` sözleşmesi sözleşme yüzeyinde **henüz yok**. ⚠ Platformun ilk dört mutation'ı bu dalı **ilk kez yoğun** kullanıyor. Bu sürümde bilinçli olarak açılmadı (hata yüzeyi ADR'sini yeniden açardı) ve ⚠ `backend` **yeni bir gövde şekli icat etmedi**. **Sorumlu:** `architect` + `backend` · **Vade:** v0.0.18 (mesaj kataloğu sürümü — alan anahtarları katalogtan gelmek zorunda), tüketici **v0.1.0** · **Kaynak:** `architect` K-A10/R-A4
+- **medium** · `packages/trpc/src/trpc.ts` (`errorFormatter`'ın ayrıştırma-başarısız dalı) · `packages/trpc/src/schemas/member.schema.ts` — **alan bazlı doğrulama hatası sözleşmesi tRPC yüzeyinde YOK.** Tel şeması hatası uygulama hata sınırının `AppError` dalına **hiç girmiyor**, jenerik gövdeye düşüyor ve her hatalı girdi bir uyarı kaydı üretiyor; CLAUDE.md §4'ün `{ code: 'VALIDATION_ERROR', fields: { … } }` sözleşmesi sözleşme yüzeyinde **henüz yok**. ⚠ Platformun ilk dört mutation'ı bu dalı **ilk kez yoğun** kullanıyor. Bu sürümde bilinçli olarak açılmadı (hata yüzeyi ADR'sini yeniden açardı) ve ⚠ `backend` **yeni bir gövde şekli icat etmedi**. **Sorumlu:** `architect` + `backend` · **Vade:** ⚠ **v0.0.18 GEÇTİ, KARŞILANMADI (güncellendi, `docs`/T-027, 2026-11-20):** `v0.0.18` (T-027, ADR-0028) kullanıcı onaylı daraltılmış kapsamla teslim edildi (`errors.*` hata KODU kataloğu + `Money`); `packages/trpc/src/trpc.ts`'in `errorFormatter`'ı T-027'de **dokunulmadı** (ölçüldü — dosya listesinde yok). Tüketici **v0.1.0** bu dalı **kısmen** kullandı (bkz. ilgili sürüm bölümü); kalan kapsam için **bugün ROADMAP'te adıyla tanımlı bir sürüm yok** — `architect`/`pm` gözden geçirmeli. ADR-0016 Olumsuz ve kabul edilen maliyetler bölümünde aynı güncelleme var. · **Kaynak:** `architect` K-A10/R-A4 → `docs` T-027
 
 **Düzeltme turundan (FIX 1 + FIX 1b) doğan dört borç:**
 
@@ -4435,12 +4513,176 @@ Karar 4'te.
 | --- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------- | ----------- |
 | low | `apps/api/src/logging/arkesoft-nest-logger.ts:49-51` | Nest `optionalParams`'ı `context` log alanına yazılıyor; `AppError.context` aynı alanı farklı anlamda kullanıyor → **tek log alanı iki anlam**, v0.0.17 Loki sorgularında belirsizlik. Öneri: Nest tarafını `nestParams` yap. | backend | v0.0.17 | solid       |
 
-## Vadesi v0.18.0 — Çoklu dil ve para birimi altyapısı
+## Vadesi v0.18.0 — Pulumi, Kubernetes, Helm (üretim altyapısı; ⚠ bkz. not)
+
+> ⚠ **DÜZELTME (`docs`, T-027, 2026-11-20):** Bu başlık önceden _"Çoklu dil ve para birimi
+> altyapısı"_ diyordu — bu, `ROADMAP:1192`'deki **`v0.0.18`** (nokta ayraçlı, i18n/`Money`
+> sürümü) ile `Vade` kolonundaki **`v0.18.0`** (nokta ayraçsız, Pulumi/Kubernetes/Helm
+> üretim altyapısı sürümü, `ROADMAP:2240`) arasındaki isim benzerliğinden doğan bir
+> etiketleme hatasıydı. Aşağıdaki iki satırın **ikisi de** ingress/`X-Forwarded-Host`
+> konusu — i18n/`Money` (T-027, `v0.0.18`) ile **ilgisi yok**. Başlık, satırların gerçek
+> `Vade` değeriyle (`v0.18.0`) ve gerçek konusuyla (üretim altyapısı) eşleşecek şekilde
+> düzeltildi; satır içerikleri **değişmedi**.
 
 | SEV | Konum                                         | Açıklama                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Sorumlu            | Vade    | Kaynak gate |
 | --- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ------- | ----------- |
 | low | `apps/api/src/health/health.controller.ts:64` | `/health/ready` kimlik doğrulamasız, tenant'tan muaf ve **her istekte gerçek DB (`SELECT 1`) + Redis (`PING`) I/O** yapıyor; oran sınırı yok → kimliksiz sel **tenant trafiğiyle paylaşılan Prisma havuzunu** tüketebilir. 503 gövdesi altyapı topolojisini, `/health` platform sürümünü anonim açıyor. v0.0.4'te public yüzey yok (ingress v0.18.0) + `withTimeout(2000)` → low. Öneri: ilk public dağıtımdan önce ingress'ten çıkar (k8s probe) veya IP bazlı ucuz sınır. | devops + architect | v0.18.0 | security    |
 | low | A-A7 · `X-Forwarded-Host` okunmuyor           | Üretim ingress'i `Host`'u korumak **zorunda**. Korumayan topoloji seçilirse bu karar **yeniden değerlendirilmeli**.                                                                                                                                                                                                                                                                                                                                                         | devops             | v0.18.0 | architect   |
+
+## v0.0.18 kaynaklı borçlar — çoklu dil ve para birimi altyapısı (T-027 gate sonuçları)
+
+> **Not (`docs`, 2026-11-20):** Bu bölümün satırları T-027'nin gate turlarından
+> (`.claude/workflow/reviews/T-027-{security,solid,qa,wcag}-tur*.md`) ve Task dosyasının
+> üretim/düzeltme loglarından (`.claude/workflow/tasks/T-027.md`) türetildi; her satırın
+> kaynağı yazılıdır. Üç `medium` (`Money` güvenli-tamsayı asimetrisi; `guards.sh`'in AC-46
+> alt kontrol 3a'sının kendi pini; panel metin ikizliği) ve iki `medium` (AC-47'nin
+> davranışsal ağı; aynı metnin mükerrer pinlenmesi) gate fazında (3 tur) **kapandı** —
+> bu bölümde **yalnızca kapanmamış `low`'lar** var.
+>
+> ⚠⚠ **Sayım notu (ölçüldü, Orkestratörün ön tahmininden FARKLI):** Orkestratör gate
+> raporlarından ham toplamı `security 5 + solid tur1 9 + solid tur2/3 7 + qa 1 + wcag 1 +
+S6'nın tenancy.ts borcu + devops'un check_axe/check_slug kör noktası = 25` olarak
+> öngörmüştü. Satır satır doğrulanınca üç düzeltme gerekti: **(1)** `security` tur 1'in
+> prototip-zinciri bulgusu (`messages.ts:225-227`/`:164-165`) aynı gate turunda `qa`
+> tarafından **kapandı** (iki panelde `it.each` negatif test eklendi, M3'ün kapanışıyla
+> birebir aynı desen) — açık debt **değil**, −1. **(2)** `security` tur 1'in
+> `purity.test.ts:64-66` bulgusu ile `solid` tur 1'in **aynı dosya, aynı satır aralığı**
+> için yazdığı bulgu **tek bir kusurdur** (iki gate bağımsız aynı deftere yakınsadı,
+> `M1`/`M2`'nin emsali); tek satıra birleştirildi, −1. **(3)** `security` tur 1'in
+> `tenancy.ts` bulgusu ile Orkestratörün ayrıca saydığı "S6'nın tenancy.ts:333 borcu"
+> **aynı kusurdur** (`architect`'in S6 üretim notu + `security`'nin canlı DB ölçümüyle
+> teyidi); tek satıra birleştirildi, −1 (ayrıca gerçek satır numarası **`:333` değil,
+> `:139-146`** — ölçüldü, düzeltildi). ⇒ **22 benzersiz açık `low`.** Hiçbir bulgu
+> yumuşatılmadı/düşürülmedi; üçü de aynı kusurun **iki kez sayılmasını** önleyen birleştirme.
+
+- **low** · `packages/i18n/src/__tests__/purity.test.ts:64-66` — saflık süzgeci
+  `from`/`require(`/`import(` gerektiren üç deseniyle **yan-etki importunu** (`import
+'@arkesoft/db'`, bağlayıcısız) kaçırıyor (ampirik ölçüldü: üç desen de KAÇIYOR).
+  `@arkesoft/db`/`@arkesoft/trpc` için `pnpm` çözümlemesi (symlink yokluğu) kapıyı
+  pratikte kapatıyor, ama `@arkesoft/config` **devDependency olarak symlink'li** ve ikinci
+  test (`dependencies` pinlemesi) yalnızca `dependencies`'i denetliyor ⇒ o paket **iki
+  katmandan da kaçıyor** (bugün `process.env` okuyan env şemasını barındırıyor). **Sorumlu:**
+  `backend` + `devops` · **Vade:** v0.4.0 · **Kaynak:** `security` tur 1 + `solid` tur 1
+  (bağımsız, aynı bulgu)
+- **low** · `packages/i18n/src/tr-tr-errors.ts:31-34` — `ux`'in _"5 `JOB_*` kodu kullanıcıya
+  HİÇ ulaşmaz"_ gerekçesi ölçümle **yanlış**: üçü (`JOB_NOT_FOUND`, `JOB_TYPE_NOT_REGISTERED`,
+  `JOB_PAYLOAD_INVALID`) istek yolundan ulaşıyor (`job-read.port.adapter.ts:207`,
+  `queue.service.ts:149,157`). Metinlerin kendisi **temiz** (kuyruk/handler/iş-tipi/retry
+  adı 0 — §7 md 12 ihlali yok), ama yazılı gerekçe yanlış ve ileride bu beş metne teşhis
+  detayı eklenmesini meşrulaştırabilir. **Sorumlu:** `ux` + `docs` · **Vade:** v0.0.19 ·
+  **Kaynak:** `security` tur 1
+- **low** · `packages/db/src/tenancy.ts:139-146` (⚠ gerçek satır — ilk bulgu `:333`'e atıf
+  veriyordu, o satır **ilgisiz bir ADR-0017 yorumuna** denk geliyor, düzeltildi) — `currency`
+  tablosu `arkesoft_app` için salt-okunur değil (blanket DML: `DELETE,INSERT,SELECT,UPDATE`
+  — canlı katalogda ölçüldü, `theme`/`plan`/`platform_admin` ile birebir aynı erteleme).
+  Bugün zararsız (okuyucu 0, FK 0, tek satır — `TRY`); v0.4.0'da ilk para kolonu FK
+  verdiğinde `bootstrap-roles.sql` §9'un sabit fiil üçlüsü genelleştirilerek daraltılmalı.
+  **Sorumlu:** `db` · **Vade:** v0.4.0 · **Kaynak:** `architect` beyanı (S6) + `security`
+  tur 1 (canlı DB ölçümüyle teyit)
+- **low** · `pnpm-lock.yaml` — `effect@3.20.0` `Schema.TemplateLiteral` ReDoS (GHSA, `high`)
+  ROADMAP'te kayıtsız. T-027 getirmedi (lock diff'inde yeni registry paketi 0, `effect`
+  HEAD'de de vardı); erişim zinciri `@prisma/config ← prisma`, girdi geliştirici config'i
+  (güvenilmeyen istekten erişilemez). **Sorumlu:** `devops` · **Vade:** bir sonraki bakım
+  penceresi · **Kaynak:** `security` tur 1
+- **low** · `packages/i18n/src/message-resolver.ts:32,82-85` — açık-dünya `resolveMessage`
+  çözümleyicisinin üretim tüketicisi **0** (dört üretim çağrısı da tipli `t()`); istenen
+  katalogdaki boş dize (`""`) `"undefined"` olmadığı için geri düşmez ve `""` **döner** —
+  AC-44'ün "asla sessiz boş dize" garantisi bugün çözümleyicide değil katalog testinde
+  yaşıyor. İkinci locale içeriği (v1.5.0) geldiğinde eksik çeviri `""` ise kullanıcı boş
+  hata mesajı görür. **Sorumlu:** `backend` · **Vade:** v1.5.0 · **Kaynak:** `solid` tur 1
+- **low** · `packages/i18n/src/money.ts:91` — `eslint-disable-next-line
+@typescript-eslint/no-unnecessary-condition` (`SUPPORTED_CURRENCIES` bugün tek üyeli
+  olduğu için) için hatırlatıcı mekanik kapı **yok**; ikinci para birimi eklendiğinde bu
+  satırın kaldırılması gerekir ama hiçbir test bunu zorlamıyor. **Sorumlu:** `backend` ·
+  **Vade:** v0.4.0 (ikinci para biriminden önce) · **Kaynak:** `solid` tur 1 + `security`
+  tur 1 (teyit)
+- **low** · `packages/i18n/src/format-money.ts:26` — minör→majör float bölme; **§2/§10
+  ihlali değil** (meşru sunum sınırı, sonuç `Money`'e geri yazılmıyor/aritmetiğe girmiyor),
+  ama `2^53` kuruşun üzerinde gösterim sessizce yanlışlaşabilir. **Sorumlu:** `backend` ·
+  **Vade:** v0.4.0 · **Kaynak:** `solid` tur 1
+- **low** · `packages/config/eslint/base.js:180-181` ↔ `packages/db/src/__tests__/
+float-money-ban.test.ts:45-46` — aynı olgunun (para adı) iki ayrı kelime kümesi; iki
+  SABİT olmasının gerekçesi yazılı (`.js` yapılandırması `.ts`'ten import edilemez) ama
+  üyelik farkı gerekçesiz: ESLint tarafı `tax|discount|refund|payout|revenue` kaçırıyor,
+  db tarafı `salary|payment` kaçırıyor. **Sorumlu:** `devops` · **Vade:** v0.4.0 · **Kaynak:**
+  `solid` tur 1
+- **low** · `packages/i18n/src/locale.ts:41` — `Locale` tipi fiilen `string`
+  (`z.infer<ZodString>`); biçimlendirme seçeneklerinin `locale` alanları kapalı bir küme
+  **gibi görünüp** her dizeyi kabul ediyor (geçersiz etiket `Intl`'de `RangeError` üretir).
+  `createMessageResolver`'ın `L extends string` jeneriği **ayrı bir kavram**, tip düzeyinde
+  bağlı değil. **Sorumlu:** `backend` · **Vade:** v1.5.0 (kiracı bazlı dil) · **Kaynak:**
+  `solid` tur 1
+- **low** · `packages/i18n/src/money-errors.ts:43` — `CurrencyMismatchError(left: string,
+right: string)`: `SupportedCurrencyCode` mevcutken `string`'e genişletilmiş; `left`/`right`
+  CLAUDE.md §4'ün belirsiz ad yasağına yakın. **Sorumlu:** `backend` · **Vade:** v0.4.0 ·
+  **Kaynak:** `solid` tur 1
+- **low** · `apps/admin/src/messages/messages.ts:230-235,706-709` ║
+  `apps/superadmin/src/messages/messages.ts:169-174,351-354` — `wireMessageKey` ve
+  `registryMessageKey` dalları birebir aynı ifadeyi döndürüyor; `classifyErrorResolutionStep`
+  dışa açılmadığı için ayrım hiçbir testten gözlenemiyor. Belgeleme değeri gerçek (hangi
+  basamak ateşlendi); KISS açısından iki dal tek dalda birleşebilir. **Sorumlu:** `frontend`
+  · **Vade:** fırsat doğduğunda · **Kaynak:** `solid` tur 1
+- **low** · `packages/i18n/src/` — 14 üretim dosyası **tek dizinde**; deponun mevcut düz
+  paketleri 4-5 dosya (`tenancy` 4, `versioning` 5, `errors` 5) ⇒ bu, repodaki **en büyük**
+  düz `src`'si (~3x). Bugün kabul edilebilir; alt dizin açmak saflık testinin
+  `readdirSync`'ini **aynı değişiklikte** `{recursive: true}`'ya çevirmeyi zorunlu kılar.
+  Tetik: v1.5.0'ın ikinci locale **içeriği**. **Sorumlu:** `backend` · **Vade:** v1.5.0 ·
+  **Kaynak:** `solid` tur 1
+- **low** · `packages/i18n/src/interpolate.ts` — iç içe süslü parantez (`{{name}}`)
+  davranışı belgelenmemiş/test edilmemiş; bugün üretim tüketicisi **0** (dosya başı
+  yorumunda zaten kayıtlı). **Sorumlu:** `backend` · **Vade:** bu fonksiyonun ilk gerçek
+  tüketicisi geldiğinde yeniden değerlendirilmeli · **Kaynak:** `qa` tur 1
+- **low** · `docs/ux/T-027.md:95,106` (`#22 INVITATION_INVALID` / `#33 ALREADY_MEMBER`) —
+  kasıtlı aynı metin (jeton-geçerlilik oracle'ını önlemek için); **WCAG ihlali değil**
+  (belirsizlik tüm kullanıcılar için simetrik, 3.3.1 karşılanıyor). Öneri (güvenlik
+  kararını bozmadan): iki kod için **ortak** bir sonraki-adım cümlesi eklenebilir ("Daveti
+  gönderen kişiden yeni bir davet isteyin.") — WCAG 3.3.3'e daha yakın olurdu. **Sorumlu:**
+  `ux` · **Vade:** gelecek bir alt görev (bu Task kapsamı dışı) · **Kaynak:** `wcag` tur 1
+- **low** · `scripts/guards.sh:1494-1510` (AC-46 alt kontrol 3b) — bu adımın denetlediği
+  davranışsal test dosyasının (`eslint-money-fixtures.test.ts`) **kendi varlığı** `guards`
+  tarafında pinli değil; test dosyası silinirse `guards` 24/24 yeşil kalır ve tur 2'nin
+  atlatması (AC-47'nin tamamen sessiz kaybolması) yeniden canlanır. **Sorumlu:** `devops`
+  (monoton düzeltme — yalnızca yeni başarısızlık vakası eklenir) · **Vade:** belirtilmedi ·
+  **Kaynak:** `solid` tur 3
+- **low** · `packages/i18n/src/__tests__/eslint-money-fixtures.test.ts:66-67` ↔
+  `scripts/guards.sh:1496-1499` — altı float-para fixture adı **iki yerde elle** tutuluyor
+  (tek kaynaktan türetilmiyor). **Sorumlu:** `qa` + `devops` (⚠ monoton değil: salt
+  `readdirSync` vacuity açar, taban assertion'ı şart) · **Vade:** belirtilmedi · **Kaynak:**
+  `solid` tur 3
+- **low** · `packages/i18n/src/__tests__/eslint-money-fixtures.test.ts:119` — negatif
+  taraf fatal ayrıştırma hatasında fail-**open**. **Sorumlu:** `qa` (monoton düzeltme) ·
+  **Vade:** belirtilmedi · **Kaynak:** `solid` tur 3
+- **low** · `packages/i18n/src/__tests__/eslint-money-fixtures.test.ts:81` — test başına
+  `new ESLint`, 6× `projectService`, varsayılan 5sn timeout; ölçülen en yavaş koşum
+  **1081 ms** (eşik 3000 ms, `solid`'in talebiyle yük altında 5 koşum tekrarlandı — hâlâ
+  eşiğin ~1/3'ü, `low` kaldı). **Sorumlu:** `qa` · **Vade:** belirtilmedi · **Kaynak:**
+  `solid` tur 3
+- **low** · `packages/i18n/src/__tests__/arkesoft-config-eslint-base.d.ts:30-34` — elle
+  tutulan tip aynası (`createBaseConfig`'in JSDoc imzasının ambient `.d.ts` karşılığı);
+  `tsc` iki tanım arasındaki sapmayı **göremez**. **Sorumlu:** `devops` · **Vade:**
+  belirtilmedi · **Kaynak:** `solid` tur 3
+- **low** · `packages/i18n/src/__tests__/money-safe-integer-range.test.ts:19` — yorum
+  içindeki atıf yolu (`../__tests__/money.test.ts`) gerçek konuma göre fazladan
+  `../__tests__/` taşıyor (dosya zaten aynı dizinde; doğru biçim `./money.test.ts`
+  olurdu) — işlevsel bir `import`/`require` değil, yalnızca açıklayıcı metin, ama bir
+  bakımcıyı yanlış yönlendirebilir. **Sorumlu:** `qa` · **Vade:** belirtilmedi · **Kaynak:**
+  `solid` tur 3
+- **low** · `packages/i18n/src/__tests__/money-safe-integer-range.test.ts:17-37` ↔
+  `money.test.ts:67-98,162-167` — 5/5 test vakası **mükerrer** (iki ajanın dosyası aynı
+  üretim yolunu aynı API ve aynı literallerle sınıyor); bilinçli tutuldu ("bağımsız ikinci
+  şahit" — ownership sınırı `qa`'nın `backend`'in spesifikasyon dosyasını değiştirmesini
+  yasaklıyor), ama `solid` tur 3 bunu ölçüp "tespite katkısı yok" diye **`low`'a indirdi**
+  (iki dosya aynı regex'le pinli, üretim regresyonu ikisini birlikte kırar). **Sorumlu:**
+  `backend` · **Vade:** v0.4.0 · **Kaynak:** `solid` tur 2 (`medium` olarak açıldı) → tur 3
+  (`low`'a indi)
+- **low** · `scripts/guards.sh:444` (`check_slug_grammar_single_source`), `:927`
+  (`check_axe_single_source`) — her ikisi de yalnızca literal metin/desen **varlığını**
+  sayıyor; "tanım duruyor ama gerçek çağrı/import noktasından düşürülmüş" senaryosunu
+  (S8'in AC-46 alt kontrol 2'de kendi kör noktasında bulduğu ders) **yakalamıyor**. `devops`
+  bu üçüncü kardeşi araştırdı ve kapsamı **büyütmedi** — farklı bir tasarım (çağrı-yeri/
+  wiring doğrulaması, her kontrol için bespoke) gerektirdiği için `[low]` borç olarak
+  bıraktı. **Sorumlu:** `devops` · **Vade:** belirtilmedi · **Kaynak:** `devops` (düzeltme
+  turu 1, M2 araştırması)
 
 ## Vadesiz — test kapsamı ve kod kalitesi borçları (ilk uygun sürümde)
 

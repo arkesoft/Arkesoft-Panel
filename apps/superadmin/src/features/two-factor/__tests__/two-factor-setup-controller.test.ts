@@ -53,7 +53,7 @@ describe('TwoFactorSetupController — ADR-0024 Karar 2/3 (get-totp-uri ÖNCE)',
     })
     const getTotpUri = vi.fn().mockResolvedValue({
       kind: 'error',
-      error: { kind: 'known', code: 'TOTP_NOT_ENABLED', requestId: null },
+      error: { kind: 'known', code: 'TOTP_NOT_ENABLED', requestId: null, messageKey: null },
       retryAfterSeconds: null,
     })
     const controller = new TwoFactorSetupController(
@@ -79,7 +79,7 @@ describe('TwoFactorSetupController — ADR-0024 Karar 2/3 (get-totp-uri ÖNCE)',
     const enable = vi.fn()
     const getTotpUri = vi.fn().mockResolvedValue({
       kind: 'error',
-      error: { kind: 'known', code: 'INVALID_PASSWORD', requestId: null },
+      error: { kind: 'known', code: 'INVALID_PASSWORD', requestId: null, messageKey: null },
       retryAfterSeconds: null,
     })
     const controller = new TwoFactorSetupController(
@@ -101,12 +101,17 @@ describe('TwoFactorSetupController — ADR-0024 Karar 2/3 (get-totp-uri ÖNCE)',
   it('"enable" hata dönerse (gerçekten taze kurulumda) step "password"da KALIR', async () => {
     const enable = vi.fn().mockResolvedValue({
       kind: 'error',
-      error: { kind: 'known', code: 'ACCOUNT_TEMPORARILY_LOCKED', requestId: null },
+      error: {
+        kind: 'known',
+        code: 'ACCOUNT_TEMPORARILY_LOCKED',
+        requestId: null,
+        messageKey: null,
+      },
       retryAfterSeconds: 60,
     })
     const getTotpUri = vi.fn().mockResolvedValue({
       kind: 'error',
-      error: { kind: 'known', code: 'TOTP_NOT_ENABLED', requestId: null },
+      error: { kind: 'known', code: 'TOTP_NOT_ENABLED', requestId: null, messageKey: null },
       retryAfterSeconds: null,
     })
     const controller = new TwoFactorSetupController(
@@ -136,7 +141,7 @@ describe('TwoFactorSetupController — ADR-0024 Karar 2/3 (get-totp-uri ÖNCE)',
     })
     const firstGetTotpUri = vi.fn().mockResolvedValue({
       kind: 'error',
-      error: { kind: 'known', code: 'TOTP_NOT_ENABLED', requestId: null },
+      error: { kind: 'known', code: 'TOTP_NOT_ENABLED', requestId: null, messageKey: null },
       retryAfterSeconds: null,
     })
     const firstController = new TwoFactorSetupController(
@@ -195,7 +200,7 @@ describe('TwoFactorSetupController — ADR-0024 Karar 2/3 (get-totp-uri ÖNCE)',
       .fn()
       .mockResolvedValueOnce({
         kind: 'error',
-        error: { kind: 'known', code: 'TOTP_NOT_ENABLED', requestId: null },
+        error: { kind: 'known', code: 'TOTP_NOT_ENABLED', requestId: null, messageKey: null },
         retryAfterSeconds: null,
       })
       // İkinci çağrı — "Vazgeç" sonrası AYNI mount içinde şifre tekrar
@@ -232,10 +237,20 @@ describe('TwoFactorSetupController — ADR-0024 Karar 2/3 (get-totp-uri ÖNCE)',
     )
 
     expect(
-      controller.resolveTotpUriAction({ kind: 'known', code: 'TOTP_NOT_ENABLED', requestId: null }),
+      controller.resolveTotpUriAction({
+        kind: 'known',
+        code: 'TOTP_NOT_ENABLED',
+        requestId: null,
+        messageKey: null,
+      }),
     ).toBe('enable')
     expect(
-      controller.resolveTotpUriAction({ kind: 'known', code: 'INVALID_PASSWORD', requestId: null }),
+      controller.resolveTotpUriAction({
+        kind: 'known',
+        code: 'INVALID_PASSWORD',
+        requestId: null,
+        messageKey: null,
+      }),
     ).toBe('show-error')
     expect(controller.resolveTotpUriAction({ kind: 'unknown', requestId: null })).toBe('show-error')
   })
@@ -248,7 +263,7 @@ describe('TwoFactorSetupController — ADR-0024 Karar 2/3 (get-totp-uri ÖNCE)',
         getTotpUri: () =>
           Promise.resolve({
             kind: 'error',
-            error: { kind: 'known', code: 'TOTP_NOT_ENABLED', requestId: null },
+            error: { kind: 'known', code: 'TOTP_NOT_ENABLED', requestId: null, messageKey: null },
             retryAfterSeconds: null,
           }),
         verifyTotp: () => Promise.resolve({ kind: 'verified' }),
@@ -293,13 +308,13 @@ describe('TwoFactorSetupController — ADR-0024 Karar 2/3 (get-totp-uri ÖNCE)',
         getTotpUri: () =>
           Promise.resolve({
             kind: 'error',
-            error: { kind: 'known', code: 'TOTP_NOT_ENABLED', requestId: null },
+            error: { kind: 'known', code: 'TOTP_NOT_ENABLED', requestId: null, messageKey: null },
             retryAfterSeconds: null,
           }),
         verifyTotp: () =>
           Promise.resolve({
             kind: 'error',
-            error: { kind: 'known', code: 'INVALID_CODE', requestId: null },
+            error: { kind: 'known', code: 'INVALID_CODE', requestId: null, messageKey: null },
             retryAfterSeconds: null,
           }),
         onVerified,

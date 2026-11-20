@@ -19,7 +19,7 @@
 // gövdesi bu üç sebepten HİÇBİRİNİ taşımaz, istemci "ağ reddi" dışında
 // hiçbir şey öğrenmez.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 /** Reddin kapalı sebep sözlüğü — yalnızca LOGLANIR, tele hiçbiri sızmaz. */
 export type PlatformNetworkDenialReason = 'empty_allowlist' | 'unknown_ip' | 'ip_not_allowed'
@@ -29,7 +29,7 @@ export class PlatformNetworkNotAllowedError extends AppError {
     super({
       code: 'PLATFORM_NETWORK_NOT_ALLOWED',
       httpStatus: 403,
-      userMessageKey: 'errors.platform.networkNotAllowed',
+      userMessageKey: ERROR_MESSAGE_KEYS.PLATFORM_NETWORK_NOT_ALLOWED,
       context: { reason },
       isRetryable: false,
     })

@@ -12,7 +12,7 @@
 // bu sınıfın `override get publicDetails()`'inden gelir — "bu hatanın tel
 // üstündeki detayı nedir" bilgisi hatanın KENDİSİNDE durur.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class ValidationError extends AppError {
   readonly fields: Record<string, string>
@@ -21,7 +21,7 @@ export class ValidationError extends AppError {
     super({
       code: 'VALIDATION_ERROR',
       httpStatus: 400,
-      userMessageKey: 'errors.validation.failed',
+      userMessageKey: ERROR_MESSAGE_KEYS.VALIDATION_ERROR,
       context: { fields },
       isRetryable: false,
     })

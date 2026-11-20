@@ -64,6 +64,20 @@
 // additive (yeni enum, iki yeni tablo, bir FK) — `DROP COLUMN`/`SET NOT
 // NULL`/`ALTER TYPE … ADD VALUE` YOK.
 
+// GÜNCELLEME (ROADMAP v0.0.18, T-027/S6, architect VERİ MODELİ — AC-48/
+// AC-49): `Currency` EKLENDİ, PLATFORM SEVİYESİ (`tenant_id` TAŞIMAZ) →
+// `src/tenancy.ts` → `PLATFORM_LEVEL_TABLES` ON İKİDEN ON ÜÇE çıktı.
+// `TENANT_SCOPED_TABLES` DEĞİŞMEDİ (yedide kaldı) — kiracı tablosu
+// eklenmedi, prob tamlığı kapısı kırılmadı. RLS politikası YAZILMAZ
+// (migration linter'ının `TENANT_ID_ON_PLATFORM_TABLE` kuralı). ⭐ Bu
+// tablonun TEK DOĞRULUK KAYNAĞI DEĞİLDİR — `packages/i18n`'in
+// `SUPPORTED_CURRENCIES`'idir; `Currency` satırları onun İŞLETİMSEL ALT
+// KÜMESİDİR (bkz. `Currency` model doc'u, `src/__tests__/
+// currency-i18n-consistency.test.ts`). Migration tamamen additive (bir yeni
+// tablo, bir idempotent `INSERT`) — `DROP COLUMN`/`SET NOT NULL`/`ALTER
+// TYPE … ADD VALUE` YOK, iki sürüme bölme GEREKMİYOR (CLAUDE.md §10 md 10
+// bu sürümde TETİKLENMİYOR).
+
 // `output = "../generated"` iki farklı "generated" konumunun KAYNAĞIDIR:
 //   1. packages/db/generated/     — `prisma generate`'in ham TS çıktısı (KÖK, .gitignore'da)
 //   2. packages/db/dist/generated/ — (1)'in `tsc -p tsconfig.prisma.json` ile derlenmiş hali
@@ -1070,6 +1084,66 @@ model PlatformAuditLog {
   @@index([createdAt(sort: Desc)])
   @@index([actorUserId, createdAt(sort: Desc)])
   @@map("platform_audit_log")
+}
+
+/// Platform seviyesi para birimi referans tablosu (ROADMAP v0.0.18, T-027/S6,
+/// architect VERİ MODELİ — AC-48/AC-49). `PLATFORM_LEVEL_TABLES`'ın ON ÜÇÜNCÜ
+/// üyesi.
+///
+/// ⚠⚠ `code` DOĞAL ANAHTARDIR (`String @id @db.Char(3)`, `@default(cuid(2))`
+/// YOK) — `Theme.id`/`Plan.id` emsali (ADR-0020 Karar 3): değer ISO 4217
+/// kodudur (bugün tek satır `'TRY'`), vekil (cuid2) bir anahtar seçmek bu
+/// kolonu çözümlenemez hâle getirirdi.
+///
+/// ⭐ BU TABLO TEK DOĞRULUK KAYNAĞI DEĞİLDİR — `packages/i18n`'in
+/// `SUPPORTED_CURRENCIES`'idir (AC-49, T-027/S5b). Bu tablonun satırları o
+/// kümenin İŞLETİMSEL ALT KÜMESİDİR (`currency.code ⊆ SUPPORTED_CURRENCIES`).
+/// `packages/i18n` veritabanına bağımlı OLAMAZ (saflık testi, CLAUDE.md §3)
+/// → bağımlılık yönü TERSTİR: bu tablonun doğruluğu
+/// `src/__tests__/currency-i18n-consistency.test.ts`'in iki yönlü drift
+/// testiyle `packages/i18n`'e KARŞI doğrulanır, tersi değil. A-T27-4
+/// (po/architect): bu tablonun çalışma zamanı OKUYUCUSU bu sürümde YOKTUR —
+/// ilk okuyucu v0.4.0 (ilk para kolonunun FK hedefi).
+///
+/// ⚠⚠ `minorUnit` → `@map("minor_unit")`: architect'in Task dosyasındaki
+/// Prisma parçacığı bu `@map`'i YAZMAMIŞTI (sehven) — AYNI belgenin migration
+/// SQL'i (`INSERT INTO currency (code, minor_unit) …`) ve AC-49 metni
+/// ("`minor_unit` eşitliği") kolonu HER YERDE `minor_unit` olarak
+/// adlandırıyor; `@map` eklenmeseydi kolon karışık harfli `minorUnit` olarak
+/// doğar ve architect'in KENDİ migration SQL'indeki `INSERT` İSİM
+/// UYUŞMAZLIĞIYLA BAŞARISIZ OLURDU. `db` ajanının düzeltmesi — CLAUDE.md §2
+/// isimlendirme tablosunun ("DB tablo/kolon snake_case") VE architect'in
+/// migration SQL'inin ZATEN taahhüt ettiği adı birebir uygular; bu bir
+/// TASARIM SAPMASI DEĞİLDİR. Aynı gerekçeyle `createdAt`/`updatedAt`'e
+/// projedeki HER modelin taşıdığı `@db.Timestamptz(3)` + `updatedAt`'e
+/// `@default(now())` eklendi (dosya başı R2 konvansiyonu, `Theme`/`Plan`
+/// emsali) — architect'in parçacığı ikisini de atlamıştı; eklenmeseydi
+/// migration'ın idempotent `INSERT INTO currency (code, minor_unit) VALUES
+/// (...)` ifadesi (iki zaman kolonunu HİÇ vermiyor) DB seviyesi `DEFAULT`
+/// olmadan `NOT NULL` ihlaliyle BAŞARISIZ OLURDU.
+///
+/// PLATFORM SEVİYESİ — `tenant_id` TAŞIMAZ (migration linter'ının
+/// `TENANT_ID_ON_PLATFORM_TABLE` kuralı), RLS politikası YAZILMAZ. Ek
+/// `@@index` YOK — `code` PK zaten tek sorgulanacak eksenin B-tree indeksi
+/// (gereksiz indeks yazma yüküne maliyettir).
+///
+/// ⚠ `arkesoft_app`'in bu tabloda taşıyacağı blanket DML yetkisi (`ALTER
+/// DEFAULT PRIVILEGES`, `bootstrap-roles.sql` §4) `theme`/`plan`/
+/// `platform_admin`'in BİREBİR aynı ertelemesiyle DARALTILMADI — bilinçli,
+/// `APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS`'a EKLENMEDİ (eklenseydi
+/// `bootstrap-roles.sql` §9'un sabit fiil üçlüsü yetmezdi ve
+/// `tenancy.ts`'in bağlayıcı "iki yönlü kırmızı pencere" uyarısını
+/// ihlal ederdi). Borç: `[low] tenancy.ts:333 — "currency" referans tablosu
+/// arkesoft_app için salt-okunur değil (blanket DML); v0.4.0'da ilk para
+/// kolonu FK verdiğinde §9 fiil kümesi genelleştirilerek daraltılmalı —
+/// sorumlu db, vade v0.4.0 (`docs`/S9 ROADMAP'e yazar).
+model Currency {
+  code      String   @id @db.Char(3)
+  minorUnit Int      @map("minor_unit")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("currency")
 }
 
 /// Kiracı durumu. `deleted` değeri YOKTUR (A-V8) — silinmişliğin tek doğruluk

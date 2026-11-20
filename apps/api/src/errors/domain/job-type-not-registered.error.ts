@@ -17,14 +17,14 @@
 // `httpStatus: 500` — bu bir KULLANICI girdisi hatası değil, yapılandırma/
 // programlama hatasıdır. `context` yalnızca iş adını taşır (PII yok).
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class JobTypeNotRegisteredError extends AppError {
   constructor(jobName: string) {
     super({
       code: 'JOB_TYPE_NOT_REGISTERED',
       httpStatus: 500,
-      userMessageKey: 'errors.job.enqueueFailed',
+      userMessageKey: ERROR_MESSAGE_KEYS.JOB_TYPE_NOT_REGISTERED,
       context: { jobName },
       // Kayıt defteri süreç ömrü boyunca sabittir → yeniden denemek aynı
       // sonucu verir.

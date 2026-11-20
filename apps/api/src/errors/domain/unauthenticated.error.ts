@@ -13,14 +13,14 @@
 // `httpStatus: 401` — ROADMAP'in kendi AC'sinin ("doğrulanmamış kullanıcı
 // korumalı uca 401 alır") birebir karşılığı.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class UnauthenticatedError extends AppError {
   constructor() {
     super({
       code: 'UNAUTHENTICATED',
       httpStatus: 401,
-      userMessageKey: 'errors.auth.unauthenticated',
+      userMessageKey: ERROR_MESSAGE_KEYS.UNAUTHENTICATED,
       isRetryable: false,
     })
   }

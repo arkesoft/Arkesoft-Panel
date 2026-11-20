@@ -6,14 +6,14 @@
 // `isRetryable: true`: kuyruk/çağıran bunu yeniden deneyebilir bir durum
 // olarak ele alır (CLAUDE.md §4).
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
 export class TenantResolutionFailedError extends AppError {
   constructor(cause: unknown) {
     super({
       code: 'TENANT_RESOLUTION_FAILED',
       httpStatus: 500,
-      userMessageKey: 'errors.tenant.resolutionFailed',
+      userMessageKey: ERROR_MESSAGE_KEYS.TENANT_RESOLUTION_FAILED,
       isRetryable: true,
       cause,
     })

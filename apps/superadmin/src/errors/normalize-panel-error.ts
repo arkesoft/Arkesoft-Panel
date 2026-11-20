@@ -17,10 +17,18 @@
 // gelinir — bu yüzden tam dört alanlı `{code,message,details,requestId}`
 // (zarf a) probe 4'ün `{code: z.string()}` şemasına DA uyar. 3 DAHA DAR
 // olduğu için ÖNCE denenir.
+//
+// GÜNCELLEME (ROADMAP v0.0.18, T-027/S7, architect R-1 KARARI,
+// `apps/admin/src/errors/normalize-panel-error.ts`'in AYNI deseni): zarf
+// (a)/(b) `AppErrorBody.message` artık `errorMessageKeySchema` KAPALI
+// kümesinden `safeParse` EDİLİR ve `PanelError.known.messageKey`'e YAZILIR.
+// Kümenin DIŞINDAKİ her değer (ham sunucu metni, boş dize, uydurma anahtar)
+// `null`'a elenir. Zarf (c) (Better Auth'un KENDİ gövdesi) `message`'ı HİÇ
+// PARSE ETMEZ — `messageKey` o dalda HER ZAMAN `null`'dır.
 import { z } from 'zod'
 
-import { appErrorBodySchema } from '@arkesoft/errors'
-import type { AppErrorBody } from '@arkesoft/errors'
+import { appErrorBodySchema, errorMessageKeySchema } from '@arkesoft/errors'
+import type { AppErrorBody, ErrorMessageKey } from '@arkesoft/errors'
 import { trpcErrorDataSchema } from '@arkesoft/trpc'
 
 import type { PanelError } from './panel-error.js'
@@ -37,9 +45,24 @@ const trpcEnvelopeSchema = z.object({ data: trpcErrorDataSchema })
 /** Zarf (c) — Better Auth'un KENDİ gövdesi: üst düzey `code` + ham İngilizce `message`. */
 const betterAuthBodySchema = z.object({ code: z.string() })
 
-/** {@link AppErrorBody}'den `PanelError`'ın `known` dalını üretir — mesaj alanı ASLA taşınmaz. */
+/**
+ * `body.message`'ı `errorMessageKeySchema`'nın KAPALI kümesinden geçirerek
+ * süzer (architect R-1 KARARI). Kümenin DIŞINDAKİ her değer (ham sunucu
+ * metni dahil) `null`'a elenir.
+ */
+function parseMessageKey(message: string): ErrorMessageKey | null {
+  const parsed = errorMessageKeySchema.safeParse(message)
+  return parsed.success ? parsed.data : null
+}
+
+/** {@link AppErrorBody}'den `PanelError`'ın `known` dalını üretir — mesaj alanı HAM olarak ASLA taşınmaz. */
 function toKnownFromAppErrorBody(body: AppErrorBody): PanelError {
-  return { kind: 'known', code: body.code, requestId: body.requestId }
+  return {
+    kind: 'known',
+    code: body.code,
+    requestId: body.requestId,
+    messageKey: parseMessageKey(body.message),
+  }
 }
 
 export function normalizePanelError(input: unknown): PanelError {
@@ -71,9 +94,12 @@ export function normalizePanelError(input: unknown): PanelError {
   }
 
   // 4. {code: z.string()} → (c). Better Auth'un gövdesi `requestId` TAŞIMAZ.
+  // `message`'ı da HİÇ PARSE ETMEZ → `messageKey` HER ZAMAN `null`
+  // (architect R-1 KARARI — `messages.ts`'in merdiveni bu kodu kendi Better
+  // Auth sağlayıcı tablosundan çözer).
   const betterAuthBody = betterAuthBodySchema.safeParse(input)
   if (betterAuthBody.success) {
-    return { kind: 'known', code: betterAuthBody.data.code, requestId: null }
+    return { kind: 'known', code: betterAuthBody.data.code, requestId: null, messageKey: null }
   }
 
   // 5. Fail-closed — hiçbir probe eşleşmedi, FIRLATMAZ.

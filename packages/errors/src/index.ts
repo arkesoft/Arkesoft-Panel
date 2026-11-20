@@ -15,4 +15,7 @@ export {
 } from './error-body.js'
 export type { AppErrorBody } from './error-body.js'
 
+export { ERROR_MESSAGE_KEYS, errorMessageKeySchema } from './error-message-keys.js'
+export type { ErrorMessageKey } from './error-message-keys.js'
+
 export { maskEmail, PINO_REDACT_PATHS } from './redaction.js'

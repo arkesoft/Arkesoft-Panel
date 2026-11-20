@@ -128,6 +128,27 @@
 // "dört liste" (`AUTH_SECRET_BEARING_TABLES` vb.) BU İKİSİNE DOKUNMAZ — ikisi
 // de parola özeti/token/TOTP sırrı/kurtarma kodu TAŞIMAZ (ölçülmüş karar,
 // architect T-021).
+//
+// GENİŞLETME (ROADMAP v0.0.18, T-027/S6, architect VERİ MODELİ — AC-48/
+// AC-49): `currency` (ON ÜÇÜNCÜ üye) EKLENDİ → dizi ON İKİDEN ON ÜÇE çıktı.
+// Bir para birimi tanımı (ISO 4217 kodu + ondalık basamak) PLATFORMUN
+// KENDİSİNE aittir, kiracıya değil — `theme`/`plan`/`platform_admin`'in
+// BİREBİR aynı sınıflandırma ekseni. RLS politikası TAŞIMAZ (migration
+// linter'ının `TENANT_ID_ON_PLATFORM_TABLE` kuralı). ⭐ `TENANT_SCOPED_TABLES`
+// BU GENİŞLEMEYLE DEĞİŞMEDİ — yeni bir kiracı tablosu YOK, prob tamlığı
+// kapısı KIRMIZIYA DÖNMEDİ. ⚠⚠ `currency` BİLEREK ÜÇ listeye EKLENMEDİ
+// (`APP_ROLE_TABLE_PRIVILEGE_EXPECTATIONS`, `AUTH_SECRET_BEARING_TABLES` +
+// üç kardeşi, yetki DDL'i — gerekçe her listenin kendi yorumunda/
+// `prisma/schema.prisma` → `Currency` model doc'unda): bu tablo sır
+// TAŞIMAZ ve `arkesoft_app`'in bu tabloda taşıdığı blanket DML yetkisi
+// `theme`/`plan`/`platform_admin` ile BİREBİR aynı ertelemeyle
+// DARALTILMADI — borç `[low]` bu satırda, vade v0.4.0 (ilk para kolonu FK
+// verdiğinde §9 fiil kümesi genelleştirilerek daraltılmalı, sorumlu `db`).
+// ⭐ TEK DOĞRULUK KAYNAĞI BU DİZİ DEĞİL — `currency` tablosunun satırlarının
+// doğruluğu `packages/i18n`'in `SUPPORTED_CURRENCIES`'ine karşı
+// `src/__tests__/currency-i18n-consistency.test.ts`'in iki yönlü drift
+// testiyle doğrulanır; bu dizi yalnızca TAKSONOMİ (platform mi/kiracı mı)
+// sorusuna cevap verir.
 export const PLATFORM_LEVEL_TABLES = [
   'tenant',
   'app_user',
@@ -141,6 +162,7 @@ export const PLATFORM_LEVEL_TABLES = [
   'plan',
   'platform_admin',
   'platform_audit_log',
+  'currency',
 ] as const
 
 // GENİŞLETME (ROADMAP v0.0.14, T-014/S1, architect K-A0/K-A1): `audit_log`

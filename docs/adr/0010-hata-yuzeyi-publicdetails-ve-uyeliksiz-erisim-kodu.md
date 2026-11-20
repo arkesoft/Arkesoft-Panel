@@ -258,3 +258,28 @@ tüketici için **çözülmüş bir problem**dir: panel beş probe, vitrin iki p
 
 Bu koşul kapanmıştır; üçüncü bir istemci (`apps/superadmin`, v0.0.20) veya dördüncü bir zarf şekli
 doğarsa ADR-0012 madde 12'nin gözden geçirme koşulu 8 devreye girer — bu koşulu **yeniden** değil.
+
+---
+
+## Ek (v0.0.18) — Madde 3.6 ve `:229-232`'nin "i18n çözümlemesi geldiğinde" notu yürürlüğe kondu
+
+> **Not:** Bu bölüm append-only eklenmiştir. **Madde 3.6'nın metni değişmemiştir** —
+> aşağıdaki, o maddenin önceden yazdığı bir planın artık **uygulanmış bir karar** olduğunun
+> kaydıdır.
+
+`:229-232`'deki paragraf şöyle diyordu: *"i18n çözümlemesi geldiğinde (v0.0.18): tel gövdesi
+değişmez…; normalize tip o zaman i18n anahtarını da taşımaya başlar ve katalog anahtarı
+koddan anahtara kayar. Üçüncü şekil anahtar taşımadığı için kod tabanlı eşleme kalıcıdır —
+sağlayıcı kodları için ikinci bir eşleme tablosu gerekir."*
+
+`v0.0.18` (T-027) bunu birebir uyguladı: `PanelError.messageKey: ErrorMessageKey | null`
+(string değil, kapalı küme), `normalize-panel-error.ts`'in tek filtreleme noktası
+(`errorMessageKeySchema.safeParse`) telden gelen değeri küme dışındaysa `null`'a eler, ve
+Better Auth ailesi (üçüncü şekil) **kod tabanlı eşlemesini** korudu — ikinci bir eşleme
+tablosu açılmadı, mevcut `PANEL_ERROR_CODES` kümesi yalnızca Better Auth kodlarına daraldı.
+Tel gövdesi (`appErrorBodySchema`'nın dört alanı) **değişmedi** — `pnpm test:contract`
+34/34 ve `docs/api-contract-surface.json` diff'i **boş**, public API `major` almadı.
+
+Ayrıntı ve reddedilen alternatifler: **ADR-0028**. Bu koşul kapanmıştır; dördüncü bir zarf
+şekli veya üçüncü bir istemci (bugünkü ikisinin — `apps/admin`, `apps/superadmin` — dışında)
+doğarsa bu ekin gözden geçirilmesi gerekir.

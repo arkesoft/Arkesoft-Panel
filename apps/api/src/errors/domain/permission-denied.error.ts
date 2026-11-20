@@ -40,7 +40,7 @@
 // üzerinden ürettiği kayıtla AYNI alan adı (`error-mapping.ts`'in
 // `logContext`'i). Tel gövdesi bu eklemeyle DEĞİŞMEDİ.
 
-import { AppError } from '@arkesoft/errors'
+import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 import type { Permission } from '@arkesoft/trpc'
 import type { TenantRoleWire } from '@arkesoft/trpc'
 
@@ -49,7 +49,7 @@ export class PermissionDeniedError extends AppError {
     super({
       code: 'PERMISSION_DENIED',
       httpStatus: 403,
-      userMessageKey: 'errors.authz.permissionDenied',
+      userMessageKey: ERROR_MESSAGE_KEYS.PERMISSION_DENIED,
       context: { permission, role },
       // Rol değişmeden yeniden denemek sonucu değiştirmez.
       isRetryable: false,
