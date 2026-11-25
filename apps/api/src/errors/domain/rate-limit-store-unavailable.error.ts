@@ -20,6 +20,12 @@
 // (`AggregateError`-farkında, bkz. `errors/describe-error-cause.ts`) —
 // yalnızca LOGLANIR, `toErrorBody` tele ASLA serileştirmez. Ham ioredis
 // nesnesi/bağlantı dizesi BURADA YOK, `cause` olarak zincirlenir.
+//
+// `logLevel: 'error'` (ROADMAP v0.0.17, T-028/S8, architect K-A28-5 adayı,
+// po A-PO3): Redis'in ULAŞILAMAZ olması, fail-closed davranışla TÜM oran
+// sınırlı trafiği reddeder — bu bir kullanıcı hatası DEĞİL, platform
+// genelinde erişimi kesen bir altyapı arızasıdır; varsayılan `'warn'`
+// bu aciliyeti YANSITMAZ.
 
 import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
@@ -35,6 +41,7 @@ export class RateLimitStoreUnavailableError extends AppError {
       context: { causeCode: described.causeCode, causeMessage: described.causeMessage },
       isRetryable: true,
       cause,
+      logLevel: 'error',
     })
   }
 }

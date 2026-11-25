@@ -37,7 +37,11 @@ import {
   resolveAuditSubject,
 } from '../audit/audit-diff.schemas.js'
 import type { AuditAction, AuditDiffValue, AuditLogEntry } from '../audit/audit-diff.schemas.js'
-import { AUDIT_USER_AGENT_MAX_LENGTH, writeAuditLog } from '../audit/audit-log.writer.js'
+import {
+  AUDIT_IP_MAX_LENGTH,
+  AUDIT_USER_AGENT_MAX_LENGTH,
+  writeAuditLog,
+} from '../audit/audit-log.writer.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { createTestApp } from './helpers/create-test-app.js'
 
@@ -354,6 +358,74 @@ describe('AC6 — yazma kapısının veri katmanı davranışı (gerçek Postgre
     expect(row.ip).toBeNull()
     expect(row.subject).toBe(`${marker}-target`)
     expect(row.diff).toEqual({ role: 'admin' })
+  })
+
+  // ROADMAP v0.0.17, T-028/S4 — borç `:3952` (hijyen yarısı, `security` tur 1
+  // L5): `ip` artık `userAgent` İLE AYNI şekilde kapıda kırpılıyor. ⚠ Bu test
+  // İKİ YÖNLÜ: aşağıdaki `expect`'ler yazma kapısındaki `.slice(0,
+  // AUDIT_IP_MAX_LENGTH)` çağrısı KALDIRILSA kırmızıya düşer (satır tam
+  // `longIp`'nin KENDİSİNİ taşırdı, sınır uzunluğunu DEĞİL) — kontrolün
+  // gerçekten çalıştığı, boşa çıkmadığı ölçüldü.
+  it('uzun `ip` AUDIT_IP_MAX_LENGTH sınırına KIRPILIR (borç `:3952` hijyen yarısı)', async () => {
+    const marker = `ac6-long-ip-${randomUUID().slice(0, 8)}`
+    const longIp = '2001:0db8:0000:0000:0000:ff00:0042:8329'
+      .repeat(3)
+      .slice(0, AUDIT_IP_MAX_LENGTH + 64)
+
+    await prismaService.withTenant(tenantId, (tx) =>
+      writeAuditLog(tx, {
+        tenantId,
+        action: 'member_removed',
+        actorUserId: `${marker}-actor`,
+        userId: `${marker}-target`,
+        ip: longIp,
+        userAgent: null,
+        diff: { role: 'admin' },
+      }),
+    )
+
+    const row = await prismaService.withTenant(tenantId, (tx) =>
+      tx.auditLog.findFirstOrThrow({
+        where: { actorUserId: `${marker}-actor` },
+        select: { ip: true },
+      }),
+    )
+
+    // Sınır KOPYALANMAZ, import edilir.
+    expect(row.ip).toHaveLength(AUDIT_IP_MAX_LENGTH)
+    expect(row.ip).toBe(longIp.slice(0, AUDIT_IP_MAX_LENGTH))
+  })
+
+  // ⚠ "Doğrulanamayan IP → null" pini (DoD): `RequestContextMiddleware`'in
+  // `UNKNOWN_IP` sentinel'ini `null`'a eşlediği durumda (`client-ip.ts`),
+  // yazma kapısına `ip: null` GEÇER — kapı bunu `'unknown'`/boş dize gibi
+  // "bir değer gibi görünen bir yalan"a ÇEVİRMEZ, `null` AYNEN `null` kalır.
+  // Semantik biçim DOĞRULAMASI (security L5'in ikinci yarısı) bilerek bu
+  // sürümde YOK (`AUDIT_IP_MAX_LENGTH` yorumu, v0.18.0) — bu test YALNIZCA
+  // `null` geçişinin bozulmadığını pinler.
+  it('doğrulanamayan IP (`null`) → kayıtta AYNEN `null` kalır, boş dize/sentinel YAZILMAZ', async () => {
+    const marker = `ac6-null-ip-${randomUUID().slice(0, 8)}`
+
+    await prismaService.withTenant(tenantId, (tx) =>
+      writeAuditLog(tx, {
+        tenantId,
+        action: 'member_removed',
+        actorUserId: `${marker}-actor`,
+        userId: `${marker}-target`,
+        ip: null,
+        userAgent: null,
+        diff: { role: 'admin' },
+      }),
+    )
+
+    const row = await prismaService.withTenant(tenantId, (tx) =>
+      tx.auditLog.findFirstOrThrow({
+        where: { actorUserId: `${marker}-actor` },
+        select: { ip: true },
+      }),
+    )
+
+    expect(row.ip).toBeNull()
   })
 
   it('YABANCI bir kiracı kimliğiyle yazmak SESSİZCE geçmez — politikanın `WITH CHECK` yarısı reddeder', async () => {

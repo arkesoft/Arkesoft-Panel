@@ -193,6 +193,35 @@ const pgRestriction = {
 }
 
 /**
+ * `@sentry/node` yapısal import sınırlaması (ROADMAP v0.0.17, T-028/S5,
+ * architect `K-A28-2` + `po`'nun yapısal sınırlama kararı — `main.ts`'in
+ * K-A1 adaptör-nötrlük deseninin BİREBİR ikizi). Sentry için sağlayıcı
+ * ARAYÜZÜ açılmıyor (CLAUDE.md §8'in "en az iki sağlayıcı" kuralı GERÇEK bir
+ * ikinci aday olduğunda uygulanır; burada sıfır tüketici, sıfır ikinci aday)
+ * — yerine bu YAPISAL sınırlama: `@sentry/node` YALNIZCA
+ * `src/observability/sentry.ts`'ten import edilir (aşağıdaki blok (6) bu
+ * dosyayı MUAF tutar). `S6`/`S8` yalnızca bu dosyanın dışa açtığı üç
+ * fonksiyonu (`startSentry`/`captureAppError`/`shutdownSentry`) çağırır,
+ * `@sentry/node`'u KENDİLERİ import ETMEZ.
+ */
+const sentryRestriction = {
+  paths: [
+    {
+      name: '@sentry/node',
+      message:
+        'Sentry SDK’si yalnızca src/observability/sentry.ts’ten import edilir (K-A28-2, yapısal sınırlama); diğer dosyalar startSentry()/captureAppError()/shutdownSentry() çağırır.',
+    },
+  ],
+  patterns: [
+    {
+      group: ['@sentry/node/*'],
+      message:
+        'Sentry SDK’si yalnızca src/observability/sentry.ts’ten import edilir (K-A28-2, yapısal sınırlama); diğer dosyalar startSentry()/captureAppError()/shutdownSentry() çağırır.',
+    },
+  ],
+}
+
+/**
  * T-019 DÜZELTME TURU 4 EKLEMESİ (Q-1, backend) — ÜRETİM dosyalarının
  * `__tests__/**` altındaki HERHANGİ bir dosyaya (test-only Redis profili
  * `create-test-redis-connection.ts` DAHİL) import atmasını yasaklar.
@@ -310,6 +339,14 @@ export default [
       // düşer ve "bir dosya asla birden fazla bloğa düşmez" kuralı
       // (yukarıdaki R-P1 bloğu) ihlal edilir.
       'src/queue/jobs/**',
+      // T-028/S5 EKLEMESİ (R-P1 — `po`'nun uyarısı): blok (6) bu dosyayı
+      // KENDİ tam seçenek kümesiyle (Sentry yasağı HARİÇ, diğer beşi DAHİL)
+      // kapsıyor — `@sentry/node`'u import eden TEK dosya. Burada
+      // DIŞLANMAZSA dosya İKİ bloğa düşer ve "no-restricted-imports" anahtarı
+      // blok (6) tarafından TAMAMEN değiştirilip Sentry yasağı bu dosya için
+      // de sessizce (yanlışlıkla) geçerli olurdu — ya da tersi, blok sırasına
+      // bağlı bir yarış oluşurdu (yukarıdaki R-P1 bloğu).
+      'src/observability/sentry.ts',
     ],
     rules: {
       'no-restricted-imports': [
@@ -321,6 +358,7 @@ export default [
           pgRestriction,
           prismaClientSurfaceRestriction,
           noTestHelpersImportRestriction,
+          sentryRestriction,
         ),
       ],
     },
@@ -338,6 +376,7 @@ export default [
           pgRestriction,
           prismaClientSurfaceRestriction,
           noTestHelpersImportRestriction,
+          sentryRestriction,
         ),
       ],
     },
@@ -355,6 +394,7 @@ export default [
           pgRestriction,
           prismaClientSurfaceRestriction,
           noTestHelpersImportRestriction,
+          sentryRestriction,
         ),
       ],
     },
@@ -374,6 +414,7 @@ export default [
           expressRestriction,
           pgRestriction,
           noTestHelpersImportRestriction,
+          sentryRestriction,
         ),
       ],
     },
@@ -386,6 +427,11 @@ export default [
   // `helpers/create-test-redis-connection.ts`'i import etmesi) normal
   // şekilde import eder; bu blok (4)'ün ESKİ seçenek kümesiyle BİREBİR
   // aynıdır (yalnızca `files` listesi daraldı, dosya başı yorumu).
+  // T-028/S5 EKLEMESİ: `sentryRestriction` EKLENDİ — test dosyaları da
+  // `@sentry/node`'u DOĞRUDAN import EDEMEZ (AC-62'nin sahte taşıyıcı testi
+  // `sentry.ts`'in dışa açtığı `StartSentryOptions.transport` alanına
+  // YAPISAL olarak uyan kendi nesnesini kurar, `@sentry/node`'u import
+  // ETMEDEN).
   {
     files: ['src/__tests__/**'],
     rules: {
@@ -396,6 +442,7 @@ export default [
           bodyQueryParamRestriction,
           expressRestriction,
           pgRestriction,
+          sentryRestriction,
         ),
       ],
     },
@@ -417,6 +464,30 @@ export default [
           pgRestriction,
           prismaClientSurfaceRestriction,
           queueJobTenantScopeRestriction,
+          noTestHelpersImportRestriction,
+          sentryRestriction,
+        ),
+      ],
+    },
+  },
+  // (6) src/observability/sentry.ts: Sentry yasağı MUAF — `@sentry/node`'u
+  // import eden YAPISAL OLARAK TEK dosya (T-028/S5, architect K-A28-2 +
+  // `po`'nun R-P1 uyarısı — K-A1'in adaptör-nötrlük deseninin ikizi). Geri
+  // kalan BEŞ kısıtlamanın (prisma + Body/Query/Param + express + pg +
+  // Prisma istemci yüzeyi + test harness yardımcıları) TAMAMI burada da
+  // geçerli — bu dosya ÜRETİM kodu, blok (1)'den `ignores` ile dışlandığı
+  // için kümeler TAM AYRIK.
+  {
+    files: ['src/observability/sentry.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        mergeRestrictions(
+          prismaRestriction,
+          bodyQueryParamRestriction,
+          expressRestriction,
+          pgRestriction,
+          prismaClientSurfaceRestriction,
           noTestHelpersImportRestriction,
         ),
       ],

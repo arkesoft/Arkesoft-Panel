@@ -40,8 +40,12 @@
 // `queue/queue-log-events.ts`'te TEK KAYNAK ve her iki taraf onu IMPORT eder
 // → metin değişirse test SESSİZCE beklemeye düşmez.
 //
-// `import 'reflect-metadata'` İLK satır OLMAK ZORUNDA (`main.ts` ile aynı
-// gerekçe: Nest'in legacy dekoratör metadata'sı bu yan etkiye dayanır).
+// GÜNCELLEME (ROADMAP v0.0.17, T-028/S6, architect K-A28-4): `observability/
+// instrumentation.js` artık BU DOSYANIN gerçek İLK import'u — `main.ts` İLE
+// AYNI gerekçe ve AYNI sıra (bkz. o dosyanın dosya başı yorumu). `reflect-
+// metadata`'nın "İLK satır olmak zorunda" kuralının AMACI KORUNUR —
+// `WorkerModule` grafiği hâlâ bu YENİ ilk satırdan SONRA değerleniyor.
+import './observability/instrumentation.js'
 
 import 'reflect-metadata'
 

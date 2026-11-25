@@ -35,6 +35,7 @@
 import { Module } from '@nestjs/common'
 import type { Provider } from '@nestjs/common'
 import { Worker } from 'bullmq'
+import { BullMQOtel } from 'bullmq-otel'
 import type { Redis } from 'ioredis'
 import type { Logger } from 'pino'
 
@@ -56,7 +57,7 @@ import { TENANT_PROVISION_JOB } from './job-registry.js'
 import type { JobPayloadBase } from './job-payload.base.js'
 import { tenantProvisionHandler } from './jobs/tenant-provision/index.js'
 import { QUEUE_KEY_PREFIX } from './queue-constants.js'
-import { QueueModule } from './queue.module.js'
+import { QUEUE_TELEMETRY_TRACER_NAME, QueueModule } from './queue.module.js'
 import type { JobQueueRegistry } from './queue.service.js'
 import { JOB_QUEUE_REGISTRY, QUEUE_CONNECTION } from './queue.tokens.js'
 
@@ -181,9 +182,17 @@ export type CreateJobWorkersParams = {
  * ⚠ `concurrency` kayıt defterinden gelir (`definition.concurrency`), literal
  * sayı YAZILMAZ. `attempts`/`backoff.type`/retention iş SEÇENEKLERİNDE,
  * yani ÜRETİCİ tarafında verildi — burada TEKRAR verilmez.
+ *
+ * ⭐ `telemetry` (ROADMAP v0.0.17, T-028/S7, architect K-A28-1): ÜRETİCİYLE
+ * (`queue.module.ts`) AYNI tracer adını (`QUEUE_TELEMETRY_TRACER_NAME`)
+ * kullanan AYRI bir `BullMQOtel` örneği — iki taraf AYNI Nest modülünde
+ * YAŞAMADIĞI için örnek PAYLAŞILAMAZ (ayrı DI grafiği), ama `bullmq-otel`
+ * sınıfı stateless bir OTel tracer/sarmalayıcıdır (dosya başı yorumu) —
+ * iki örnek üretmek İKİNCİ bir mekanizma AÇMAZ.
  */
 export function createJobWorkers(params: CreateJobWorkersParams): readonly JobWorker[] {
   const backoffStrategy = createBackoffStrategy(params.backoffProfile)
+  const telemetry = new BullMQOtel({ tracerName: QUEUE_TELEMETRY_TRACER_NAME })
 
   return params.runners.map(
     (runner) =>
@@ -197,6 +206,7 @@ export function createJobWorkers(params: CreateJobWorkersParams): readonly JobWo
           prefix: QUEUE_KEY_PREFIX,
           concurrency: runner.topology.concurrency,
           settings: { backoffStrategy },
+          telemetry,
         },
       ),
   )

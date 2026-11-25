@@ -45,6 +45,25 @@ import { AUDIT_DIFF_SCHEMA_BY_ACTION, resolveAuditSubject } from './audit-diff.s
 export const AUDIT_USER_AGENT_MAX_LENGTH = 512
 
 /**
+ * `ip` kolonuna yazılacak azami karakter sayısı (ROADMAP v0.0.17, T-028/S4,
+ * borç `:3952` — **hijyen yarısı**, `security` tur 1 L5). Değer POSIX
+ * `INET6_ADDRSTRLEN`'in (46, sonlandırıcı dahil) taşıdığı en uzun GEÇERLİ
+ * IPv6 metin gösterimi uzunluğudur (45 karakter, sonlandırıcı HARİÇ).
+ *
+ * ⚠⚠ BU SADECE UZUNLUK KIRPMASI — `security`'nin önerdiği İKİNCİ yarı
+ * (biçim DOĞRULAMASI: `X-Forwarded-For` güvenilir vekil sayısı yapılandırma
+ * hatasında istemcinin KENDİ yazdığı bir dizenin denetim izine düşmesi)
+ * BİLEREK bu sürümde YOK — `architect`'in bağlayıcı kararı: semantik
+ * doğrulama güvenilir ingress'in geldiği v0.18.0'a kadar BEKLER (bugün
+ * `AUTH_TRUSTED_PROXY_COUNT` varsayılanı 0 → bu dal sömürülemez). Aynı
+ * gerekçe `AUDIT_USER_AGENT_MAX_LENGTH` için de geçerli — istemci kontrolünde
+ * ve uzunluk sınırı olmayan bir dizeyi SAKLAMADAN ÖNCE kırpmak.
+ *
+ * ⚠ `export`: kabul kriteri testleri sınırı KOPYALAMAZ, buradan okur.
+ */
+export const AUDIT_IP_MAX_LENGTH = 45
+
+/**
  * Denetim kaydı satırı yazar. Başarısızlık YUTULMAZ — Prisma'nın fırlattığı
  * her hata (ör. RLS `WITH CHECK` reddi) çağırana aynen gider ve iş
  * yazmasıyla aynı transaction olduğu için işin TAMAMINI geri alır. "Denetim
@@ -82,7 +101,10 @@ export async function writeAuditLog(
       action: entry.action,
       subject: resolveAuditSubject(entry),
       diff,
-      ip: entry.ip,
+      // Sınır KOPYALANMAZ, `AUDIT_IP_MAX_LENGTH`'ten import edilir (borç `:3952`
+      // hijyen yarısı — `userAgent` İLE AYNI desen: `null` AYNEN `null` kalır,
+      // dolu değer sınıra kırpılır).
+      ip: entry.ip?.slice(0, AUDIT_IP_MAX_LENGTH) ?? null,
       userAgent: entry.userAgent?.slice(0, AUDIT_USER_AGENT_MAX_LENGTH) ?? null,
     },
   })

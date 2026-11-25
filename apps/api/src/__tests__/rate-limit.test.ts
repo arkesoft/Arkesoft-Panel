@@ -71,6 +71,9 @@ function runWithStore<T>(callback: () => T): T {
     // yüzden buradaki `null` değerler aşağıdaki sayaç assert'lerini
     // ETKİLEMEZ; etkilerse bu, davranış değişikliği olurdu.
     client: { ip: null, userAgent: null },
+    // ROADMAP v0.0.17, T-028/S4 EKLEMESİ (additive): ZORUNLU alan, `client`
+    // İLE AYNI gerekçe — dosyanın konusuyla ilgisiz, sabit değer yeterli.
+    traceId: 'test-trace-id-rate-limit',
   }
   return requestContextStorage.run(store, callback)
 }
@@ -190,6 +193,7 @@ describe('RateLimitGuard — birim (mock RateLimitService, Redis YOK)', () => {
       tenant: { kind: 'exempt' },
       auth: { kind: 'authenticated', userId: 'usr_victim', sessionId: 'ses_stolen' },
       client: { ip: null, userAgent: null },
+      traceId: 'test-trace-id-rate-limit',
     }
 
     await expect(
@@ -448,6 +452,9 @@ describe('RateLimitAccountResetInterceptor — birim (mock RateLimitService, Red
       // T-014/S4 (po R-PO2) — ZORUNLU alan, `?` YOK. Gerekçe dosyanın
       // yukarısındaki `runWithStore` yorumunda.
       client: { ip: null, userAgent: null },
+      // ROADMAP v0.0.17, T-028/S4 EKLEMESİ (additive): ZORUNLU alan, `client`
+      // İLE AYNI gerekçe.
+      traceId: 'test-trace-id-rate-limit',
     }
 
     requestContextStorage.run(store, () => {
@@ -494,6 +501,9 @@ describe('RateLimitAccountResetInterceptor — birim (mock RateLimitService, Red
       // T-014/S4 (po R-PO2) — ZORUNLU alan, `?` YOK. Gerekçe dosyanın
       // yukarısındaki `runWithStore` yorumunda.
       client: { ip: null, userAgent: null },
+      // ROADMAP v0.0.17, T-028/S4 EKLEMESİ (additive): ZORUNLU alan, `client`
+      // İLE AYNI gerekçe.
+      traceId: 'test-trace-id-rate-limit',
     }
     const warnSpy = vi.spyOn(store.logger, 'warn')
 
@@ -543,6 +553,9 @@ describe('RateLimitAccountResetInterceptor — birim (mock RateLimitService, Red
       // T-014/S4 (po R-PO2) — ZORUNLU alan, `?` YOK. Gerekçe dosyanın
       // yukarısındaki `runWithStore` yorumunda.
       client: { ip: null, userAgent: null },
+      // ROADMAP v0.0.17, T-028/S4 EKLEMESİ (additive): ZORUNLU alan, `client`
+      // İLE AYNI gerekçe.
+      traceId: 'test-trace-id-rate-limit',
     }
     const warnSpy = vi.spyOn(store.logger, 'warn')
 
@@ -593,6 +606,9 @@ describe('RateLimitAccountResetInterceptor — birim (mock RateLimitService, Red
       // T-014/S4 (po R-PO2) — ZORUNLU alan, `?` YOK. Gerekçe dosyanın
       // yukarısındaki `runWithStore` yorumunda.
       client: { ip: null, userAgent: null },
+      // ROADMAP v0.0.17, T-028/S4 EKLEMESİ (additive): ZORUNLU alan, `client`
+      // İLE AYNI gerekçe.
+      traceId: 'test-trace-id-rate-limit',
     }
 
     requestContextStorage.run(store, () => {

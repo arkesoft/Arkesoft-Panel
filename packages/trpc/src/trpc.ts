@@ -34,10 +34,10 @@
 // `httpBatchLink`/`batching: {enabled: true}` kullanılmaz.
 
 import { initTRPC, TRPCError } from '@trpc/server'
-import { genericTransportErrorBody, isAppError, toErrorBody } from '@arkesoft/errors'
-import type { AppError } from '@arkesoft/errors'
+import { genericTransportErrorBody, isAppError, redactDeep, toErrorBody } from '@arkesoft/errors'
+import type { AppError, AppErrorLogLevel } from '@arkesoft/errors'
 
-import type { TrpcContext } from './context/trpc-context.types.js'
+import type { TrpcContext, TrpcLoggerPort } from './context/trpc-context.types.js'
 import { httpStatusToTrpcCode } from './error-mapping/http-status-to-trpc-code.js'
 import { trpcErrorDataSchema } from './schemas/trpc-error-data.schema.js'
 import type { TrpcErrorData } from './schemas/trpc-error-data.schema.js'
@@ -56,8 +56,61 @@ const FALLBACK_REQUEST_ID = 'unknown'
  */
 const APP_ERROR_LOG_EVENT = 'trpc.error-boundary.app-error'
 
-/** `httpStatus` bu değerin ALTINDAysa kayıt `warn`, DEĞİLSE `error` seviyesindedir. */
-const SERVER_ERROR_STATUS_THRESHOLD = 500
+/**
+ * Discriminated union + exhaustive `switch`'in dışına ÇIKILDIĞINDA fırlatan
+ * yerel yardımcı (CLAUDE.md §4 "boolean bayrak yığını kurma" yasağının bu
+ * dosyadaki karşılığı). `apps/api/src/errors/assert-never.ts` ile AYNI
+ * desen — bu paket `apps/*`'e BAĞIMLI OLAMAZ (CLAUDE.md §3, bağımlılık yönü
+ * `apps/*` → `packages/*`), bu yüzden üçüncü yerel kopya
+ * (`contract/classify-contract-change.ts`'in zaten taşıdığı aynı desen).
+ */
+function assertNever(value: never, context: string): never {
+  throw new Error(`${context}: beklenmeyen değer: ${JSON.stringify(value)}`)
+}
+
+/**
+ * {@link AppErrorLogLevel}'ı enjekte edilen {@link TrpcLoggerPort}'un doğru
+ * metoduna eşler (ROADMAP v0.0.17, T-028/S9, ⭐ ORKESTRATÖR KARARI R-PO3).
+ *
+ * ⚠⚠ DEVİR: bu fonksiyon var olmadan ÖNCE seviye `appError.httpStatus >= 500`
+ * eşiğinden TÜRETİLİYORDU (`po`'nun R-PO3 bulgusu — `AppError.logLevel`
+ * doğduktan sonra bu, AYNI olgunun İKİNCİ kaynağı hâline gelmişti ve
+ * `apps/api`'nin `error-mapping.ts`'i ile `packages/trpc` FARKLI seviye
+ * yazabiliyordu). Artık TEK doğruluk kaynağı `appError.logLevel`'ın kendisi
+ * (K-A28-5/K-A28-6, `packages/errors`) — burada İKİNCİ bir eşleme AÇILMAZ,
+ * değer OLDUĞU GİBİ okunur.
+ *
+ * ⚠ `TrpcLoggerPort` (`trpc-context.types.ts`) YALNIZCA `info`/`warn`/`error`
+ * taşır — `'debug'` CLAUDE.md §4'te "yalnızca geliştirme" tanımlı ve bu
+ * portun minimal yüzeyine BİLEREK eklenmedi; bugün `apps/api/src/errors/
+ * domain`'de `logLevel: 'debug'` BEYAN EDEN SIFIR sınıf var (ölçüldü). Bu
+ * teorik dal YUKARI yuvarlanır (`info`'ya) — fail-safe yön budur (sessizce
+ * DÜŞÜRMEK değil, GÖRÜNÜRLÜĞÜ KORUMAK): bir seviye daha az acil olan `debug`
+ * hiçbir zaman `warn`/`error` operatör filtrelerini YANLIŞLIKLA tetiklemez.
+ */
+function writeAtLevel(
+  logger: TrpcLoggerPort,
+  level: AppErrorLogLevel,
+  event: string,
+  payload: Record<string, unknown>,
+): void {
+  switch (level) {
+    case 'error':
+      logger.error(event, payload)
+      return
+    case 'warn':
+      logger.warn(event, payload)
+      return
+    case 'info':
+      logger.info(event, payload)
+      return
+    case 'debug':
+      logger.info(event, payload)
+      return
+    default:
+      assertNever(level, 'trpc.ts: AppErrorLogLevel')
+  }
+}
 
 /**
  * Hata sınırından geçen bir `AppError` için YAPILANDIRILMIŞ TEK kaydı yazar.
@@ -88,10 +141,25 @@ const SERVER_ERROR_STATUS_THRESHOLD = 500
  * `trpcErrorDataSchema` ile PARSE EDİLEBİLİR olduğu için `onError` erken döner
  * ve İKİNCİ bir satır YAZMAZ.
  *
- * ⚠ SEVİYE EŞLEMESİ (CLAUDE.md §4): 5xx → `error` ("müdahale gerekir"),
- * diğer her durum → `warn` ("beklenen ama anormal"). Eşiğin ALTINDA kalan
- * bilinmeyen bir durum (teorik olarak <400) da `warn`'a düşer — fail-safe
- * yön, sessizlik DEĞİL.
+ * ⚠⚠ SEVİYE EŞLEMESİ — DEVİR (ROADMAP v0.0.17, T-028/S9, R-PO3): bu dosyanın
+ * ÖNCEKİ sürümü seviyeyi `appError.httpStatus >= 500` eşiğinden TÜRETİYORDU.
+ * `AppError.logLevel` doğduktan sonra bu, AYNI olgunun İKİNCİ kaynağı hâline
+ * geldi (`apps/api`'nin `error-mapping.ts`'i ile FARKLI seviye yazma riski,
+ * `po`'nun R-PO3 bulgusu) — artık {@link writeAtLevel} ile `appError.logLevel`
+ * OLDUĞU GİBİ okunur, burada İKİNCİ bir `code → seviye` eşlemesi YOK.
+ * ⚠ DÜZELTME (ROADMAP v0.0.17, T-028, düzeltme turu 1 — yorum BAYATTI,
+ * `solid`/Orkestratör ÖLÇTÜ): aşağıdaki yorumun önceki hâli `apps/api/src/
+ * errors/domain`'deki `JOB_HANDLER_NOT_REGISTERED`, `JOB_IDENTIFIER_MISSING`,
+ * `JOB_TYPE_NOT_REGISTERED`, `REQUEST_CONTEXT_UNAVAILABLE`,
+ * `TENANT_RESOLUTION_FAILED` sınıflarının `logLevel`'ı AÇIKÇA BEYAN ETMEDİĞİNİ
+ * ve bu yüzden ESKİ `'error'` eşlemesinden YENİ `'warn'`a DÜŞTÜĞÜNÜ
+ * söylüyordu — bu BAYATTI. Ölçüldü: BEŞİ DE `logLevel: 'error'`'ı AÇIKÇA
+ * BEYAN EDER (`job-handler-not-registered.error.ts:52`,
+ * `job-identifier-missing.error.ts:37`, `job-type-not-registered.error.ts:39`,
+ * `request-context-unavailable.error.ts:29`,
+ * `tenant-resolution-failed.error.ts:32`) ⇒ gerileme YOK, davranış ESKİ
+ * eşlemeyle (`httpStatus >= 500` → `error`) BİREBİR UYUMLU kalır. Kod
+ * DEĞİŞMİYOR, bu yalnızca yorumun gerçeği yansıtmasıdır.
  *
  * ⚠ ALAN SEÇİMİ (CLAUDE.md §4 "asla loglanmaz" listesi):
  *   · `requestId`/`tenantId`/`userId` BURADA TEKRARLANMAZ — enjekte edilen
@@ -104,13 +172,23 @@ const SERVER_ERROR_STATUS_THRESHOLD = 500
  *     ve denetim izi aktörü yanlış atfedemez. Nesteleme ayrıca somut logger'ın
  *     joker redaction yollarının (`*.token` vb.) kapsamına girer — ikinci
  *     savunma hattı.
+ *   · ⚠⚠ `AppError.context` artık {@link redactDeep} ÜZERİNDEN GEÇİRİLİR
+ *     (ROADMAP v0.0.17, T-028/S9, borç `:3957`/L-11). GEREKÇE: bu sürümden
+ *     itibaren `AppError.context` İLK KEZ süreç dışına (Sentry zarfı, S5'in
+ *     `captureAppError`'ı `error-mapping.ts`'in `logContext`'iyle AYNI
+ *     `context` değerini okur) taşınıyor — bugünkü "ulaşılamaz" sızıntı
+ *     sınıfı "ulaşılabilir" hâle geldiği için `redactDeep` ÜÇÜNCÜ savunma
+ *     katmanı olarak burada da (pino `redact.paths`'in YANINDA, ONUN YERİNE
+ *     DEĞİL) uygulanır. `redactDeep` GİRDİYİ MUTASYONA UĞRATMAZ, YENİ bir
+ *     değer döner — `appError.context`'in kendisi değişmeden kalır.
  *   · ⚠ ALAN ADI İCAT EDİLMEDİ, HİZALANDI (ölçüldü): `apps/api`'nin REST hata
  *     filtresi AYNI bilgiyi ZATEN `{code, isRetryable, context}` biçiminde
  *     yazıyor (`errors/error-mapping.ts`'in `logContext`'i). İlk taslak
  *     `errorContext` adını kullanıyordu; aynı olgu için İKİNCİ bir alan adı,
  *     operatör sorgularını her iki adı da bilmek zorunda bırakırdı. Üç alan
- *     birebir aynı, `httpStatus` ise tRPC yolunun EKİDİR (seviye seçiminin
- *     girdisi — kaydı tek başına okunabilir yapar).
+ *     birebir aynı, `httpStatus` ise tRPC yolunun EKİDİR (operatör sorgusunu
+ *     tek başına okunabilir yapar — seviyenin KENDİSİ artık `appError.
+ *     logLevel`'dan gelir, `httpStatus`'tan TÜRETİLMEZ).
  *   · `AppError.publicDetails`/`httpHeaders` OKUNMAZ; ham mesaj ve yığın izi
  *     BU kayda GİRMEZ (onlar yalnızca sınıflandırılamayan hata dalının işidir).
  */
@@ -119,15 +197,10 @@ function logAppError(appError: AppError, ctx: TrpcContext): void {
     code: appError.code,
     httpStatus: appError.httpStatus,
     isRetryable: appError.isRetryable,
-    context: appError.context,
+    context: redactDeep(appError.context),
   }
 
-  if (appError.httpStatus >= SERVER_ERROR_STATUS_THRESHOLD) {
-    ctx.logger.error(APP_ERROR_LOG_EVENT, payload)
-    return
-  }
-
-  ctx.logger.warn(APP_ERROR_LOG_EVENT, payload)
+  writeAtLevel(ctx.logger, appError.logLevel, APP_ERROR_LOG_EVENT, payload)
 }
 
 /**
@@ -244,8 +317,13 @@ const t = initTRPC.context<TrpcContext>().create({
  *
  * **EKLEME (ROADMAP v0.0.14, T-014 düzeltme turu 1 — `solid` M-1 +
  * `security` medium #1):** bu middleware artık tanıdığı her `AppError` için
- * {@link logAppError} ile SINIRDA TEK bir yapılandırılmış kayıt yazar
- * (4xx → `warn`, 5xx → `error`). ⚠ TEL GÖVDESİ DEĞİŞMEDİ: `toTrpcError`'un
+ * {@link logAppError} ile SINIRDA TEK bir yapılandırılmış kayıt yazar. ⚠
+ * DÜZELTME (ROADMAP v0.0.17, T-028, düzeltme turu 1 — yorum BAYATTI): seviye
+ * artık "(4xx → `warn`, 5xx → `error`)" EŞİĞİYLE TÜRETİLMEZ — bu ifade bu
+ * sürümde SİLİNEN `SERVER_ERROR_STATUS_THRESHOLD` kaynağının tarifiydi.
+ * {@link writeAtLevel} TEK doğruluk kaynağı olan `appError.logLevel`'ı
+ * OLDUĞU GİBİ yazar (K-A28-5/K-A28-6, R-PO3); ayrıntı `logAppError`'ın
+ * "SEVİYE EŞLEMESİ — DEVİR" bölümündedir. ⚠ TEL GÖVDESİ DEĞİŞMEDİ: `toTrpcError`'un
  * ürettiği `TRPCError`/`TrpcErrorData` ve dolayısıyla `errorFormatter`'ın
  * çıktısı BİREBİR aynıdır — log yolu ile tel yolu BAĞIMSIZDIR ve bu ekleme
  * yalnızca gözlemlenebilirlik eklemiştir. Gerekçenin tamamı `logAppError`'ın

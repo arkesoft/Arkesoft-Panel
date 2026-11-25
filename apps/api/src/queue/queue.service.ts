@@ -23,6 +23,23 @@
 // ⚠ İŞ TÜRÜNE ÖZGÜ DALLANMA YOK: her şey `JobDefinition` verisinden okunur
 // (`name`, `payloadSchema`, `attempts`). Bu dosya hiçbir iş türünün adını
 // bilmez.
+//
+// ⚠⚠ KUYRUK TRACE YAYILIMI (ROADMAP v0.0.17, T-028/S7, architect K-A28-1) —
+// SAHTECİLİK YAPISAL OLARAK İMKÂNSIZ: `enqueue` korelasyon alanını (`traceId`)
+// payload PARSE EDİLMEDEN ÖNCE ve EN SON birleştirir, yani çağıranın
+// göndermiş olabileceği bir `traceId` HER ZAMAN ÜZERİNE YAZILIR
+// (CLAUDE.md §7 md 6: "girdiden gelen hiçbir id'ye güvenilmez"). Kaynak
+// SIRASI: (1) `tryGetRequestContext()?.traceId` — bu istek ALS'de HÂLÂ
+// AKTİFSE, `RequestContextMiddleware`'in (S4) istek başında YAZDIĞI TEK
+// değer; AYNI isteğin HTTP log kaydı, bu enqueue'nun DB onayı logu ve
+// (BullMQ üzerinden) worker'ın iş logu AYNI kimliği taşır. (2) Aktif bir
+// istek bağlamı YOKSA (ör. bir zamanlayıcı/arka plan tetikleyicisi) —
+// `getCurrentTraceId()`'in Katman 1 yerel üretimi (`observability/trace-id.ts`,
+// S4'ün dosyası, BURADAN YALNIZCA OKUNUR). `getCurrentTraceId()` BURADA
+// DOĞRUDAN tekrar ÇAĞRILMAZ: aktif bir OTel span YOKKEN her çağrı YENİ bir
+// rastgele kimlik üretir (dosya başı yorumu) — istek bağlamı varken o
+// fonksiyonu ikinci kez çağırmak, middleware'in ALS'ye yazdığı değerden
+// FARKLI bir `traceId` üretme riski taşırdı; bu yüzden ÖNCE ALS okunur.
 
 import { Inject, Injectable } from '@nestjs/common'
 import type { Prisma } from '@arkesoft/db'
@@ -31,6 +48,8 @@ import type { Queue } from 'bullmq'
 import { JobPayloadInvalidError } from '../errors/domain/job-payload-invalid.error.js'
 import { JobTypeNotRegisteredError } from '../errors/domain/job-type-not-registered.error.js'
 import { ROOT_LOGGER } from '../logging/logging.tokens.js'
+import { getCurrentTraceId } from '../observability/trace-id.js'
+import { tryGetRequestContext } from '../request-context/request-context.accessors.js'
 import type { JobDefinition } from './job-definition.js'
 import type { JobPayloadBase } from './job-payload.base.js'
 import {
@@ -40,6 +59,27 @@ import {
 } from './queue-constants.js'
 import { JOB_ENQUEUED_LOG_EVENT } from './queue-log-events.js'
 import { JOB_QUEUE_REGISTRY, QUEUED_JOB_WRITER } from './queue.tokens.js'
+
+/**
+ * `value`'nun DÜZ bir nesne (dizi/`null`/fonksiyon DEĞİL) olduğunu daraltır —
+ * korelasyon birleştirmesi (`{ ...payload, ...correlation }`) SADECE bu dalda
+ * güvenlidir; aksi hâlde (dizi/ilkel/`null`) `payload` DEĞİŞTİRİLMEDEN
+ * şemaya geçirilir ve zaten reddedilir (ör. `tenantId` eksik).
+ */
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Bu `enqueue` çağrısı için TEK kaynaklı korelasyon alanı. Dönüş tipi
+ * `Readonly<{ traceId: string }>`: `candidate`'ın İÇİNE spread edilecek,
+ * `payload`'ın KENDİSİ değiştirilmeyecek.
+ */
+function resolveEnqueueCorrelation(): Readonly<{ traceId: string }> {
+  const activeTraceId = tryGetRequestContext()?.traceId
+
+  return { traceId: activeTraceId ?? getCurrentTraceId() }
+}
 
 /**
  * Platformun kullandığı `Queue` daraltması. Jenerikleri AÇIKÇA veriyoruz:
@@ -149,7 +189,16 @@ export class QueueService {
       throw new JobTypeNotRegisteredError(definition.name)
     }
 
-    const parseResult = definition.payloadSchema.safeParse(payload)
+    // ⭐⭐ Korelasyon PARSE'TAN ÖNCE ve EN SON birleştirilir (dosya başı
+    // yorumu): `payload` DÜZ bir nesneyse çağıranın alanlarının ÜZERİNE
+    // `correlation.traceId` yazılır — sahtecilik burada YAPISAL OLARAK
+    // engellenir, ikinci bir parse YOKTUR. `payload` düz bir nesne DEĞİLSE
+    // (dizi/ilkel/`null`) DEĞİŞTİRİLMEDEN şemaya geçirilir ve zaten
+    // reddedilir (taban şema bir obje ister).
+    const correlation = resolveEnqueueCorrelation()
+    const candidate: unknown = isPlainRecord(payload) ? { ...payload, ...correlation } : payload
+
+    const parseResult = definition.payloadSchema.safeParse(candidate)
 
     if (!parseResult.success) {
       // Yalnızca ALAN YOLLARI — Zod'un ham mesajı ve doğrulanan DEĞER
@@ -189,7 +238,17 @@ export class QueueService {
     })
 
     this.logger.info(
-      { tenantId: parsedPayload.tenantId, jobId, jobName: definition.name },
+      {
+        tenantId: parsedPayload.tenantId,
+        jobId,
+        jobName: definition.name,
+        // ⭐ "DB halkası" (AC-53, HTTP → DB → kuyruk): bu log, Postgres'teki
+        // `queued` satırı YAZILDIKTAN SONRA (ADIM 1) üretilir ve merkezi
+        // korelasyonun (`resolveEnqueueCorrelation()`) ürettiği `traceId`'yi
+        // taşır — alan ŞEMADA opsiyonel (eski payload'lar), ama bu akışta
+        // `correlation` HER ZAMAN doldurduğu için pratikte asla boş değildir.
+        traceId: parsedPayload.traceId ?? null,
+      },
       JOB_ENQUEUED_LOG_EVENT,
     )
 

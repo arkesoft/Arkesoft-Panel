@@ -22,6 +22,14 @@
 // ⚠ Bu ara yazılım `ip`/`userAgent`'ı HİÇBİR log çağrısına geçirmez
 // (CLAUDE.md §4) — yalnızca ALS deposuna yazar; tek tüketici denetim kaydı
 // yazma kapısıdır.
+//
+// GÜNCELLEME (ROADMAP v0.0.17, T-028/S4, architect K-A28-1): bu ara yazılım
+// artık `RequestContext.traceId`'yi de yazar ve o alanın TEK YAZICISIDIR —
+// `client` İLE AYNI desen (`readonly`, istek ömrünün başında bir kez).
+// `getCurrentTraceId()` (`observability/trace-id.ts`) BURADA çağrılır ki
+// `logger`'ın İLK child'ı (`requestId` + `traceId`) ve `x-trace-id` yanıt
+// başlığı AYNI değeri taşısın — iki ayrı çağrı iki farklı yerel-üretim
+// sonucu (Katman 2 kapalıyken) döndürebilirdi.
 
 import { Inject, Injectable } from '@nestjs/common'
 import type { NestMiddleware } from '@nestjs/common'
@@ -33,6 +41,7 @@ import type { ApiEnv } from '../config/api-env.js'
 import { API_ENV } from '../config/config.tokens.js'
 import type { HttpRequestLike, HttpResponseLike } from '../http/http-request.types.js'
 import { ROOT_LOGGER } from '../logging/logging.tokens.js'
+import { getCurrentTraceId } from '../observability/trace-id.js'
 import { requestContextStorage } from './request-context.storage.js'
 import type { RequestClientContext, RequestContext } from './request-context.types.js'
 import { resolveIncomingRequestId } from './request-id.js'
@@ -64,14 +73,19 @@ export class RequestContextMiddleware implements NestMiddleware<HttpRequestLike,
   use(req: ClientAwareRequest, res: HttpResponseLike, next: () => void): void {
     const requestId = resolveIncomingRequestId(req.headers['x-request-id'])
     const client: RequestClientContext = this.resolveClientContext(req)
+    // ⚠⚠ ÇAĞIRANDAN GELEN HİÇBİR DEĞER KABUL EDİLMEZ (K-A28-1, bağlayıcı) —
+    // istemcinin gönderdiği `traceparent` OKUNMAZ; `getCurrentTraceId()`
+    // yalnızca OTel'in AKTİF span bağlamına (Katman 2 açıksa) veya yerel
+    // üretime bakar. Sahtecilik bu yüzden yapısal olarak imkânsız.
+    const traceId = getCurrentTraceId()
 
     const store: RequestContext = {
       requestId,
       receivedAt: Date.now(),
-      // İLK değer: yalnızca `requestId` bağlamalı child logger. Tenant
+      // İLK değer: `requestId` + `traceId` bağlamalı child logger. Tenant
       // çözülünce `TenantContextMiddleware` (ST-5) bu alanı `tenantId`
       // bağlamalı bir child ile DEĞİŞTİRİR (tek yazıcı, K-A7).
-      logger: this.rootLogger.child({ requestId }),
+      logger: this.rootLogger.child({ requestId, traceId }),
       tenant: { kind: 'pending' },
       // ROADMAP v0.0.5, T-006/S6 EKLEMESİ (additive): `tenant` İLE AYNI
       // desen — `AuthContextMiddleware` (`TenantContextMiddleware`'den
@@ -82,12 +96,20 @@ export class RequestContextMiddleware implements NestMiddleware<HttpRequestLike,
       // bir kez. Sonradan güncellenecek bir "pending" hâli YOK (bkz. tip
       // dosyasının gerekçesi).
       client,
+      // ROADMAP v0.0.17, T-028/S4 EKLEMESİ (additive): `client` İLE AYNI
+      // desen — `readonly`, TEK yazıcı BURASI.
+      traceId,
     }
 
     // AC9: yanıt başlığı handler'dan ÖNCE yazılır — hata yanıtları dahil HER
     // yanıt bu başlığı taşır (`AppExceptionFilter` ikinci savunma olarak
     // yeniden yazsa da aynı değeri yazdığı için zararsızdır).
     res.setHeader('x-request-id', requestId)
+    // AC-54a: BAŞARI yanıtı yüzeyi burada; HATA yanıtı yüzeyi
+    // `AppExceptionFilter`'ın işi (S8, ayrı alt görev) — iki farklı yazma
+    // yüzeyi, aynı değer (bu middleware'in ürettiği `traceId`, ALS üzerinden
+    // okunur).
+    res.setHeader('x-trace-id', traceId)
 
     requestContextStorage.run(store, next)
   }

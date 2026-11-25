@@ -8,6 +8,12 @@
 //     tenantId ile sorgu" sınıfını YAPISAL olarak imkansız kılan mekanizma
 //     budur — bir geliştirici `TenantGuard`'ı atlayıp doğrudan `getTenantContext()`
 //     çağırırsa sessizce `undefined` almaz, 500 alır ve hata hemen görünür olur.
+//
+// `logLevel: 'error'` (ROADMAP v0.0.17, T-028/S9, R-PO3 devrinin bulduğu
+// davranış kayması — `architect`/S8 bu sınıfı DEĞERLENDİRMEMİŞTİ): bu dosyanın
+// KENDİ dosya başı yorumu bunu zaten "PROGRAMLAMA HATASI" diye adlandırıyor —
+// varsayılan `'warn'`ın "beklenen ama anormal" tanımına hiç UYMUYOR, CLAUDE.md
+// §4'ün "müdahale gerekir" (`error`) tanımının birebir karşılığı.
 
 import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
@@ -20,6 +26,7 @@ export class RequestContextUnavailableError extends AppError {
       // `exactOptionalPropertyTypes`: bkz. tenant-not-found.error.ts'teki aynı yorum.
       ...(context !== undefined ? { context } : {}),
       isRetryable: false,
+      logLevel: 'error',
     })
   }
 }

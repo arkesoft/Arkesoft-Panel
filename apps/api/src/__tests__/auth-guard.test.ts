@@ -45,6 +45,9 @@ function tenantHost(slug: string): string {
 }
 
 const REQUEST_ID = 'req_test0000000000000000000002'
+// ROADMAP v0.0.17, T-028/S4 EKLEMESİ (additive) — `client` İLE AYNI gerekçe:
+// senaryoların konusu kimlik/kiracı dallarıdır, `traceId` ilgisizdir.
+const TEST_TRACE_ID = 'test0000000000000000000000000002'
 const SIGN_UP_PASSWORD = 'arkesoft-s6-guard-password-123'
 
 function uniqueEmail(): string {
@@ -81,13 +84,14 @@ const GUARD_TEST_CLIENT = { ip: null, userAgent: null } as const satisfies Reque
  * eklendiğinde yine altı yerin güncellenmesini gerektirirdi.
  */
 function runWithStore<T>(
-  store: Omit<RequestContext, 'requestId' | 'receivedAt' | 'client'>,
+  store: Omit<RequestContext, 'requestId' | 'receivedAt' | 'client' | 'traceId'>,
   callback: () => T,
 ): T {
   const fullStore: RequestContext = {
     requestId: REQUEST_ID,
     receivedAt: Date.now(),
     client: GUARD_TEST_CLIENT,
+    traceId: TEST_TRACE_ID,
     ...store,
   }
   return requestContextStorage.run(fullStore, callback)

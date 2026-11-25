@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { AppError, isAppError } from '../app-error.js'
+import { toErrorBody } from '../error-body.js'
 
 // Test amaçlı somut alt sınıflar — AppError `abstract`, doğrudan örneklenemez.
 // `exactOptionalPropertyTypes` yüzünden context'li/context'siz çağrıyı ayrı
@@ -50,6 +51,23 @@ class SampleErrorWithHttpHeaders extends AppError {
       httpStatus: 429,
       userMessageKey: 'errors.sample.rateLimited',
       httpHeaders: { 'Retry-After': '60' },
+    })
+  }
+}
+
+// K-A28-5 (ROADMAP v0.0.17, T-028/S3) — bir alt sınıfın `logLevel`'ı AÇIKÇA
+// `'error'` beyan ettiği durum. `isRetryable`'DAN TÜRETİLMEDİĞİNİ ayırt etmek
+// için BİLEREK `isRetryable: true` ile BİRLİKTE verilir — ikisinin bağımsız
+// alanlar olduğu, biri true/false olsa da diğerinin ondan ETKİLENMEDİĞİ
+// görülsün.
+class SampleErrorWithExplicitLogLevel extends AppError {
+  constructor() {
+    super({
+      code: 'SAMPLE_EXPLICIT_LOG_LEVEL',
+      httpStatus: 503,
+      userMessageKey: 'errors.sample.explicitLogLevel',
+      isRetryable: true,
+      logLevel: 'error',
     })
   }
 }
@@ -109,10 +127,34 @@ describe('AppError', () => {
     expect(error).toBeInstanceOf(AppError)
   })
 
-  it('logLevel alanı taşımaz (v0.0.17 öncesi — architect K-A2 bağlayıcı kararı)', () => {
+  // DEVİR (ROADMAP v0.0.17, T-028/S3, architect K-A28-6): aşağıdaki üç test,
+  // bu dosyanın ESKİ ("logLevel alanı taşımaz, v0.0.17 öncesi") pinini
+  // TERSİNE ÇEVİRİR. Bu CLAUDE.md §10 madde 6 (eşik düşürme/skip/referans
+  // güncelleme) İHLALİ DEĞİLDİR — eski testin KENDİ BAŞLIĞI devri tarihiyle
+  // ilan ediyordu ve `app-error.ts`'in dosya başı yorumu aynı devri
+  // "additive eklenecek" diye ZATEN yazmıştı. Kaldırılan tek garanti
+  // (`logLevel` YOK) ÜÇ yeni, daha güçlü pinle değiştiriliyor.
+  it('logLevel alanı verilmediğinde varsayılan olarak "warn" taşır (v0.0.17 sonrası — K-A28-5, DEVİR 1/3)', () => {
     const error = new SampleErrorWithoutContext()
 
-    expect('logLevel' in error).toBe(false)
+    expect(error.logLevel).toBe('warn')
+  })
+
+  it("logLevel açıkça verildiğinde birebir taşınır — isRetryable'dan TÜRETİLMEZ (K-A28-5, DEVİR 2/3)", () => {
+    const error = new SampleErrorWithExplicitLogLevel()
+
+    expect(error.logLevel).toBe('error')
+    // Bağımsız eksen kanıtı: isRetryable true olsa da logLevel ondan
+    // türetilmiyor — ikisi ayrı ayrı beyan edildi.
+    expect(error.isRetryable).toBe(true)
+  })
+
+  it('logLevel tel sözleşmesine (toErrorBody) GİRMEZ — context/httpHeaders ile AYNI desen (K-A28-6, DEVİR 3/3)', () => {
+    const error = new SampleErrorWithExplicitLogLevel()
+
+    const body = toErrorBody(error, 'req_abc123')
+
+    expect('logLevel' in body).toBe(false)
   })
 
   it('httpHeaders verilmediğinde undefined kalır (v0.0.5, T-006/S3)', () => {

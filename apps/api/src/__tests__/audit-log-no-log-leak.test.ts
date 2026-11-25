@@ -43,6 +43,55 @@ const TRUSTED_ORIGIN = new URL(BASE_ENV.AUTH_BASE_URL).origin
  */
 const FORBIDDEN_LOG_FIELDS = ['ip', 'userAgent', 'diff'] as const
 
+/**
+ * `value` içinde (üst seviyede VEYA herhangi bir derinlikte iç içe, nesne/dizi
+ * farketmeksizin) `forbiddenFields`'teki bir alan adıyla eşleşen İLK yolu
+ * bulur; bulamazsa `undefined` döner (ROADMAP v0.0.17, T-028/S9, borç
+ * :3961/L-12).
+ *
+ * ⚠⚠ DEVİR: bu taramanın ÖNCEKİ hâli yalnızca ÜST SEVİYEYİ (`Object.hasOwn(
+ * record, …)`) görüyordu — bir `AppError.context`'in İÇİNE nestelenmiş bir
+ * `diff`/`ip`/`userAgent` alanı bu taramayı SESSİZCE ATLATIRDI. Artık her
+ * nesne/dizi özyinelemeli gezilir.
+ *
+ * ⚠ Sonsuz özyinelemeye karşı derinlik sınırı/devirli referans koruması
+ * BİLEREK YOK (`@arkesoft/errors`'un `redactDeep`'inin AKSİNE): bu fonksiyonun
+ * girdisi her zaman `JSON.parse(NDJSON satırı)`'nın çıktısıdır — JSON'da
+ * devirli referans YAPISAL OLARAK İMKÂNSIZDIR (serileştirme anında zaten
+ * fırlardı), bu yüzden burada taşınmayan bir koruma eksik DEĞİL, gereksizdir.
+ */
+function findForbiddenFieldDeep(
+  value: unknown,
+  forbiddenFields: readonly string[],
+  path = '$',
+): string | undefined {
+  if (value === null || typeof value !== 'object') {
+    return undefined
+  }
+
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      const found = findForbiddenFieldDeep(item, forbiddenFields, `${path}[${index.toString()}]`)
+      if (found !== undefined) {
+        return found
+      }
+    }
+    return undefined
+  }
+
+  for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+    if (forbiddenFields.includes(key)) {
+      return `${path}.${key}`
+    }
+    const found = findForbiddenFieldDeep(nestedValue, forbiddenFields, `${path}.${key}`)
+    if (found !== undefined) {
+      return found
+    }
+  }
+
+  return undefined
+}
+
 function createMemoryLogStream(): {
   readonly stream: Writable
   readonly getRecords: () => Record<string, unknown>[]
@@ -204,16 +253,16 @@ describe('AC6 — ip/userAgent/diff yapılandırılmış loga GEÇMEZ (gerçek i
       // CLAUDE.md §7 madde 13: kiracı kimliği log kayıtlarında VAR.
       expect(requestRecords.every((record) => record['tenantId'] === tenantId)).toBe(true)
 
-      // ⚠ Alan ADI taraması TÜM kayıtlar üzerinde (yalnızca istek kapsamlı
-      // olanlar değil): üç alanın hiçbiri hiçbir log satırında alan olarak
-      // görünmüyor.
+      // ⚠⚠ Alan ADI taraması TÜM kayıtlar üzerinde, DERİNLEMESİNE (L-12):
+      // yalnızca üst seviye değil, her kaydın İÇİNE nestelenmiş HER alan da
+      // taranır — üç alanın hiçbiri hiçbir log satırında, hiçbir derinlikte
+      // alan olarak GÖRÜNMÜYOR.
       for (const record of records) {
-        for (const forbiddenField of FORBIDDEN_LOG_FIELDS) {
-          expect(
-            Object.hasOwn(record, forbiddenField),
-            `log kaydında yasaklı alan var: ${forbiddenField} (${JSON.stringify(record)})`,
-          ).toBe(false)
-        }
+        const forbiddenPath = findForbiddenFieldDeep(record, FORBIDDEN_LOG_FIELDS)
+        expect(
+          forbiddenPath,
+          `log kaydında yasaklı alan var (derinlemesine, yol: ${String(forbiddenPath)}): ${JSON.stringify(record)}`,
+        ).toBeUndefined()
       }
 
       // Alan adı taraması tek başına yetmez — DEĞER de hiçbir yere, hiçbir
@@ -228,4 +277,63 @@ describe('AC6 — ip/userAgent/diff yapılandırılmış loga GEÇMEZ (gerçek i
     },
     120_000,
   )
+})
+
+// ROADMAP v0.0.17, T-028/S9, borç :3961/L-12 — `findForbiddenFieldDeep`'in
+// KENDİSİNİN doğruluğu. İKİ YÖNLÜ MUTASYON KANITI (handoff raporunda
+// koşturularak doğrulandı, bu dosyada KALICI OLARAK TUTULMAZ):
+// `findForbiddenFieldDeep`'in özyinelemeli dalı (`Array.isArray` dalından
+// SONRAKİ `for...of` döngüsünün ikinci `findForbiddenFieldDeep` çağrısı)
+// GEÇİCİ olarak kaldırılıp yalnızca ÜST SEVİYE anahtarlara bakacak hâle
+// getirildi → aşağıdaki "iç içe" testi KIRMIZI göründü (nestelenmiş `diff`
+// YAKALANAMADI) → `Edit` ile geri alındı → yeşile döndü. Vacuity kanıtı
+// budur; derinlemesine tarama GERÇEKTEN çalışıyor, üst seviye tarama ile
+// AYNI sonucu VERMİYOR.
+describe('findForbiddenFieldDeep — L-12 derinlemesine tarayıcının kendi doğruluğu', () => {
+  it('üst seviyedeki yasaklı alanı yakalar (eski davranışla UYUMLU — regresyon yok)', () => {
+    expect(
+      findForbiddenFieldDeep({ diff: { before: 'a', after: 'b' } }, FORBIDDEN_LOG_FIELDS),
+    ).toBe('$.diff')
+  })
+
+  it(
+    'İÇ İÇE (nested) bir yasaklı alanı yakalar — ÜST SEVİYE tarama bunu ' +
+      'KAÇIRIRDI (L-12nin varlık sebebi)',
+    () => {
+      const nestedLeak = {
+        msg: 'örnek kayıt',
+        requestId: 'req-l12-proof',
+        context: { nested: { diff: { before: 'a', after: 'b' } } },
+      }
+
+      expect(findForbiddenFieldDeep(nestedLeak, FORBIDDEN_LOG_FIELDS)).toBe('$.context.nested.diff')
+    },
+  )
+
+  it('dizi içindeki nesnelerin iç içe yasaklı alanlarını da yakalar', () => {
+    const nestedInArray = {
+      items: [{ safe: 'x' }, { context: { ip: '203.0.113.5' } }],
+    }
+
+    expect(findForbiddenFieldDeep(nestedInArray, FORBIDDEN_LOG_FIELDS)).toBe(
+      '$.items[1].context.ip',
+    )
+  })
+
+  it('yasaklı alan YOKSA undefined döner (pozitif kontrol — vakumla her şeyi bulgu saymaz)', () => {
+    const clean = {
+      msg: 'örnek kayıt',
+      requestId: 'req-l12-clean',
+      context: { nested: { safeField: 'x', again: { stillSafe: true } } },
+    }
+
+    expect(findForbiddenFieldDeep(clean, FORBIDDEN_LOG_FIELDS)).toBeUndefined()
+  })
+
+  it('birincil tipleri (string/number/boolean/null/undefined) gezmeden undefined döner', () => {
+    expect(findForbiddenFieldDeep('diff', FORBIDDEN_LOG_FIELDS)).toBeUndefined()
+    expect(findForbiddenFieldDeep(42, FORBIDDEN_LOG_FIELDS)).toBeUndefined()
+    expect(findForbiddenFieldDeep(null, FORBIDDEN_LOG_FIELDS)).toBeUndefined()
+    expect(findForbiddenFieldDeep(undefined, FORBIDDEN_LOG_FIELDS)).toBeUndefined()
+  })
 })

@@ -46,6 +46,9 @@ function runWithPendingTenant(callback: () => void): void {
     // eklenir ve her kurucu DOLDURULUR. Bu testin konusu `tenant` dalı,
     // istemci alanları değil → iki `null` yeterli.
     client: { ip: null, userAgent: null },
+    // ROADMAP v0.0.17, T-028/S4 EKLEMESİ (additive): ZORUNLU alan, `client`
+    // İLE AYNI gerekçe.
+    traceId: 'test-trace-id-tenant-guard',
   }
   requestContextStorage.run(store, callback)
 }

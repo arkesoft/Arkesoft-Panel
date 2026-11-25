@@ -13,7 +13,7 @@ import { pino } from 'pino'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 
-import { maskEmail, PINO_REDACT_PATHS } from '../redaction.js'
+import { maskEmail, PINO_REDACT_PATHS, redactDeep, SECRET_FIELD_NAMES } from '../redaction.js'
 
 const SENTINEL = 'X-SENTINEL-9f3a'
 
@@ -261,5 +261,247 @@ describe('PINO_REDACT_PATHS — sentinel probu (gerçek pino örneği, T-016/S8)
     // yalnızca zararsız satırda (tam olarak bir kez).
     const occurrences = fullLogText.split(SENTINEL).length - 1
     expect(occurrences).toBe(1)
+  })
+})
+
+// ROADMAP v0.0.17, T-028/S3, architect K-A28-5 — AC-63: `PINO_REDACT_PATHS`
+// artık `SECRET_FIELD_NAMES`'ten TÜRETİLİYOR (elle bakımlanan ikinci bir liste
+// DEĞİL). Bu süit, türetimin T-016/T-017 sonrasında elle bakımlanan 28
+// girdilik listenin (po'nun R-PO1 ölçümü — architect'in "29" iddiası YANLIŞTI)
+// TAMAMINI (süperküme olarak) kapsadığını doğrular.
+//
+// ⚠⚠ `po`'nun dersi: pin SAYIYA değil `PINO_REDACT_PATHS.length`'e dayanmalı
+// (borç :3942'nin "sayıyı kopyalama, kaynağa atıf ver" dersinin yenisi). Bu
+// yüzden aşağıda `28` gibi sabit bir sayı YOK — karşılaştırma iki DİZİNİN
+// (bu testteki tarihî anlık görüntü ile bugünkü türetilmiş liste) birbirine
+// göre `.length`'i ve üyelikleri üzerinden yapılıyor.
+describe('PINO_REDACT_PATHS — AC-63: türetilen liste, refactor-öncesi listenin süperkümesi', () => {
+  // Bu dizi, SECRET_FIELD_NAMES'e taşınmadan ÖNCE `redaction.ts`'te ELLE
+  // bakımlanan son hâlin (T-017 sonrası) BİREBİR anlık görüntüsüdür —
+  // regresyon pini bu yüzden TARİHÎ bir referansa ihtiyaç duyar; bu, S3'ün
+  // kendisinin açtığı tek istisnai "ikinci liste"dir (geleceğe doğru
+  // büyümez, yalnızca geçmişe doğru bir kıyas noktasıdır).
+  const PRE_REFACTOR_SNAPSHOT: readonly string[] = [
+    'cookie',
+    'authorization',
+    'set-cookie',
+    'req.headers.cookie',
+    'req.headers.authorization',
+    'req.headers["set-cookie"]',
+    'res.headers.cookie',
+    'res.headers.authorization',
+    'res.headers["set-cookie"]',
+    'password',
+    'token',
+    'accessToken',
+    'refreshToken',
+    'apiKey',
+    'secret',
+    '*.password',
+    '*.token',
+    'sessionToken',
+    'verificationToken',
+    'resetToken',
+    'passwordHash',
+    '*.sessionToken',
+    '*.passwordHash',
+    'totpURI',
+    'backupCodes',
+    '*.secret',
+    'ipAddress',
+    '*.ipAddress',
+  ]
+
+  it('türetilmiş liste refactor-öncesi anlık görüntünün HER girdisini içerir', () => {
+    for (const path of PRE_REFACTOR_SNAPSHOT) {
+      expect(PINO_REDACT_PATHS).toContain(path)
+    }
+  })
+
+  it('türetilmiş listenin uzunluğu refactor-öncesi anlık görüntüden KISA DEĞİLDİR (süperküme)', () => {
+    expect(PINO_REDACT_PATHS.length).toBeGreaterThanOrEqual(PRE_REFACTOR_SNAPSHOT.length)
+  })
+
+  it('her girdi SECRET_FIELD_NAMES kaynağından türetildiği için benzersizdir (tekrar yok)', () => {
+    expect(new Set(PINO_REDACT_PATHS).size).toBe(PINO_REDACT_PATHS.length)
+  })
+})
+
+// ROADMAP v0.0.17, T-028/S3, borç :3957/L-11 — AC-59: `redactDeep()` iki yönlü
+// mutasyon kanıtı. `AppError.context` bu sürümde İLK KEZ süreç dışına
+// (Sentry zarfı) taşındığı için bu fonksiyon zarf sınırındaki ÜÇÜNCÜ savunma
+// katmanıdır.
+describe('redactDeep — AC-59', () => {
+  const DEEP_SENTINEL = 'X-DEEP-SENTINEL-4b7c'
+
+  it('derinlik-3teki bir sır alanını düz metin olarak SIZDIRMAZ (pozitif kontrol dahil)', () => {
+    const input = {
+      level1: {
+        level2: {
+          level3: {
+            password: DEEP_SENTINEL,
+            harmlessField: DEEP_SENTINEL,
+          },
+        },
+      },
+    }
+
+    const result = redactDeep(input)
+    const serialized = JSON.stringify(result)
+
+    // Pozitif kontrol — ölçüm zinciri GERÇEKTEN çalışıyor; sentinel zararsız
+    // alanda hâlâ GÖRÜNÜYOR (yalnızca sır alanı redakte edildi, her şey
+    // vakumla silinmedi).
+    expect(serialized).toContain(`"harmlessField":"${DEEP_SENTINEL}"`)
+    expect(serialized).toContain('"password":"[redacted]"')
+    // Ham sentinel, redakte edilen alanın DEĞERİ olarak hiçbir yerde görünmez
+    // (tam olarak bir kez — zararsız alanda).
+    expect(serialized.split(DEEP_SENTINEL).length - 1).toBe(1)
+  })
+
+  it('kök seviyede de aynı adla eşleşen sır alanını redakte eder', () => {
+    const result = redactDeep({ secret: DEEP_SENTINEL }) as Record<string, unknown>
+
+    expect(result['secret']).toBe('[redacted]')
+  })
+
+  it('dizi içindeki nesnelerin iç içe sır alanlarını da redakte eder', () => {
+    const result = redactDeep({
+      items: [{ token: DEEP_SENTINEL }, { harmlessField: DEEP_SENTINEL }],
+    }) as { items: Record<string, unknown>[] }
+
+    expect(result.items[0]?.['token']).toBe('[redacted]')
+    expect(result.items[1]?.['harmlessField']).toBe(DEEP_SENTINEL)
+  })
+
+  it('derinlik sınırını AŞAN bir nesnede fırlatmaz/takılmaz — kalan alt ağacı keser', () => {
+    // 50 seviye iç içe — varsayılan derinlik sınırının (6) çok üzerinde.
+    let deeplyNested: Record<string, unknown> = { password: DEEP_SENTINEL }
+    for (let depth = 0; depth < 50; depth += 1) {
+      deeplyNested = { nested: deeplyNested }
+    }
+
+    expect(() => redactDeep(deeplyNested)).not.toThrow()
+    expect(JSON.stringify(redactDeep(deeplyNested))).not.toContain(DEEP_SENTINEL)
+  })
+
+  it('devirli (circular) bir nesnede fırlatmaz/takılmaz — sonsuz özyinelemeye GİRMEZ', () => {
+    const circular: Record<string, unknown> = { password: DEEP_SENTINEL }
+    circular['self'] = circular
+
+    expect(() => redactDeep(circular)).not.toThrow()
+
+    const result = redactDeep(circular) as Record<string, unknown>
+    expect(result['password']).toBe('[redacted]')
+    expect(result['self']).toBe('[circular]')
+  })
+
+  it('birincil tipleri (string/number/boolean/null/undefined) DEĞİŞTİRMEDEN döner', () => {
+    expect(redactDeep('plain string')).toBe('plain string')
+    expect(redactDeep(42)).toBe(42)
+    expect(redactDeep(true)).toBe(true)
+    expect(redactDeep(null)).toBe(null)
+    expect(redactDeep(undefined)).toBe(undefined)
+  })
+
+  it('SECRET_FIELD_NAMES kümesindeki HER ad en az bir testte örtük olarak doğrulanır (tamlık hatırlatması)', () => {
+    // Bu test, SECRET_FIELD_NAMES'in BOŞ KALMADIĞINI ve redactDeep'in onu
+    // GERÇEKTEN okuduğunu (yukarıdaki testlerin vakumla geçmediğini) ayrıca
+    // doğrular — küme büyüklüğü sıfırsa veya fonksiyon kümeyi hiç
+    // kullanmıyorsa bu assert kırılır.
+    expect(SECRET_FIELD_NAMES.size).toBeGreaterThan(0)
+    const probe = Object.fromEntries([...SECRET_FIELD_NAMES].map((name) => [name, DEEP_SENTINEL]))
+    const result = redactDeep(probe) as Record<string, unknown>
+
+    for (const name of SECRET_FIELD_NAMES) {
+      expect(result[name]).toBe('[redacted]')
+    }
+  })
+})
+
+// ROADMAP v0.0.17, T-028, düzeltme turu 1, `security` BULGU 4 — CLAUDE.md
+// §4 hizalaması. Her ad, S3'te eklenmeden ÖNCE bu testler KIRMIZI döndü
+// (küme girdisi geçici olarak silinip doğrulandı, sonra `Edit` ile geri
+// alındı — boşa-çıkmama kanıtı handoff raporunda).
+describe('redactDeep — BULGU 4(b): CLAUDE.md §4 hizalaması (yeni sır alanları)', () => {
+  const ALIGNMENT_SENTINEL = 'X-CLAUDE-SEC4-SENTINEL-9c1d'
+
+  it.each([
+    ['cardNumber', 'kart numarası'],
+    ['pan', 'kart numarası (PAN)'],
+    ['cvv', 'kartın güvenlik kodu'],
+    ['cvc', 'kartın güvenlik kodu (CVC yazımı)'],
+    ['tckn', 'TCKN'],
+    ['nationalId', 'TCKN (İngilizce alan adı)'],
+    ['address', 'tam adres'],
+    ['email', 'tam e-posta'],
+    ['clientSecret', 'OAuth istemci sırrı'],
+    ['jwt', 'JSON Web Token'],
+    ['otp', 'tek kullanımlık şifre'],
+  ])('%s (%s) redakte edilir, zararsız alan ETKİLENMEZ', (fieldName) => {
+    const result = redactDeep({
+      [fieldName]: ALIGNMENT_SENTINEL,
+      harmlessField: ALIGNMENT_SENTINEL,
+    }) as Record<string, unknown>
+
+    expect(result[fieldName]).toBe('[redacted]')
+    expect(result['harmlessField']).toBe(ALIGNMENT_SENTINEL)
+  })
+})
+
+// ROADMAP v0.0.17, T-028, düzeltme turu 1, `security` BULGU 4(a) — anahtar
+// normalizasyonu SADECE redactDeep'in ARAMA tarafında (`toLowerCase()` +
+// `-`/`_` kaldırma). Normalizasyon EKLENMEDEN ÖNCE bu testler KIRMIZI
+// döndü (normalizasyon çağrısı geçici olarak `SECRET_FIELD_NAMES.has(key)`
+// ile DEĞİŞTİRİLİP doğrulandı, sonra `Edit` ile geri alındı).
+describe('redactDeep — BULGU 4(a): anahtar normalizasyonu (harfe/yazıma duyarsız)', () => {
+  const CASE_SENTINEL = 'X-CASE-SENTINEL-1a2b'
+
+  it.each([
+    ['Authorization', 'büyük başlık biçimi'],
+    ['API_KEY', 'alt çizgili BÜYÜK biçim'],
+    ['api-key', 'tire ayraçlı biçim'],
+    ['apiKey', 'kanonik camelCase biçim (regresyon)'],
+    ['CLIENT_SECRET', 'clientSecret alt çizgili BÜYÜK biçim'],
+  ])('%s (%s) redakte edilir', (variantKey) => {
+    const result = redactDeep({ [variantKey]: CASE_SENTINEL }) as Record<string, unknown>
+    expect(result[variantKey]).toBe('[redacted]')
+  })
+})
+
+// ROADMAP v0.0.17, T-028, düzeltme turu 1, `security` BULGU 4 kısıt 3 —
+// yanlış pozitif KONTROLÜ: normalizasyon/yeni adlar `'value'`/`'code'`
+// dışlamalarını BOZMAZ. Bu, (a) ve (b)'nin dışlamaları BOZMADIĞININ kanıtı.
+describe('redactDeep — BULGU 4 kısıt 3: yanlış pozitif KONTROLÜ (value/code redakte EDİLMEZ)', () => {
+  it("'value' alanı redakte EDİLMEZ (architect dışlaması — redactDeep'te de geçerli)", () => {
+    const result = redactDeep({ value: 'ham-belirtec-degeri' }) as Record<string, unknown>
+    expect(result['value']).toBe('ham-belirtec-degeri')
+  })
+
+  it("'code' alanı redakte EDİLMEZ (architect dışlaması — AppError.code teşhis alanı)", () => {
+    const result = redactDeep({ code: 'ACCOUNT_TEMPORARILY_LOCKED' }) as Record<string, unknown>
+    expect(result['code']).toBe('ACCOUNT_TEMPORARILY_LOCKED')
+  })
+
+  it("'VALUE'/'Code' gibi yazım varyantları da redakte EDİLMEZ (normalizasyon dışlamaları BOZMADI)", () => {
+    const result = redactDeep({ VALUE: 'ham-deger', Code: 'INVALID_CODE' }) as Record<
+      string,
+      unknown
+    >
+    expect(result['VALUE']).toBe('ham-deger')
+    expect(result['Code']).toBe('INVALID_CODE')
+  })
+})
+
+// ROADMAP v0.0.17, T-028, düzeltme turu 1, `security` BULGU 4 kısıt 4 —
+// normalizasyon YALNIZCA redactDeep ARAMA tarafındadır; `PINO_REDACT_PATHS`
+// pino'nun KENDİ sözleşmesi gereği HARFE DUYARLIDIR ve buraya normalizasyon
+// UYGULANAMAZ (bilinen, belgelenmiş sınır — birincil savunma
+// `RequestLoggingInterceptor`'ın başlıkları hiç OKUMAMASIdır).
+describe('PINO_REDACT_PATHS — BULGU 4 kısıt 4: normalizasyon UYGULANMAZ (pino harfe duyarlı)', () => {
+  it("yalnızca kanonik (küçük harf) yazım listede bulunur — 'Authorization'/'API_KEY' YOKTUR", () => {
+    expect(PINO_REDACT_PATHS).toContain('authorization')
+    expect(PINO_REDACT_PATHS).not.toContain('Authorization')
+    expect(PINO_REDACT_PATHS).not.toContain('API_KEY')
   })
 })

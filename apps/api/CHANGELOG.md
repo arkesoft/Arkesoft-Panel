@@ -1,5 +1,20 @@
 # @arkesoft/api
 
+## 0.13.0
+
+### Minor Changes
+
+- Sunucu tarafında (`apps/api`) hata ve iz (trace) kaydı altyapısının temeli kuruldu. Artık her istek tek bir iz kimliğiyle (`traceId`) etiketleniyor; bu kimlik günlük kayıtlarında ve yanıt başlığında (`x-trace-id`) görünüyor ve dışarıdan gönderilen sahte bir kimlik hiçbir koşulda kabul edilmiyor. Hatalar artık ciddiyet seviyesine göre sınıflandırılıyor; operatöre acil müdahale gerektiren durumlar ile beklenen-ama-anormal durumlar birbirinden ayrışıyor. Operatör isterse Sentry hata izleme servisini (`SENTRY_DSN` ortam değişkeniyle, opsiyonel) devreye alabiliyor — gate turlarında bu servisin varsayılan ayarlarının müşteri form verisini (parola, kart bilgisi, kimlik numarası gibi) ve konsol kayıtlarını üçüncü tarafa taşıyabildiği tespit edildi ve yayına çıkmadan kapatıldı; aynı turlarda sahte bir iz kimliğinin günlük kayıtlarını zehirleyebileceği bir yol da kapatıldı. Hata bağlamındaki gizli alan listesi (kart numarası, güvenlik kodu, kimlik numarası, e-posta, adres vb.) genişletildi ve artık büyük/küçük harf farkından etkilenmiyor. Bu sürüm sunucu içi iz ve hata altyapısının temelini kurar; dış izleme panoları (Grafana/Loki) ve iz verisinin dışa aktarımı henüz üretim ortamı kurulmadığı için sonraki bir sürüme bırakıldı. [v0.0.17]
+
+### Patch Changes
+
+- Updated dependencies
+  - @arkesoft/errors@0.13.0
+  - @arkesoft/trpc@0.8.6
+  - @arkesoft/db@0.13.0
+  - @arkesoft/config@0.13.0
+  - @arkesoft/tenancy@0.13.0
+
 ## 0.12.0
 
 ### Minor Changes

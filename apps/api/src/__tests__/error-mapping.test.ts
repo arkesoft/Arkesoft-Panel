@@ -42,6 +42,29 @@ class SampleRateLimitedError extends AppError {
   }
 }
 
+// ROADMAP v0.0.17, T-028, düzeltme turu 1, `security`/`solid` BAĞIMSIZ
+// BULGU 6 — REST log yolunda derinlik ≥2 bir sırrın `redactDeep` ile
+// maskelendiğini ölçmek için `packages/trpc`'nin `app-error-boundary-
+// redaction.test.ts`'indeki `HarnessDeepSecretContextError`'IN AYNI deseni
+// (derinlik-2 sır + zararsız alan).
+const DEEP_SECRET_SENTINEL = 'X-B6-DEEP-SECRET-3e9a'
+
+class SampleDeepSecretContextError extends AppError {
+  constructor() {
+    super({
+      code: 'SAMPLE_DEEP_SECRET_CONTEXT',
+      httpStatus: 404,
+      userMessageKey: 'errors.sample.deepSecretContext',
+      context: {
+        level1: {
+          token: DEEP_SECRET_SENTINEL,
+          harmlessField: DEEP_SECRET_SENTINEL,
+        },
+      },
+    })
+  }
+}
+
 describe('mapErrorToResponse — AppError alt sınıfları', () => {
   it('TenantNotFoundError → 404, details her zaman {}, context yok', () => {
     const error = new TenantNotFoundError({ reason: 'no_row' })
@@ -148,6 +171,26 @@ describe('mapErrorToResponse — AppError alt sınıfları', () => {
     expect(mapped.httpHeaders).toBeUndefined()
     expect('httpHeaders' in mapped).toBe(false)
   })
+
+  it(
+    'BULGU 6 (REST log yolu) — derinlik-2deki bir sır alanı mapped.logContext.context ' +
+      'içinde düz metin olarak SIZMAZ (pozitif kontrol dahil — vakumla her şey silinmedi)',
+    () => {
+      const error = new SampleDeepSecretContextError()
+      const mapped = mapErrorToResponse(error, REQUEST_ID)
+      const serializedLogContext = JSON.stringify(mapped.logContext)
+
+      // Pozitif kontrol — zararsız alanda sentinel HÂLÂ görünür.
+      expect(serializedLogContext).toContain(`"harmlessField":"${DEEP_SECRET_SENTINEL}"`)
+      // Sır alanı (`token`) redakte edildi.
+      expect(serializedLogContext).toContain('"token":"[redacted]"')
+      // Ham sentinel TAM OLARAK BİR KEZ görünür (zararsız alanda) — sır
+      // alanındaki ham DEĞER REST log yoluna hiç SIZMADI.
+      expect(serializedLogContext.split(DEEP_SECRET_SENTINEL).length - 1).toBe(1)
+      // AC8 sızdırmazlık: tel gövdesine (body) hiçbir şekilde girmez.
+      expect(JSON.stringify(mapped.body)).not.toContain(DEEP_SECRET_SENTINEL)
+    },
+  )
 })
 
 describe('mapErrorToResponse — HttpException ve bilinmeyen hata', () => {
@@ -200,6 +243,9 @@ describe('getTenantContext — fail-closed (R4 telafisi)', () => {
       // konusu kiracı çözümünün fail-closed davranışı — istemci alanları
       // ilgisiz, iki `null` yeterli.
       client: { ip: null, userAgent: null },
+      // ROADMAP v0.0.17, T-028/S4 EKLEMESİ (additive): ZORUNLU alan, `client`
+      // İLE AYNI gerekçe — bu dosyanın konusuyla ilgisiz, sabit değer yeterli.
+      traceId: 'test-trace-id-error-mapping',
     }
     requestContextStorage.run(store, callback)
   }

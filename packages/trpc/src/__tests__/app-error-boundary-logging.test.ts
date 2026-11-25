@@ -41,7 +41,17 @@ const BOUNDARY_PAYLOAD_SCHEMA = z.object({
 })
 
 /**
- * 5xx bir `AppError`'ın test-yerel taklidi (503).
+ * 5xx bir `AppError`'ın test-yerel taklidi (503) — `apps/api`'nin GERÇEK
+ * `DependencyUnavailableError`'ının taklidi (aynı `code`/`httpStatus`/
+ * `logLevel`).
+ *
+ * ⚠⚠ `logLevel: 'error'` AÇIKÇA BEYAN EDİLİR (ROADMAP v0.0.17, T-028/S9,
+ * R-PO3 devri) — DEVİRDEN ÖNCE bu alan YOKTU ve seviye `httpStatus >= 500`
+ * eşiğinden TÜRETİLİYORDU; artık TEK doğruluk kaynağı `appError.logLevel`'ın
+ * KENDİSİ (`trpc.ts`'in `writeAtLevel`'ı) olduğu için bu taklit de GERÇEK
+ * sınıfın yaptığını yapar — beyan etmeseydi varsayılan `'warn'`a düşer ve bu
+ * dosyanın "5xx → `error`" iddiası artık GEÇERSİZ olurdu (httpStatus'tan
+ * ARTIK TÜRETİLMİYOR).
  *
  * ⚠ `publicDetails` BİLEREK OVERRIDE EDİLİYOR: böylece aynı test hem "log
  * `error` seviyesine düştü" hem de "TELE YAZILAN `details` log eklemesinden
@@ -57,6 +67,7 @@ class HarnessDependencyUnavailableError extends AppError {
       userMessageKey: 'errors.dependency.unavailable',
       context: { checks: { database: 'down' } },
       isRetryable: true,
+      logLevel: 'error',
     })
   }
 
@@ -154,7 +165,10 @@ describe('appErrorBoundary — tanıdığı her AppError için SINIRDA TEK yapı
     }
 
     // ⚠ AYRIMI VEREN ASSERT: 4xx testi 'warn' ölçtü, bu 'error' ölçüyor →
-    // seviye eşlemesi SABİT DEĞİL, `httpStatus`'a GÖRE dallanıyor.
+    // seviye eşlemesi SABİT DEĞİL. ⚠⚠ R-PO3 devrinden İTİBAREN bu ayrım
+    // `httpStatus`'tan DEĞİL, sınıfın AÇIKÇA beyan ettiği `logLevel`'dan
+    // gelir (yukarıdaki sınıfın `logLevel: 'error'` alanı) — `trpc.ts`
+    // `httpStatus`'a hiç BAKMAZ.
     expect(entry.level).toBe('error')
     const payload = BOUNDARY_PAYLOAD_SCHEMA.parse(entry.context)
     expect(payload.httpStatus).toBe(503)

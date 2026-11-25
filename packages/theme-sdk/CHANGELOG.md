@@ -1,5 +1,11 @@
 # @arkesoft/theme-sdk
 
+## 0.1.10
+
+### Patch Changes
+
+- @arkesoft/versioning@0.13.0
+
 ## 0.1.9
 
 ### Patch Changes

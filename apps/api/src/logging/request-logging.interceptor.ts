@@ -53,17 +53,18 @@ export class RequestLoggingInterceptor implements NestInterceptor {
 
     const tenantFields = tenant?.kind === 'resolved' ? { tenantId: tenant.tenant.id } : {}
 
+    // ⚠ BORÇ `:3929` KAPANDI (ROADMAP v0.0.17, T-028/S4): `requestId`/`traceId`
+    // BURADA AYRICA GEÇİRİLMEZ — `logger`, `RequestContextMiddleware`'in
+    // kurduğu `requestId`+`traceId` bağlamalı child'dır (ALS her istekte
+    // bu middleware'den SONRA kurulur), ikinci bir açık yazım aynı alanı
+    // NDJSON satırında İKİ KEZ üretiyordu (`chindings` + mergingObject). Alan
+    // artık YALNIZCA child bağlamasından gelir.
     logger.info(
       {
         method,
         handler,
         statusCode,
         durationMs,
-        // `logger` normalde zaten `requestId` (ve tenant çözülmüşse `tenantId`)
-        // bağlamalı bir child'dır (`RequestContextMiddleware` kurar). Alanı
-        // burada AYRICA açıkça yazıyoruz — context hiç kurulmamışsa (fallback:
-        // `rootLogger`) bile AC9'un "her kayıtta requestId" garantisi bozulmaz.
-        requestId: requestContext?.requestId,
         ...tenantFields,
       },
       'istek tamamlandı',

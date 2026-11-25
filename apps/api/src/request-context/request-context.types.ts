@@ -123,6 +123,10 @@ export type RequestClientContext = {
  *   Gerekçe: iki alan HAM İSTEKTEN okunur, hiçbir çözümleme (tenant/auth)
  *   gerektirmez → sonradan güncellenecek bir "pending" hâli YOKTUR. Mutable
  *   yapmak var olmayan bir ikinci yazıcıya kapı açardı.
+ * - `traceId` (ROADMAP v0.0.17, T-028/S4 EKLEMESİ, additive): {@link
+ *   RequestContextMiddleware}'in `getCurrentTraceId()` (`observability/trace-id.ts`)
+ *   çağırarak ürettiği, Katman 1/Katman 2 korelasyon kimliği. `client` İLE AYNI
+ *   desen — `readonly`, TEK yazıcı BURASI, istek ömrünün başında bir kez.
  */
 export type RequestContext = {
   readonly requestId: string
@@ -131,4 +135,5 @@ export type RequestContext = {
   tenant: TenantResolution
   auth: AuthResolution
   readonly client: RequestClientContext
+  readonly traceId: string
 }

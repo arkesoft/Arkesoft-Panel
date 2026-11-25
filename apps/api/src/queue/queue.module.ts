@@ -28,10 +28,22 @@
 // VARSAYILAN (T-013/S1 tip tanımından ölçtü). Postgres backend'i opt-in
 // `backendFactory` ile gelir; bizim anahtar şemamız ve AC10 kapısı Redis'e
 // bağlı.
+//
+// ⭐ TELEMETRY (ROADMAP v0.0.17, T-028/S7, architect K-A28-1 KUYRUK YAYILIMI):
+// `QueueBaseOptions.telemetry` ZATEN bullmq@6.5.0'da VAR (`queue-options.d.ts`)
+// — yeni bir mekanizma İCAT EDİLMİYOR, `bullmq-otel`'in sınıfı OLDUĞU GİBİ
+// geçiriliyor. ⚠ Üçüncü parti `Telemetry<Context = any>` tipi `any` TAŞIR;
+// bizim kodumuza `any` GİRMEZ (`createQueueTelemetry()`'nin dönüş tipi
+// `BullMQOtel`, `any` DEĞİL) — `solid`/lint burada takılırsa gerekçe budur.
+// ⚠ Bu telemetry, BullMQ'nun kendi `add()`/`process()` span'lerini üretir —
+// AC-53'ün ÖLÇTÜĞÜ "kuyruk halkası" LOG KAYITLARI (job-runner.ts/
+// queue.service.ts) BUNDAN BAĞIMSIZDIR; ikisi AYNI amaca (gözlemlenebilirlik)
+// FARKLI katmanlarda hizmet eder.
 
 import { Module } from '@nestjs/common'
 import type { Provider } from '@nestjs/common'
 import { Queue } from 'bullmq'
+import { BullMQOtel } from 'bullmq-otel'
 import type { Redis } from 'ioredis'
 import type { Logger } from 'pino'
 
@@ -69,6 +81,22 @@ export function createQueueRedisConnection(
 }
 
 /**
+ * `bullmq-otel`'in tracer/meter adı — ÜRETİCİ (bu dosya) ve TÜKETİCİ
+ * (`queue-worker.module.ts`) AYNI adı kullanır (tek kaynak, buradan import
+ * edilir) ki OTel backend'inde iki ayrı tracer adı altında BÖLÜNMÜŞ bir iş
+ * akışı görünmesin.
+ */
+export const QUEUE_TELEMETRY_TRACER_NAME = 'arkesoft-queue'
+
+/**
+ * `bullmq-otel`'in sınıfını OLDUĞU GİBİ döner (K-A28-1) — dosya başı
+ * yorumundaki gerekçeyle yeni bir telemetry mekanizması İCAT EDİLMEZ.
+ */
+export function createQueueTelemetry(): BullMQOtel {
+  return new BullMQOtel({ tracerName: QUEUE_TELEMETRY_TRACER_NAME })
+}
+
+/**
  * Kayıt defterini kuyruk topolojisine çevirir. ⚠ TEK YER: üretici bu
  * fonksiyonu kullanır; tüketici (T-013/S6) aynı kayıt defterini gezerek
  * `Worker`'larını kurar. Kuyruk adlarının iki yerde ayrı türetilmesi bu
@@ -81,7 +109,13 @@ export function buildJobQueueRegistry(connection: Redis): JobQueueRegistry {
   // BullMQ varsayılanı `bull` kullanılmaz, paylaşılan anahtar alanında
   // platformun kuyruk verisi ayrılır. Kiracıya göre BÖLÜNMEZ (bkz.
   // `queue-constants.ts`, ADR-0015 Karar 1).
-  const queueOptions = { connection, prefix: QUEUE_KEY_PREFIX }
+  // ⭐ `telemetry`: TÜM kuyruklar (iş + DLQ) AYNI `BullMQOtel` örneğini
+  // paylaşır — `queueOptions` ZATEN paylaşılan bir nesne (dosya başı yorumu).
+  const queueOptions = {
+    connection,
+    prefix: QUEUE_KEY_PREFIX,
+    telemetry: createQueueTelemetry(),
+  }
 
   for (const definition of JOB_DEFINITIONS) {
     const workQueue: JobQueue = new Queue(definition.name, queueOptions)

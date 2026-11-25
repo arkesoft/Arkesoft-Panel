@@ -759,6 +759,40 @@ taşımıyor** → bundle'a asla inline edilmez. Ayrıntı: "Panel (`apps/admin`
 
 Ayrıntı: "Panel (`apps/admin`) Geliştirme" bölümü, "Panel geliştirme akışı" altında.
 
+### OpenTelemetry enstrümantasyonu ESM `node:http`'i yakalamıyor (v0.0.17+)
+
+`@opentelemetry/instrumentation-http@0.223.2`, bu deponun Node sürümünde (25.8.1) saf
+ESM `import ... from 'node:http'` kullanımını **hiçbir** preload stratejisiyle
+(`--import`, modül içi `enable()`) yakalamıyor. Kök neden: `@opentelemetry/
+instrumentation`'ın çekirdek modül yaması `require-in-the-middle` (CJS `require()`)
+kancasına dayanır; gerçek ESM `import` farklı bir mekanizma (`import-in-the-middle`)
+ister. T-028/S2'nin dört izole deneyle ölçtüğü sonuç:
+
+```
+CJS sunucu + --require   →  1 span
+CJS sunucu + --import    →  1 span
+ESM sunucu  + --import   →  0 span
+ESM sunucu  + manuel enable() → 0 span
+```
+
+Bugün `apps/api`'nin tüm HTTP sunucusu (Express/Nest) CJS `require('http')` zincirinden
+geldiği için bu boşluk üretimde **somut değil**. Yeni bir worker/health-check saf ESM
+`node:http` ile yazılırsa (`import { createServer } from 'node:http'`) o isteklerin
+span'i **asla görünmez** — bir "trace neden eksik" sorusu burada başlar. Ayrıntı:
+`docs/observability.md` §9.
+
+### Test paralelliği altyapı kaynaklarını meşgul ediyor — ölçülen bir flake sınıfı (v0.0.17+)
+
+Kök `pnpm test` (turbo, paketler arası paralel) altında bazı testler **tek başına
+izole koşumda yeşil, tam paralel koşumda tek seferlik kırmızı** veriyor —
+`5000ms`'lik vitest timeout'una çarpan Mailpit/Redis/Postgres çağrıları gözlemlendi
+(T-028, S2/S4/S6/S9'da **bağımsız dört kez** tekrarlandı, hepsi aynı sınıf). Bu, test
+kodunun kusuru **değil** — paralel alt görevlerin paylaşılan altyapıya (Mailpit/Redis/
+Postgres bağlantı havuzu) aynı anda yüklenmesinin sonucu. Kural: bir test tam paralel
+koşumda **bir kez** kırmızı, izole koşumda **ve** ikinci bir tam koşumda yeşilse bu bir
+regresyon değildir — ölçülmüş hâliyle not edilir, düzeltme turu açılmaz (AGENT_BASELINE
+§4 ölçüm disiplini, madde 1: tek koşumla "flake yok" da "flake var" da kanıtlanmaz).
+
 ---
 
 ## Sorun giderme

@@ -36,6 +36,14 @@ import { HttpHardeningInitializer } from './http/http-hardening.initializer.js'
 // KORUNUR, bu middleware o üçlünün ÖNÜNE eklenir, aralarına GİRMEZ).
 import { NoStoreHeadersMiddleware } from './http/no-store-headers.middleware.js'
 import { LoggingModule } from './logging/logging.module.js'
+// T-028/S6 EKLEMESİ (ROADMAP v0.0.17, architect K-A28-2/K-A28-3, po R-PO2):
+// `ObservabilityModule` — Sentry bootstrap'ı (`SentryBootstrapInitializer`)
+// + kapanış sırası kancası (`ObservabilityShutdownService`). ⚠⚠ BİR
+// MIDDLEWARE DEĞİL — `imports` dizisine EKLENDİ, `configure()`'daki
+// `consumer.apply(...)` zinciri BU EKLEMEYLE HİÇ DEĞİŞMEDİ (middleware
+// göreli sırası — `NoStoreHeaders` → `RequestContext` → `Tenant` → `Auth` —
+// AYNI kaldı; kanıt: `git diff --numstat app.module.ts` → silinen satır 0).
+import { ObservabilityModule } from './observability/observability.module.js'
 // T-002/ST-6 EKLEMESİ: `PrismaModule`/`RedisModule` (ikisi de `@Global`) —
 // `/health/ready`'nin ihtiyaç duyduğu `PrismaService`/`RedisService`'i TÜM
 // modüllere sağlar. `HealthModule`'den ÖNCE listelenir (architect "Modül
@@ -82,6 +90,9 @@ import { TrpcModule } from './trpc/trpc.module.js'
     // olduğu için bağımlılıkları (`API_ENV`, `ROOT_LOGGER`, `PrismaService`)
     // sıradan bağımsız çözülür.
     QueueModule,
+    // T-028/S6 EKLEMESİ: `ObservabilityModule` dizinin SONUNA eklendi
+    // (mevcut sıra DEĞİŞMEDİ, R-PO2).
+    ObservabilityModule,
   ],
   // T-008/S3 EKLEMESİ (architect K6 madde 7): `HttpHardeningInitializer` —
   // `OnApplicationBootstrap` kancası ile ETag/X-Powered-By'ı kapatır.

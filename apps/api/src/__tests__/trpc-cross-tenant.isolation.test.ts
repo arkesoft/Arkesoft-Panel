@@ -74,6 +74,22 @@ function parseLogLines(lines: readonly string[]): Record<string, unknown>[] {
   return lines.map((line) => z.record(z.string(), z.unknown()).parse(JSON.parse(line)))
 }
 
+/**
+ * Kök logger `formatters.level` ile seviyeyi SAYI yerine ETİKET olarak
+ * yazıyor (`root-logger.ts`), bu yüzden NDJSON satırında `"level":"warn"`
+ * görünür — `trpc-error-boundary-logging.test.ts`'in AYNI ÖLÇÜLMÜŞ deseni.
+ *
+ * ROADMAP v0.0.17, T-028/S8, architect K-A28-5/6: `AppExceptionFilter`
+ * artık HER hatayı `logger.error` İLE YAZMAZ — `TenantMembershipRequiredError`
+ * `logLevel` BEYAN ETMEDİĞİ için (32 sınıfın çoğu gibi) varsayılan `'warn'`a
+ * düşer. Bu testin `msg` eşleşmesi SEVİYEDEN BAĞIMSIZ olduğu için (po'nun
+ * ölçtüğü PLANLI KIRILMA yüzeyi) bu kayıt `logger.error`'dan `logger.warn`'a
+ * geçtiğinde SESSİZCE bulunurdu — bu yüzden seviye burada AÇIKÇA assert
+ * edilir: ileride bu kayıt yanlışlıkla `'error'`'a (veya başka bir seviyeye)
+ * kayarsa test KIRMIZI olur, sessizce geçmez.
+ */
+const TENANT_MEMBERSHIP_REQUIRED_LOG_LEVEL = 'warn'
+
 describe('AC6 — /trpc/tenant.current çapraz kiracı oturumu (gerçek Postgres + gerçek HTTP)', () => {
   let app: INestApplication<Server> | undefined
   let prismaService: PrismaService
@@ -206,6 +222,10 @@ describe('AC6 — /trpc/tenant.current çapraz kiracı oturumu (gerçek Postgres
 
         expect('tenantId' in errorRecord).toBe(true)
         expect(errorRecord['tenantId']).toBe(tenantB.id)
+        // ROADMAP v0.0.17, T-028/S8 — DoD şartı: bu kaydın SEVİYESİ açıkça
+        // assert edilir (yukarıdaki yorum). `TenantMembershipRequiredError`
+        // `logLevel` beyan ETMEZ ⇒ varsayılan `'warn'`.
+        expect(errorRecord['level']).toBe(TENANT_MEMBERSHIP_REQUIRED_LOG_LEVEL)
       } finally {
         // `tenant_membership` `onDelete: Cascade` ile tenant silinince
         // temizlenir (ADR-0003 madde 3) — `auth-cross-tenant.isolation.

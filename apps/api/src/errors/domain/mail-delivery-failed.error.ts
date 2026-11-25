@@ -14,6 +14,12 @@
 // bir katalog anahtarıdır (`auth/mail/messages.ts` → `MailMessageKey`), PII
 // DEĞİLDİR — hangi e-postanın (doğrulama/sıfırlama) gönderilemediğini
 // loglamaya yeter, kime gönderilmeye çalışıldığını SIZDIRMAZ.
+//
+// `logLevel: 'error'` (ROADMAP v0.0.17, T-028/S8, architect K-A28-5 adayı,
+// po A-PO3): e-posta gönderim arızası doğrulama/parola sıfırlama gibi
+// kritik kimlik akışlarını BLOKE EDER — tekrarlayan bir arıza SMTP
+// yapılandırmasının/sağlayıcının BOZUK olduğuna işaret eder; varsayılan
+// `'warn'` operatörü yeterince hızlı uyarmaz.
 
 import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
@@ -28,6 +34,7 @@ export class MailDeliveryFailedError extends AppError {
       context: { messageKey },
       isRetryable: true,
       cause,
+      logLevel: 'error',
     })
     this.messageKey = messageKey
   }

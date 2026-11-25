@@ -1,5 +1,15 @@
 # @arkesoft/superadmin
 
+## 0.13.0
+
+### Patch Changes
+
+- Updated dependencies
+  - @arkesoft/errors@0.13.0
+  - @arkesoft/trpc@0.8.6
+  - @arkesoft/i18n@0.13.0
+  - @arkesoft/ui@0.13.0
+
 ## 0.12.0
 
 ### Patch Changes
