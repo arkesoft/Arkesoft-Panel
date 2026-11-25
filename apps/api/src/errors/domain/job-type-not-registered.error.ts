@@ -16,6 +16,13 @@
 //
 // `httpStatus: 500` — bu bir KULLANICI girdisi hatası değil, yapılandırma/
 // programlama hatasıdır. `context` yalnızca iş adını taşır (PII yok).
+//
+// `logLevel: 'error'` (ROADMAP v0.0.17, T-028/S9, R-PO3 devrinin bulduğu
+// davranış kayması — `job-handler-not-registered.error.ts`'teki AYNI
+// gerekçe): "normal yolda İMKÂNSIZ" olarak tanımlanan bu dal GERÇEKLEŞTİYSE
+// bir ÇAĞIRANIN kayıt defterine eklenmemiş bir tanım geçirdiği anlamına gelir
+// — tanım gereği bir programlama hatasıdır, varsayılan `'warn'`ın "beklenen
+// ama anormal" tanımına UYMAZ.
 
 import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
@@ -29,6 +36,7 @@ export class JobTypeNotRegisteredError extends AppError {
       // Kayıt defteri süreç ömrü boyunca sabittir → yeniden denemek aynı
       // sonucu verir.
       isRetryable: false,
+      logLevel: 'error',
     })
   }
 }

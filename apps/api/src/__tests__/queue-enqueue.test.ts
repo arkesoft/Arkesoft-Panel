@@ -18,6 +18,17 @@
 // İZOLASYON: sonda (2) kendi PROB kuyruğunu kullanır (`test.enqueue-probe`),
 // üretim kuyruğuna (`tenant.provision`) dokunmaz; sonda (3) üretim yolunu
 // koşturur ve yarattığı TEK işi + TEK `Job` satırını siler.
+//
+// ⚠⚠ GENİŞLETME (ROADMAP v0.0.17, T-028/S7, architect K-A28-1 KUYRUK
+// YAYILIMI): `enqueue` artık HER payload'a bir `traceId` BİRLEŞTİRİYOR —
+// bu dosyadaki ÖNCEDEN VAR OLAN `job?.data`/`writerCalls[…].payload`
+// eşitlik kontrolleri bu yüzden `traceId` alanını da İÇERİR (format
+// `TRACE_ID_PATTERN` ile pinlenir, DEĞER değil — her çağrı ALS'siz koştuğu
+// için `getCurrentTraceId()`'in Katman 1 yedeği her seferinde YENİ bir
+// rastgele kimlik üretir, bu BİLİNÇLİ ve `trace-id.ts`'in dosya başı
+// yorumuyla TUTARLI). AYRICA iki YENİ `it`: (a) SAHTECİLİK PİNİ — çağıranın
+// gönderdiği `traceId` HER ZAMAN üzerine yazılır; (b) EXPAND/CONTRACT —
+// alanı TAŞIMAYAN bir girdi (şema eklenmeden önceki hâl) AYNEN parse edilir.
 
 import type { Server } from 'node:http'
 
@@ -60,6 +71,9 @@ import { createTestApp } from './helpers/create-test-app.js'
 
 /** PROB kuyruğu — üretim kuyruk adlarıyla ÇAKIŞMAZ, sonda sonunda silinir. */
 const PROBE_JOB_NAME = 'test.enqueue-probe'
+
+/** `getCurrentTraceId()`'in biçimiyle AYNI — `job-payload.base.ts`'in regex'i. */
+const TRACE_ID_PATTERN = /^[0-9a-f]{32}$/
 
 /** Kayıt defterinde OLMAYAN bir iş adı (JobTypeNotRegisteredError yolu). */
 const UNREGISTERED_JOB_NAME = 'test.unregistered-probe'
@@ -187,8 +201,19 @@ describe('(2) enqueue — SIRALAMA, jobId eşlemesi, iş seçenekleri (gerçek B
     expect(waitingCountAtWriteTime).toBe(0)
     expect(await probeQueue.getWaitingCount()).toBe(1)
     expect(result.jobId).toBe(FIXED_JOB_ROW_ID)
+
+    // ⭐ Biçim ÖNCE ayrı doğrulanır (asimetrik eşleştirici YOK — `expect.
+    // stringMatching`'in vitest tip tanımı `any` döner, bu repoda `any`
+    // yasaktır); AŞAĞIDAKİ `toEqual` o GÖZLENEN değeri kullanarak DİĞER
+    // tüm alanların birebir eşleştiğini doğrular.
+    const observedTraceId = writerCalls[0]?.payload['traceId']
+    expect(observedTraceId).toMatch(TRACE_ID_PATTERN)
     expect(writerCalls).toEqual([
-      { tenantId: PROBE_TENANT_ID, type: PROBE_JOB_NAME, payload: { tenantId: PROBE_TENANT_ID } },
+      {
+        tenantId: PROBE_TENANT_ID,
+        type: PROBE_JOB_NAME,
+        payload: { tenantId: PROBE_TENANT_ID, traceId: observedTraceId },
+      },
     ])
   })
 
@@ -200,7 +225,8 @@ describe('(2) enqueue — SIRALAMA, jobId eşlemesi, iş seçenekleri (gerçek B
     expect(job).toBeDefined()
     expect(job?.id).toBe(FIXED_JOB_ROW_ID)
     expect(job?.name).toBe(PROBE_JOB_NAME)
-    expect(job?.data).toEqual({ tenantId: PROBE_TENANT_ID })
+    expect(job?.data.traceId).toMatch(TRACE_ID_PATTERN)
+    expect(job?.data).toEqual({ tenantId: PROBE_TENANT_ID, traceId: job?.data.traceId })
     expect(job?.opts.attempts).toBe(3)
     expect(job?.opts.backoff).toEqual({ type: 'custom' })
     expect(job?.opts.removeOnComplete).toBe(true)
@@ -264,10 +290,16 @@ describe('(2) enqueue — SIRALAMA, jobId eşlemesi, iş seçenekleri (gerçek B
 
     expect(infoLogs).toHaveLength(1)
     expect(infoLogs[0]?.message).toBe(JOB_ENQUEUED_LOG_EVENT)
-    expect(infoLogs[0]?.bindings).toEqual({
+
+    const bindings = infoLogs[0]?.bindings
+    // ⭐ AC-53 "DB halkası" — Postgres satırı yazıldıktan SONRA üretilen bu
+    // log, merkezi korelasyonun ürettiği `traceId`'yi taşır (`queue.service.ts`).
+    expect(bindings?.['traceId']).toMatch(TRACE_ID_PATTERN)
+    expect(bindings).toEqual({
       tenantId: PROBE_TENANT_ID,
       jobId: result.jobId,
       jobName: PROBE_JOB_NAME,
+      traceId: bindings?.['traceId'],
     })
   })
 
@@ -279,8 +311,51 @@ describe('(2) enqueue — SIRALAMA, jobId eşlemesi, iş seçenekleri (gerçek B
 
     const job = await probeQueue.getJob(result.jobId)
 
-    expect(job?.data).toEqual({ tenantId: PROBE_TENANT_ID })
-    expect(writerCalls[0]?.payload).toEqual({ tenantId: PROBE_TENANT_ID })
+    expect(job?.data.traceId).toMatch(TRACE_ID_PATTERN)
+    expect(job?.data).toEqual({ tenantId: PROBE_TENANT_ID, traceId: job?.data.traceId })
+    expect(writerCalls[0]?.payload['traceId']).toMatch(TRACE_ID_PATTERN)
+    expect(writerCalls[0]?.payload).toEqual({
+      tenantId: PROBE_TENANT_ID,
+      traceId: writerCalls[0]?.payload['traceId'],
+    })
+  })
+
+  it('AC-53 SAHTECİLİK PİNİ — çağıranın gönderdiği `traceId` HER ZAMAN üzerine yazılır', async () => {
+    const SPOOFED_TRACE_ID = 'f'.repeat(32)
+
+    const result = await service.enqueue(probeDefinition, {
+      tenantId: PROBE_TENANT_ID,
+      traceId: SPOOFED_TRACE_ID,
+    })
+
+    const job = await probeQueue.getJob(result.jobId)
+
+    expect(job).toBeDefined()
+
+    // ⚠⚠ CLAUDE.md §7 md 6: "girdiden gelen hiçbir id'ye güvenilmez". Sahte
+    // değer NE JSONB'YE NE BullMQ'YA yazılır — ikisi de merkezi korelasyonun
+    // ürettiği GERÇEK değeri taşır.
+    expect(job?.data.traceId).not.toBe(SPOOFED_TRACE_ID)
+    expect(job?.data.traceId).toMatch(TRACE_ID_PATTERN)
+    expect(writerCalls[0]?.payload['traceId']).not.toBe(SPOOFED_TRACE_ID)
+    expect(writerCalls[0]?.payload['traceId']).toMatch(TRACE_ID_PATTERN)
+    expect(writerCalls[0]?.payload).toEqual({
+      tenantId: PROBE_TENANT_ID,
+      traceId: writerCalls[0]?.payload['traceId'],
+    })
+  })
+
+  it('EXPAND/CONTRACT — `traceId` TAŞIMAYAN (şema eklenmeden önceki hâl) bir girdi AYNEN parse ediliyor', () => {
+    // Bu, `jobPayloadBaseSchema`'nın KENDİSİNİN geriye uyumluluğu — bekleyen
+    // eski bir iş kaydının (migration YOK, JSONB içeriği) hâlâ parse
+    // edilebildiğini doğrular; `enqueue`'un korelasyon birleştirmesi
+    // devreye GİRMEDEN önceki saf şema davranışı.
+    const legacyPayload = { tenantId: PROBE_TENANT_ID }
+    const parsed = jobPayloadBaseSchema.safeParse(legacyPayload)
+
+    expect(parsed.success).toBe(true)
+    expect(parsed.success ? parsed.data.traceId : undefined).toBeUndefined()
+    expect(parsed.success ? parsed.data.tenantId : undefined).toBe(PROBE_TENANT_ID)
   })
 })
 
@@ -402,7 +477,14 @@ describe('(3) üretim yolu — `Job` satırı KİRACI KAPSAMLI yazılıyor + kap
     expect(rows[0]?.type).toBe('tenant.provision')
     expect(rows[0]?.status).toBe(JobStatus.queued)
     expect(rows[0]?.progress).toBe(0)
-    expect(rows[0]?.payload).toEqual({ tenantId })
+
+    const storedPayload = rows[0]?.payload
+    const storedTraceId =
+      storedPayload !== null && typeof storedPayload === 'object' && !Array.isArray(storedPayload)
+        ? storedPayload['traceId']
+        : undefined
+    expect(storedTraceId).toMatch(TRACE_ID_PATTERN)
+    expect(storedPayload).toEqual({ tenantId, traceId: storedTraceId })
     expect(rows[0]?.startedAt).toBeNull()
     expect(rows[0]?.completedAt).toBeNull()
 
@@ -410,7 +492,8 @@ describe('(3) üretim yolu — `Job` satırı KİRACI KAPSAMLI yazılıyor + kap
     const bullJob = await entry?.queue.getJob(result.jobId)
 
     expect(bullJob?.id).toBe(result.jobId)
-    expect(bullJob?.data).toEqual({ tenantId })
+    expect(bullJob?.data.traceId).toMatch(TRACE_ID_PATTERN)
+    expect(bullJob?.data).toEqual({ tenantId, traceId: bullJob?.data.traceId })
 
     // Üretim kuyruğunu temiz bırak (worker bu sürümde bu süreçte koşmuyor).
     await bullJob?.remove()

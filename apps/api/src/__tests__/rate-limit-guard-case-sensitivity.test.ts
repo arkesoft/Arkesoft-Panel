@@ -76,6 +76,9 @@ function buildAuthenticatedStore(): RequestContext {
     tenant: { kind: 'exempt' },
     auth: { kind: 'authenticated', userId: 'usr_t021f3', sessionId: 'ses_t021f3' },
     client: { ip: null, userAgent: null },
+    // ROADMAP v0.0.17, T-028/S4 EKLEMESİ (additive): ZORUNLU alan, `client`
+    // İLE AYNI gerekçe — bu dosyanın konusuyla ilgisiz, sabit değer yeterli.
+    traceId: 'test-trace-id-rate-limit-guard-case',
   }
 }
 

@@ -238,6 +238,19 @@ function readTenantIdForDiagnostics(data: unknown): string | undefined {
 }
 
 /**
+ * Payload şemayı karşılamasa bile kurtarılabilen `traceId` (ROADMAP v0.0.17,
+ * T-028/S7, architect K-A28-1 — yalnızca TEŞHİS için, `readTenantIdForDiagnostics`
+ * İLE AYNI gerekçe). Taban şema reddederse (ör. `tenantId` eksik/boş) `traceId`
+ * de GERÇEKTEN bilinmiyordur; üreticinin merkezi korelasyonu (`queue.service.ts`)
+ * normalde HER payload'a bu alanı yazar, bu fonksiyon o garantiyi VARSAYMAZ.
+ */
+function readTraceIdForDiagnostics(data: unknown): string | undefined {
+  const parsed = jobPayloadBaseSchema.safeParse(data)
+
+  return parsed.success ? parsed.data.traceId : undefined
+}
+
+/**
  * İş türünün worker tarafında KOŞTURULABİLİR hâli. ⚠ Jenerik `P` BURADA
  * SİLİNİR: dışa açılan yüzey (`topology` + `createProcessor`) payload tipini
  * taşımaz, böylece farklı payload şekilleri TEK bir kayıt defteri dizisinde
@@ -389,10 +402,14 @@ export function createJobProcessor<P extends JobPayloadBase>(
         parseResult.error.issues.map((issue) => issue.path.join('.')),
       )
       const diagnosticTenantId = readTenantIdForDiagnostics(job.data)
+      // ⭐ AC-53 ("kuyruk" halkası) — payload REDDEDİLSE bile, KURTARILABİLEN
+      // `traceId` loga taşınır (TENANT_ID ile AYNI "yok" vs. "unutuldu" ayrımı).
+      const diagnosticTraceId = readTraceIdForDiagnostics(job.data)
       const payloadLogger = rootLogger.child({
         tenantId: diagnosticTenantId ?? null,
         jobId,
         jobName,
+        traceId: diagnosticTraceId ?? null,
       })
 
       payloadLogger.error(
@@ -421,8 +438,14 @@ export function createJobProcessor<P extends JobPayloadBase>(
     const { tenantId } = payload
 
     // ADIM 2 — bağlam. `logger.child` ile `tenantId`/`jobId` bind edilir:
-    // handler bu alanları eklemeyi UNUTAMAZ (CLAUDE.md §7 md 13).
-    const logger = rootLogger.child({ tenantId, jobId, jobName })
+    // handler bu alanları eklemeyi UNUTAMAZ (CLAUDE.md §7 md 13). ⭐⭐ AC-53
+    // ("kuyruk" halkası, ROADMAP v0.0.17, T-028/S7): `payload.traceId` burada
+    // Redis'ten GERİ OKUNMUŞ ve TEKRAR parse edilmiş değerdir — üreticinin
+    // (`queue.service.ts`) ALS'den/Katman 1'den okuduğu `traceId` ile AYNI
+    // kimliktir, bu fonksiyonun İÇİNDE YENİDEN ÜRETİLMEZ. Alan ŞEMADA
+    // opsiyonel (eski payload'lar, expand/contract) — `?? null`, "yok" ile
+    // "unutuldu" ayrımını KORUR (CLAUDE.md §7 md 13 deseni).
+    const logger = rootLogger.child({ tenantId, jobId, jobName, traceId: payload.traceId ?? null })
 
     const context: JobContext = {
       jobId,

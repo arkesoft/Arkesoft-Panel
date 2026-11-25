@@ -1,5 +1,11 @@
 # @arkesoft/themes-modern
 
+## 0.1.9
+
+### Patch Changes
+
+- @arkesoft/theme-sdk@0.1.10
+
 ## 0.1.8
 
 ### Patch Changes

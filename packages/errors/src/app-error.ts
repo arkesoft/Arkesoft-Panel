@@ -15,11 +15,34 @@
 //                    error-body.ts, A-V25); PII ve sır içermez (CLAUDE.md §4/§10)
 //   isRetryable    — kuyruk (BullMQ, v0.0.11) bu bayrağa göre retry/DLQ kararı verir
 //
-// VARSAYIM(A-V27 teyidi, architect K-A2): günlük seviyesi eşlemesi için ayrı bir
-// alan BİLİNÇLİ OLARAK burada YOK (grep probu: bu dosyada o alanın adı hiç
-// geçmez). v0.0.17'de OpenTelemetry/Sentry eşlemesiyle birlikte additive
-// eklenecek — bugün eklemek hangi seviyeye eşleneceğini henüz tasarlanmamışken
-// dayatır.
+// DEVİR (ROADMAP v0.0.17, T-028/S3, architect K-A28-5/K-A28-6): yukarıdaki
+// VARSAYIM(A-V27) burada "günlük seviyesi eşlemesi için ayrı bir alan BİLİNÇLİ
+// OLARAK YOK" diyordu — v0.0.17'de OpenTelemetry/Sentry eşlemesiyle birlikte
+// ADDITIVE eklenmesi ZATEN öngörülmüştü. Altıncı alan `logLevel` budur. Bu bir
+// gevşetme DEĞİL, planlı devirdir (bkz. `__tests__/app-error.test.ts`'in aynı
+// adı taşıyan eski/yeni testleri).
+//
+// `logLevel` (ADDITIVE yedinci alan, K-A28-5):
+//   - Dört seviye: 'error' | 'warn' | 'info' | 'debug' (CLAUDE.md §4).
+//     `fatal`/`trace` BİLİNÇLİ OLARAK YOK — `fatal` süreç ölümü (bkz.
+//     `apps/api/src/main.ts`'in crash logger'ı), `trace` geliştirme gürültüsü;
+//     ikisi de domain hatası seviyesi DEĞİL.
+//   - VARSAYILAN `'warn'`. Gerekçe CLAUDE.md §4'ün KENDİ tanımından:
+//     `AppError` TANIMI GEREĞİ beklenen bir durumdur ("Beklenen durumlar için
+//     hata fırlat"); "beklenen ama anormal" = `warn`. `error` ("müdahale
+//     gerekir") İSTİSNAİ durumlar için ayrılır — varsayılanı `error` yapmak
+//     platformdaki onlarca iş hatasını operatöre haksız yere çağrı yapardı.
+//   - ⚠⚠ `isRetryable`'DAN TÜRETİLMEZ (bağlayıcı): `isRetryable` = "kuyruk
+//     tekrar denesin mi", `logLevel` = "insan baksın mı" — bağımsız eksenler.
+//     Aynı hata birinci denemede `warn`, terminal denemede `error` olabilir;
+//     boolean'dan seviye türetmek CLAUDE.md §4'ün yasakladığı "boolean bayrak
+//     yığını" olurdu.
+//   - Tek beyan yeri bu sınıftır — `packages/errors` içinde `code → logLevel`
+//     şeklinde İKİNCİ bir doğruluk kaynağı (defter) AÇILMAZ
+//     (`error-message-keys.ts`'in "hata SINIFI tanımlamaz" kuralı burada da
+//     geçerli).
+//   - `context`/`httpHeaders` ile AYNI desen: tele (`toErrorBody`) GİRMEZ —
+//     o fonksiyon dört alanı ELLE yazar, `error`'dan spread ETMEZ.
 //
 // `httpHeaders` (ROADMAP v0.0.5, T-006/S3, architect "HATA SINIFLARI" bölümü):
 // ADDITIVE altıncı alan. Gerekçe: `RateLimitExceededError`'ın `Retry-After`
@@ -38,6 +61,14 @@
 // erişimi İÇERMİYOR).
 
 import { z } from 'zod'
+
+/**
+ * Hata seviyeleri (CLAUDE.md §4, ROADMAP v0.0.17 T-028/S3, architect K-A28-5).
+ * Operatöre ne kadar acil müdahale gerektiğini ifade eder — `isRetryable`'ın
+ * ("kuyruk tekrar denesin mi") TAMAMEN AYRI ekseni ("insan baksın mı").
+ * `fatal`/`trace` BİLİNÇLİ OLARAK YOK (yukarıdaki dosya başı yorumuna bkz.).
+ */
+export type AppErrorLogLevel = 'error' | 'warn' | 'info' | 'debug'
 
 /**
  * `AppError` yapıcısına verilen tek seçenek nesnesi. CLAUDE.md §4'teki
@@ -67,6 +98,12 @@ export interface AppErrorOptions {
    * doğrudan istemciye gider (CLAUDE.md §4/§10 — PO riski 8).
    */
   readonly httpHeaders?: Readonly<Record<string, string>>
+  /**
+   * Operatörün bu hataya ne kadar acil bakması gerektiği (K-A28-5). Verilmezse
+   * `'warn'` — CLAUDE.md §4'ün kendi tanımından: `AppError` tanımı gereği
+   * beklenen bir durumdur. `isRetryable`'dan TÜRETİLMEZ, ayrıca beyan edilir.
+   */
+  readonly logLevel?: AppErrorLogLevel
 }
 
 /**
@@ -93,6 +130,12 @@ export abstract class AppError extends Error {
    * tanımsız KALABİLİR, bu yüzden aynı deseni TEKRARLAMADIK).
    */
   readonly httpHeaders: Readonly<Record<string, string>> | undefined
+  /**
+   * Operatöre ne kadar acil göründüğü (K-A28-5, ROADMAP v0.0.17 T-028/S3).
+   * `?` DEĞİL — `isRetryable` ile aynı desen: verilmezse `'warn'`'a düşer,
+   * alan her zaman tanımlıdır (`options.logLevel ?? 'warn'`).
+   */
+  readonly logLevel: AppErrorLogLevel
 
   /**
    * Tele yazılacak (public) ek detay — ROADMAP v0.0.6, T-007/ST-1, architect K3
@@ -130,6 +173,7 @@ export abstract class AppError extends Error {
     this.context = options.context ?? {}
     this.isRetryable = options.isRetryable ?? false
     this.httpHeaders = options.httpHeaders
+    this.logLevel = options.logLevel ?? 'warn'
 
     // Node/V8'de yığın izini bu sınıftan (ve üstündeki çağrı çerçevesinden)
     // başlatır. Tarayıcı hedefi yok (apps/api yalnızca Node'da çalışır) ama

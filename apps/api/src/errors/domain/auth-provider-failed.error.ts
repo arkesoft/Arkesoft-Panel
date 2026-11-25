@@ -12,6 +12,11 @@
 // beklenmedik şekilde çöktüğü (hata yutulmadı, CLAUDE.md §10.16) durum
 // içindir — `isRetryable: true` ileride (v0.0.11) bir kuyruk tüketicisi
 // için ÖNCEDEN doğru kodlanmış bayrak.
+//
+// `logLevel: 'error'` (ROADMAP v0.0.17, T-028/S8, architect K-A28-5 adayı,
+// po A-PO3): kimlik doğrulama sağlayıcısının KENDİSİNİN beklenmedik şekilde
+// çökmesi — kullanıcılar giriş/kayıt YAPAMAZ hâle gelir; varsayılan `'warn'`
+// bu kritikliği YANSITMAZ.
 
 import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
@@ -23,6 +28,7 @@ export class AuthProviderFailedError extends AppError {
       userMessageKey: ERROR_MESSAGE_KEYS.AUTH_PROVIDER_FAILED,
       isRetryable: true,
       cause,
+      logLevel: 'error',
     })
   }
 }

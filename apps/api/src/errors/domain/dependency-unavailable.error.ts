@@ -8,6 +8,11 @@
 // ROADMAP v0.0.6, T-007/ST-1, architect K3 (ADR-0010 §1): `details.checks`
 // artık `error-mapping.ts`'teki merkezi bir `instanceof` zincirinden değil,
 // bu sınıfın `override get publicDetails()`'inden gelir.
+//
+// `logLevel: 'error'` (ROADMAP v0.0.17, T-028/S8, architect K-A28-5 adayı,
+// po A-PO3): `/health/ready`'nin BİZZAT ürettiği bu hata, DB/Redis gibi bir
+// temel bağımlılığın şu anda ÇÖKMÜŞ olduğunu söyler — varsayılan `'warn'`
+// burada YETERSİZ kalır, operatörün ANINDA müdahale etmesi gerekir.
 
 import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
@@ -24,6 +29,7 @@ export class DependencyUnavailableError extends AppError {
       userMessageKey: ERROR_MESSAGE_KEYS.DEPENDENCY_UNAVAILABLE,
       context: { checks },
       isRetryable: true,
+      logLevel: 'error',
     })
     this.checks = checks
   }

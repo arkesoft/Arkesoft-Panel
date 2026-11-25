@@ -52,16 +52,19 @@ function uniqueSlug(prefix: string): string {
 
 const REQUEST_ID = 'req_test000000000000000000s6tf'
 const GUARD_TEST_CLIENT = { ip: null, userAgent: null } as const satisfies RequestContext['client']
+// ROADMAP v0.0.17, T-028/S4 EKLEMESİ (additive) — `auth-guard.test.ts`'in AYNI gerekçesi.
+const TEST_TRACE_ID = 'test000000000000000000000000s6tf'
 
 /** `auth-guard.test.ts`'in BİREBİR AYNI yardımcısı (bilerek yerel kopya — dosya sahipliği). */
 function runWithStore<T>(
-  store: Omit<RequestContext, 'requestId' | 'receivedAt' | 'client'>,
+  store: Omit<RequestContext, 'requestId' | 'receivedAt' | 'client' | 'traceId'>,
   callback: () => T,
 ): T {
   const fullStore: RequestContext = {
     requestId: REQUEST_ID,
     receivedAt: Date.now(),
     client: GUARD_TEST_CLIENT,
+    traceId: TEST_TRACE_ID,
     ...store,
   }
   return requestContextStorage.run(fullStore, callback)

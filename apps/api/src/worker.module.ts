@@ -40,10 +40,16 @@ import { Module } from '@nestjs/common'
 
 import { ConfigModule } from './config/config.module.js'
 import { LoggingModule } from './logging/logging.module.js'
+// T-028/S6 EKLEMESİ (ROADMAP v0.0.17, architect K-A28-3): `ObservabilityModule`
+// — `ObservabilityShutdownService`'in worker'ın KENDİ `app.close()`
+// zincirinde de koşması için (dosya başı AC9 yorumunun KAPANIŞ ZİNCİRİ'nin
+// 3. adımı, `PrismaModule`'ün yanına). Sentry/OTel worker sürecinde de
+// `apps/api` İLE AYNI şekilde (DSN tanımsızken NO-OP) davranır.
+import { ObservabilityModule } from './observability/observability.module.js'
 import { PrismaModule } from './prisma/prisma.module.js'
 import { QueueWorkerModule } from './queue/queue-worker.module.js'
 
 @Module({
-  imports: [ConfigModule, LoggingModule, PrismaModule, QueueWorkerModule],
+  imports: [ConfigModule, LoggingModule, PrismaModule, QueueWorkerModule, ObservabilityModule],
 })
 export class WorkerModule {}

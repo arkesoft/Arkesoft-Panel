@@ -1,5 +1,6 @@
 // @arkesoft/api — iş payload'ının TABAN şeması (ROADMAP v0.0.11, T-013/S5,
-// architect K5 katman 1)
+// architect K5 katman 1; `traceId` ALANI ROADMAP v0.0.17, T-028/S7, architect
+// K-A28-1 KUYRUK YAYILIMI EKLEMESİ)
 //
 // ⚠ CLAUDE.md §7 md 7'nin ("kuyruk işinin payload'ında `tenantId` VAR")
 // TİP DÜZEYİNDEKİ karşılığı. `JobDefinition<P extends JobPayloadBase>`
@@ -11,7 +12,16 @@
 // edilir; parse edilmemiş veriye tip verilmez". Kuyruk payload'ı iki kez dış
 // veridir: (1) üretici çağrısı, (2) Redis'ten geri okuma (worker tarafında
 // T-013/S6 TEKRAR parse eder — tek parse YETMEZ, araya Redis giriyor).
-
+//
+// ⚠⚠ `traceId` OPSİYONEL — İKİ GEREKÇE: (1) EXPAND/CONTRACT (CLAUDE.md §4):
+// bu alan eklenmeden ÖNCE kuyruğa yazılmış/bekleyen bir iş kaydı bu şemayla
+// AYNEN parse EDİLEBİLMELİ, aksi hâlde platform rollback'i şema rollback'i
+// gerektirirdi; (2) alan JSONB İÇERİĞİDİR — Prisma kolonu DEĞİL, `packages/db`
+// şemasına HİÇBİR DOKUNUŞ yok, migration YOK. ⚠⚠ SAHTECİLİK bu dosyada
+// ÖNLENMEZ — çağıranın gönderdiği değer `QueueService.enqueue`'da ALS/Katman 1
+// korelasyonuyla ÜZERİNE YAZILIR (`queue.service.ts` dosya başı yorumu);
+// buradaki regex yalnızca BİÇİMİ (`getCurrentTraceId()`'in ürettiği 32 hex
+// karakter) doğrular.
 import { z } from 'zod'
 
 /**
@@ -24,9 +34,19 @@ import { z } from 'zod'
  * `tenantId` için fail-closed fırlatır (`@arkesoft/db` `tenant-context.ts`)
  * — kapıyı iki katmanda tutuyoruz ki hata kuyruğa girmeden, ÜRETİCİDE
  * yakalansın.
+ *
+ * `traceId`: `observability/trace-id.ts`'in `getCurrentTraceId()`'ının
+ * ürettiği biçimle (16 bayt → 32 hex karakter) UYUMLU, OPSİYONEL. Tek kaynak
+ * BURASI — `jobPayloadBaseSchema.extend(...)` ile kurulan HER iş türü şeması
+ * (`queue/jobs/tenant-provision/payload.schema.ts:30`) bu alanı TEK SATIRLA
+ * devralır; ikinci bir tanım açılmaz.
  */
 export const jobPayloadBaseSchema = z.object({
   tenantId: z.string().min(1),
+  traceId: z
+    .string()
+    .regex(/^[0-9a-f]{32}$/)
+    .optional(),
 })
 
 /**

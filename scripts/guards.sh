@@ -1516,6 +1516,116 @@ check_ac45_ac46_error_catalog_and_money_lint_guards() {
   return 0
 }
 
+# ---------------------------------------------------------------------------
+# AC-61 — Sentry DSN sızıntısı + reddedilen OpenTelemetry meta-paketi taraması
+# (ROADMAP v0.0.17, T-028/S10, architect AC-61; S2'nin ölçümü AC-61'i üç alt
+# kontrolden İKİYE daralttı — "`--import` yolu ↔ `preload.ts` sabiti eşitliği"
+# alt kontrolü S6 `preload.ts` YAZMADIĞI için DÜŞTÜ, bkz. handoff).
+#
+# Depo PUBLIC (⚠⚠ `gh repo view` ile ölçüldü) ⇒ bir sır/anahtar sızıntısı
+# herkese açık okunabilir olur. `SENTRY_DSN` BUGÜN `apps/api/src/config/
+# api-env.ts`'te yalnızca OPSİYONEL tutulur ve `.env.example`'a BİLEREK
+# EKLENMEDİ (S5 kararı, K-A28-2) — bu kontrol o kararın GERİ KAYMADIĞINI
+# (ör. birinin yerel/sandbox bir DSN'i yanlışlıkla commit etmesini) mekanik
+# olarak zorlar. İkinci alt kontrol kullanıcı tarafından AÇIKÇA REDDEDİLEN
+# OpenTelemetry "auto" + "-instrumentations-node" meta-paketinin (onlarca
+# enstrümantasyonu tedarik zincirine tek seferde sokar) ne bir
+# `package.json`'da ne bir import/require ifadesinde doğmadığını zorlar —
+# jetonun bu yorumdaki yazımı da (AŞAĞIDAKİ kodla AYNI disiplin) BİLEREK
+# PARÇALI.
+#
+# Literal-jeton kuralı (AGENT_BASELINE.md §5, AC4/AC8/AC16/AC-45 ile AYNI
+# disiplin) — S1'in İLK denemesinde `pnpm-workspace.yaml`'a yazdığı KENDİ
+# açıklama yorumunun jetonu bitişik taşıdığı için tarama KENDİ notunu ÖLÇÜLMÜŞ
+# bir örnekle bulmuştu (bkz. handoff BAĞLAM ÖZETİ) — meta-paket jetonu (alt
+# kontrol 2) BU YÜZDEN aşağıda PARÇALI kurulur; bu yorumun KENDİSİ de onu
+# BİTİŞİK YAZMAZ. ⚠ DÜZELTME (T-028 düzeltme turu 1, `security` G6): DSN alt
+# kontrolü (alt kontrol 1) artık BARINDIRICIYA ÖZGÜ bir jeton TAŞIMIYOR —
+# desen genel bir "32-hex@alan-adı/sayısal-id" biçimi arıyor (self-hosted
+# dahil); bölünmüş değişken çifti bu yüzden KALDIRILDI, kuralı ihlal eden bir
+# literal de YOK.
+#
+# Tarama hedefi `git ls-files` (TEK seferde türetilir, iki alt kontrol de
+# AYNI listeyi kullanır) — depo TAKİP EDİLEN dosyalarının TAMAMı (node_modules/
+# dist/.turbo zaten .gitignore ile hariç); hedef `.ts`/`.yml` gibi dar bir
+# uzantı kümesiyle SINIRLANMADI çünkü bir DSN/paket adı herhangi bir dosyada
+# (örn. bir `.md`, bir `.json`, bir yorum) sızabilir. `grep -r` BİLEREK
+# KULLANILMADI: hedef küme zaten `git ls-files` ile (tüm depo ağacı DAHİL)
+# türetildiği için `grep`'e DOĞRUDAN bir DİZİN verilmiyor — AGENT_BASELINE.md
+# §5'in "`-r` eksikse dizine inmez" uyarısı `grep`'e dizin verilen çağrılar
+# İÇİNDİR (bu dosyadaki `check_adr22_k1d_shellout_boundary`/
+# `check_slug_grammar_single_source` gibi); burada `xargs` AÇIK DOSYA LİSTESİ
+# üzerinde çalışıyor, AC4/AC16/`check_playwright_retries_single_source` ile
+# AYNI (önceden ölçülmüş, dizin-atlama riski taşımayan) desen.
+# ---------------------------------------------------------------------------
+check_ac61_sentry_dsn_and_rejected_otel_metapackage() {
+  local violation=false
+
+  local tracked_files
+  if ! tracked_files="$(git ls-files)"; then
+    echo "AC-61 taraması hata verdi: 'git ls-files' çalışmadı — fail-closed."
+    return 1
+  fi
+  if [ -z "$tracked_files" ]; then
+    echo "AC-61 taraması hata verdi: depo takip edilen dosya listesi boş — fail-closed."
+    return 1
+  fi
+
+  local tracked_array=()
+  while IFS= read -r tracked_line; do
+    [ -z "$tracked_line" ] && continue
+    tracked_array+=("$tracked_line")
+  done <<<"$tracked_files"
+
+  # --- Alt kontrol 1: gerçek biçimli Sentry DSN — SIFIR bekleniyor. --------
+  # Biçim: 32 hex karakterlik genel anahtar + "@" + herhangi bir barındırma
+  # alan adı + "/" + sayısal proje id'si.
+  #
+  # ⚠ DÜZELTME (T-028 düzeltme turu 1, `security` G6 — ÖLÇÜLDÜ): önceki desen
+  # alan adını "*.sentry.io" barındırmasına SABİTLİYORDU — self-hosted bir DSN
+  # (ör. 32 hex anahtar + "@" + arkesoft'un KENDİ alan adı + "/" + proje id'si)
+  # KÖR NOKTADA kalıyordu, çünkü o alan adı "sentry.io" ile BİTMİYOR. Desen
+  # genel barındırma alan adını kabul edecek şekilde genişletildi — artık HER
+  # alan adı için 32-hex + "@" + alan-adı + "/" + sayısal-id biçimini arıyor.
+  # Barındırıcıya özgü jeton artık YOK (önceki "sentry"+".io" bölünmüş
+  # değişken çifti GEREKSİZ hâle geldi, kaldırıldı) — literal-jeton kuralı
+  # (AGENT_BASELINE.md §5) zaten ihlal edilmiyor çünkü aşağıdaki desenin
+  # kendisi hiçbir barındırıcı adını BİTİŞİK taşımıyor.
+  local dsn_pattern="[0-9a-f]{32}@[A-Za-z0-9.-]+/[0-9]+"
+
+  local dsn_matches
+  dsn_matches="$(printf '%s\0' "${tracked_array[@]}" \
+    | xargs -0 grep -nE --binary-files=without-match -- "$dsn_pattern" 2>/dev/null || true)"
+  if [ -n "$dsn_matches" ]; then
+    echo "AC-61 alt kontrol 1 İHLALİ — depo PUBLIC; gerçek biçimli bir Sentry DSN bulundu (sır sızıntısı):"
+    printf '%s\n' "$dsn_matches"
+    violation=true
+  else
+    echo "AC-61 alt kontrol 1: gerçek biçimli bir Sentry DSN bulunamadı (git ls-files genelinde)."
+  fi
+
+  # --- Alt kontrol 2: reddedilen OpenTelemetry meta-paketi — SIFIR
+  #     bekleniyor (ne package.json'da ne import/require'da).
+  local otel_pkg_a='@opentelemetry/auto-instrumen' otel_pkg_b='tations-node'
+  local otel_pkg="${otel_pkg_a}${otel_pkg_b}"
+
+  local otel_matches
+  otel_matches="$(printf '%s\0' "${tracked_array[@]}" \
+    | xargs -0 grep -nF --binary-files=without-match -- "$otel_pkg" 2>/dev/null || true)"
+  if [ -n "$otel_matches" ]; then
+    echo "AC-61 alt kontrol 2 İHLALİ — reddedilen OpenTelemetry meta-paketi ($otel_pkg) bulundu (onlarca enstrümantasyonu tedarik zincirine sokar, kullanıcı tarafından REDDEDİLDİ):"
+    printf '%s\n' "$otel_matches"
+    violation=true
+  else
+    echo "AC-61 alt kontrol 2: reddedilen OpenTelemetry meta-paketi ($otel_pkg) hiçbir package.json/import/require'da bulunamadı."
+  fi
+
+  if [ "$violation" = true ]; then
+    return 1
+  fi
+  return 0
+}
+
 run_step "AC13 — yasak jeton taraması" check_ac13_forbidden_tokens
 run_step "AC5 — sabit Node sürümü yazımı yasağı" check_ac5_node_version_file
 run_step "run: bloğu içi şablon ifadesi yasağı" check_run_block_template_expression
@@ -1540,6 +1650,7 @@ run_step "actionlint (yerelde kuruluysa)" check_actionlint_if_available
 run_step "axe tek-kaynak taraması (T-024, A-T24-1)" check_axe_single_source
 run_step "test:contract komut zinciri — script + sahte yeşil + sözleşme dosyası (T-026/S3)" check_test_contract_chain
 run_step "AC-45 + AC-46 — hata i18n anahtarı kataloğu drift kapısı (T-027/S8)" check_ac45_ac46_error_catalog_and_money_lint_guards
+run_step "AC-61 — Sentry DSN sızıntısı + reddedilen OpenTelemetry meta-paketi (T-028/S10)" check_ac61_sentry_dsn_and_rejected_otel_metapackage
 
 echo ""
 echo "════════════════════════════════════════════════════════"

@@ -20,6 +20,19 @@
 //
 // `httpStatus: 500` — kullanıcı girdisi hatası değil, yapılandırma/programlama
 // hatası. `context` yalnızca iş adını ve sebebi taşır (PII yok).
+//
+// `logLevel: 'error'` (ROADMAP v0.0.17, T-028/S9, R-PO3 devrinin bulduğu
+// davranış kayması — `architect`/S8 bu sınıfı DEĞERLENDİRMEMİŞTİ, S8 yalnızca
+// dört 503 adayını ekledi): `trpc.ts`'in ÖNCEKİ `httpStatus >= 500 → error`
+// türetmesi bu sınıf için `error` YAZIYORDU; `appError.logLevel`'a devredilen
+// TEK doğruluk kaynağı AÇIKÇA beyan EDİLMEZSE varsayılan `'warn'`a düşer ve bu
+// SESSİZ bir seviye DÜŞÜŞÜ olurdu. Bu kabul EDİLEMEZ: bu hata WORKER
+// AÇILIŞINDA bir kayıt defteri/topoloji tutarsızlığını (üretici ↔ tüketici
+// evrimi birbirinden koptu) işaret eder — tanım gereği bir DEPLOY/PROGRAMLAMA
+// hatasıdır, "beklenen ama anormal" (`warn`) DEĞİLDİR; operatörün ANINDA
+// müdahale etmesi gerekir (CLAUDE.md §4 "müdahale gerekir" = `error`).
+// Varsayılanda bırakmak, bu dosyanın başındaki "KİMSE FARK ETMEZ" uyarısının
+// AYNISINI log seviyesinde TEKRARLARDI.
 
 import { AppError, ERROR_MESSAGE_KEYS } from '@arkesoft/errors'
 
@@ -36,6 +49,7 @@ export class JobHandlerNotRegisteredError extends AppError {
       // Worker kayıt defteri süreç ömrü boyunca sabittir → yeniden denemek
       // aynı sonucu verir (`app-error.ts:16`).
       isRetryable: false,
+      logLevel: 'error',
     })
   }
 }

@@ -7,8 +7,17 @@
 // (`verbatimModuleSyntax` nedeniyle derlemede silinir); gerçek adaptör
 // `NestFactory.create()`'in kendi çalışma zamanı yüklemesiyle devreye girer.
 //
-// `import 'reflect-metadata'` İLK satır OLMAK ZORUNDA: Nest'in legacy
-// dekoratör metadata'sı bu yan etkiye dayanır (ST-0 spike'ı doğruladı).
+// GÜNCELLEME (ROADMAP v0.0.17, T-028/S6, architect K-A28-4): `observability/
+// instrumentation.js` artık BU DOSYANIN gerçek İLK import'u —
+// `reflect-metadata`'nın BİLE önünde. Gerekçe: OTel'in çekirdek modül yaması
+// `express`/`http` gibi modüller İLK KEZ `require()` edilmeden ÖNCE kurulmuş
+// olmalı. `reflect-metadata`'nın "İLK satır olmak zorunda" kuralının AMACI
+// KORUNUR — o kural Nest'in dekoratör metadata'sının `AppModule` GRAFİĞİ
+// DEĞERLENMEDEN önce hazır olmasını istiyordu; `AppModule` grafiği hâlâ bu
+// YENİ ilk satırdan SONRA değerleniyor (observability bootstrap'ı Nest'ten
+// tamamen BAĞIMSIZ bir yan etkidir, `AppModule`'e hiç dokunmaz). Sıra artık:
+// observability bootstrap → `reflect-metadata` → Nest modül grafiği.
+import './observability/instrumentation.js'
 
 import 'reflect-metadata'
 

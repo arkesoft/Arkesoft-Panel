@@ -17,7 +17,7 @@ import { Writable } from 'node:stream'
 import type { INestApplication } from '@nestjs/common'
 import request from 'supertest'
 import type { Logger } from 'pino'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 
 import { DEMO_SEED, TenantRole } from '@arkesoft/db'
@@ -27,6 +27,8 @@ import { apiEnvSchema } from '../config/api-env.js'
 import type { ApiEnv } from '../config/api-env.js'
 import { ROOT_LOGGER } from '../logging/logging.tokens.js'
 import { PrismaService } from '../prisma/prisma.service.js'
+import { shutdownSentry, startSentry } from '../observability/sentry.js'
+import type { StartSentryOptions } from '../observability/sentry.js'
 import { createAuthenticatedSession } from './helpers/auth-fixture.js'
 import { createTestApp } from './helpers/create-test-app.js'
 import { ProbeController } from './helpers/test-probe.controller.js'
@@ -89,6 +91,38 @@ const logRecordSchema = z.looseObject({
 
 function parseLogLines(lines: readonly string[]): Record<string, unknown>[] {
   return lines.map((line) => z.record(z.string(), z.unknown()).parse(JSON.parse(line) as unknown))
+}
+
+/**
+ * `line` (HAM NDJSON metni, `JSON.parse`'TAN ÖNCE) içinde `"key":` deseninin
+ * kaç kez geçtiğini sayar.
+ *
+ * ⚠⚠ Borç `:3929`'un ÖLÇÜM YÖNTEMİ: `JSON.parse` bir JS nesnesinde aynı
+ * anahtarı İKİ KEZ TAŞIYAMAZ (spec, son yazan kazanır) — bu yüzden parse
+ * SONRASI `Object.keys` ile sayım bu sınıf kusuru HİÇBİR ZAMAN YAKALAYAMAZ.
+ * pino'nun `chindings` (child logger bağlaması) + mergingObject birleştirmesi
+ * JS nesne birleştirmesi DEĞİL, ÖNCEDEN SERİLEŞTİRİLMİŞ metin parçalarının
+ * ÜST ÜSTE YAZILMADAN eklenmesidir — aynı anahtar iki kaynaktan gelirse HAM
+ * METİNDE iki kez görünür (ölçüldü, `node -e` ile ayrıca doğrulandı). Sayım
+ * bu yüzden RAW satır üzerinde yapılır.
+ */
+function countRawKeyOccurrences(line: string, key: string): number {
+  const pattern = new RegExp(`"${key}":`, 'g')
+  return (line.match(pattern) ?? []).length
+}
+
+/** `getLines()`'ın döndürdüğü HAM satırlar arasından `msg` eşleşenin HAM metnini + ayrıştırılmış kaydını döner. */
+function findRawAndParsedByMsg(
+  lines: readonly string[],
+  msg: string,
+): { readonly raw: string; readonly record: Record<string, unknown> } {
+  for (const raw of lines) {
+    const record = z.record(z.string(), z.unknown()).parse(JSON.parse(raw) as unknown)
+    if (logRecordSchema.parse(record).msg === msg) {
+      return { raw, record }
+    }
+  }
+  throw new Error(`'${msg}' log kaydı bulunamadı`)
 }
 
 describe('log korelasyonu — AC9', () => {
@@ -209,6 +243,80 @@ describe('log korelasyonu — AC9', () => {
   })
 })
 
+// ROADMAP v0.0.17, T-028/S4 (architect K-A28-1) — Katman 1 korelasyon dikişi:
+// `traceId` log alanı (AC-52) + başarı yanıtında `x-trace-id` başlığı (AC-54a).
+describe('traceId korelasyonu — AC-52 / AC-54a', () => {
+  let app: INestApplication<Server> | undefined
+
+  afterEach(async () => {
+    if (app !== undefined) {
+      await app.close()
+      app = undefined
+    }
+  })
+
+  it('her log kaydında traceId VAR; requestId HAM NDJSON satırında TAM BİR KEZ (borç `:3929` kapandı)', async () => {
+    const { stream, getLines } = createMemoryLogStream()
+    const testApp = await createTestApp({ stream })
+    app = testApp.app
+
+    await request(app.getHttpServer()).get('/health')
+
+    const { raw, record } = findRawAndParsedByMsg(getLines(), 'istek tamamlandı')
+
+    expect('traceId' in record).toBe(true)
+    const recordedTraceId = z.string().min(1).parse(record['traceId'])
+    expect(recordedTraceId.length).toBeGreaterThan(0)
+
+    // ⚠⚠ Borç `:3929`'un bizzat ölçtüğü sınıf: alan child logger
+    // bağlamasından (chindings) AYRICA bir mergingObject alanı OLARAK
+    // geçirilirse HAM metinde İKİ KEZ görünür. `interceptor` artık bu alanı
+    // AYRICA geçirmiyor (yalnızca child bağlamasından gelir) — bu test o
+    // davranışın MUTASYONLA tersine çevrilebilir olduğunu da kanıtlar: alan
+    // interceptor'da yeniden açılırsa (`requestId: requestContext?.requestId`)
+    // bu assert KIRMIZIYA döner.
+    expect(countRawKeyOccurrences(raw, 'requestId')).toBe(1)
+    expect(countRawKeyOccurrences(raw, 'traceId')).toBe(1)
+  })
+
+  it('AC-54a — BAŞARI yanıtında `x-trace-id` başlığı VAR ve log kaydındaki `traceId` ile BİREBİR eşit', async () => {
+    const { stream, getLines } = createMemoryLogStream()
+    const testApp = await createTestApp({ stream })
+    app = testApp.app
+
+    const response = await request(app.getHttpServer()).get('/health')
+
+    const headerTraceId = z.string().min(1).parse(response.headers['x-trace-id'])
+
+    const { record } = findRawAndParsedByMsg(getLines(), 'istek tamamlandı')
+    expect(record['traceId']).toBe(headerTraceId)
+  })
+
+  it('⚠⚠ gelen `traceparent` başlığı KABUL EDİLMEZ — çağıranın değeri traceId ÜZERİNE YAZILIR (K-A28-1, bağlayıcı)', async () => {
+    const { stream, getLines } = createMemoryLogStream()
+    const testApp = await createTestApp({ stream })
+    app = testApp.app
+
+    // W3C `traceparent` biçimi: `{version}-{trace-id}-{parent-id}-{flags}`.
+    // Saldırgan/istemci kendi seçtiği bir trace-id'yi DAYATMAYA ÇALIŞIYOR.
+    const forgedTraceId = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    const forgedTraceparent = `00-${forgedTraceId}-bbbbbbbbbbbbbbbb-01`
+
+    const response = await request(app.getHttpServer())
+      .get('/health')
+      .set('traceparent', forgedTraceparent)
+
+    const headerTraceId = z.string().min(1).parse(response.headers['x-trace-id'])
+
+    expect(headerTraceId).not.toBe(forgedTraceId)
+    expect(headerTraceId).not.toContain(forgedTraceId)
+
+    const { record } = findRawAndParsedByMsg(getLines(), 'istek tamamlandı')
+    expect(record['traceId']).toBe(headerTraceId)
+    expect(record['traceId']).not.toBe(forgedTraceId)
+  })
+})
+
 describe('log redaksiyonu — AC10 (iki katman birlikte)', () => {
   let app: INestApplication<Server> | undefined
 
@@ -279,5 +387,83 @@ describe('log redaksiyonu — AC10 (iki katman birlikte)', () => {
     const fullLogText = getLines().join('\n')
     expect(fullLogText).not.toContain(directSecretCookie)
     expect(fullLogText).not.toContain(directSecretAuth)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// DÜZELTME TURU 1/3 (security BULGU 2, high) — K-A28-1'in GELEN `traceparent`
+// reddinin İKİNCİ ağzı: Sentry'nin KENDİ `httpIntegration`'ı (bizim
+// `HttpInstrumentation`'ımızdan BAĞIMSIZ, `disableIncomingRequestInstrumentation:
+// true` İLE KAPATILAMAYAN) her gelen istekte KOŞULSUZ `api.propagation.
+// extract(api.context.active(), headers)` çağırır (`@sentry/node/.../
+// integrations/http/httpServerIntegration.js`). Üstteki "gelen traceparent
+// KABUL EDİLMEZ" testi (yukarıda, satır ~293) BU İKİNCİ AĞZI ÖLÇMEZ —
+// `SENTRY_DSN` bu test sürecinde TANIMSIZ olduğu için `startSentry()` NO-OP'tur
+// (ObservabilityModule'ün `onModuleInit`'i), Sentry'nin `httpIntegration`'ı
+// HİÇ KURULMAZ — pin "YEŞİL" kalır ama BULGU 2'NİN AÇIĞA ÇIKTIĞI YAPILANDIRMADA
+// HİÇ KOŞMAZ (⭐⭐ bu turun pin kör noktası). ⇒ BU describe Sentry'yi SAHTE
+// taşıyıcıyla GERÇEKTEN BAŞLATIR (`startSentry`, S5'in test-only seam'i —
+// ağa ÇIKILMAZ) ve K-A28-1 pinini AYNI forged-`traceparent` senaryosuyla
+// TEKRARLAR — bu kez Sentry AKTİFKEN.
+//
+// ⚠⚠ `../observability/instrumentation.js` BU TEST için DİNAMİK olarak import
+// EDİLİR (modülün İLK import'u GERÇEK `NodeSDK.start()`'ı tetikler — diğer
+// TÜM testler bu dosyanın TEPESİNDE statik bir import OLMADIĞI için
+// ETKİLENMEZ, yalnızca BU describe'dan SONRA koşacak kod etkilenir; bu
+// describe dosyanın EN SONUNDA, geriye dönük bir etkisi YOK). Düzeltme
+// (`instrumentation.ts`: `textMapPropagator: null`) ⇒ küresel propagator HİÇ
+// KURULMAZ ⇒ Sentry'nin `extract()` çağrısı NO-OP ⇒ forged `traceparent`
+// HİÇBİR ETKİ YAPMAZ (`security`'nin ölçtüğü "LOCAL_GENERATED" davranışı).
+// ---------------------------------------------------------------------------
+
+describe('traceId korelasyonu — K-A28-1 ikinci ağız (Sentry httpIntegration) — AC-52/AC-54a BAĞLAYICI', () => {
+  let app: INestApplication<Server> | undefined
+
+  afterEach(async () => {
+    if (app !== undefined) {
+      await app.close()
+      app = undefined
+    }
+  })
+
+  afterAll(async () => {
+    await shutdownSentry()
+  })
+
+  it('Sentry GERÇEKTEN BAŞLATILMIŞKEN (sahte taşıyıcı) gelen `traceparent` YİNE KABUL EDİLMEZ — x-trace-id forge edilen değere EŞİT DEĞİL', async () => {
+    // Gerçek `NodeSDK.start()`'ı tetikler (bu dosyanın TEK, dosyanın SONUNDAKİ
+    // dinamik import'u — dosya başı yorumuna bkz).
+    await import('../observability/instrumentation.js')
+
+    const fakeTransportFactory: NonNullable<StartSentryOptions['transport']> = () => ({
+      send: () => Promise.resolve({}),
+      flush: () => Promise.resolve(true),
+    })
+    startSentry({
+      dsn: 'https://fakepublickey@o0.ingest.sentry.invalid/0',
+      transport: fakeTransportFactory,
+    })
+
+    const { stream, getLines } = createMemoryLogStream()
+    const testApp = await createTestApp({ stream })
+    app = testApp.app
+
+    // W3C `traceparent` biçimi — üstteki K-A28-1 testiyle AYNI desen, FARKLI
+    // bir sentinel (32 hex 'c', bu testin KENDİ kimliği, karışıklık olmasın).
+    const forgedTraceId = 'c'.repeat(32)
+    const forgedTraceparent = `00-${forgedTraceId}-eeeeeeeeeeeeeeee-01`
+
+    const response = await request(app.getHttpServer())
+      .get('/health')
+      .set('traceparent', forgedTraceparent)
+
+    const headerTraceId = z.string().min(1).parse(response.headers['x-trace-id'])
+
+    expect(headerTraceId).not.toBe(forgedTraceId)
+    expect(headerTraceId).not.toContain(forgedTraceId)
+
+    const { record } = findRawAndParsedByMsg(getLines(), 'istek tamamlandı')
+    expect(record['traceId']).toBe(headerTraceId)
+    expect(record['traceId']).not.toBe(forgedTraceId)
   })
 })

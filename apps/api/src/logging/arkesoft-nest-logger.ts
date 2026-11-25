@@ -45,8 +45,17 @@ export class ArkesoftNestLogger implements LoggerService {
     return typeof message === 'string' ? message : JSON.stringify(message)
   }
 
-  /** Nest'in ek parametrelerini (çoğunlukla `context` dizesi) pino alanına çevirir. */
+  /**
+   * Nest'in ek parametrelerini (çoğunlukla `context` dizesi) pino alanına
+   * çevirir.
+   *
+   * ⚠⚠ BORÇ `:4514` KAPANDI (ROADMAP v0.0.17, T-028/S4): bu alan eskiden
+   * `context` adını taşıyordu — `AppError.context` da (`app-exception.filter.ts`'in
+   * loglama dalı) AYNI anahtarı FARKLI bir anlamla (domain hatasının PII
+   * içermeyen bağlamı) kullanıyordu, yani TEK log alanı İKİ anlam taşıyordu.
+   * Nest tarafı artık `nestParams` — iki üretici artık ÇARPIŞMIYOR.
+   */
   private buildMeta(optionalParams: readonly unknown[]): Record<string, unknown> {
-    return optionalParams.length > 0 ? { context: optionalParams } : {}
+    return optionalParams.length > 0 ? { nestParams: optionalParams } : {}
   }
 }

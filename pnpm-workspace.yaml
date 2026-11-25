@@ -49,10 +49,31 @@ packages:
 #   3) Reddetmenin bedeli yalnızca performans (saf JS serileştirme), doğruluk
 #      değil. Faydası: CI ve geliştirici makinelerinde node-gyp/derleyici
 #      zinciri bağımlılığı yok, tedarik zinciri yüzeyi dar kalıyor.
+#
+# EK (ROADMAP v0.0.17, T-028/S1 — ÖLÇÜLDÜ): @opentelemetry/sdk-node eklenince
+# temiz `pnpm install` `ERR_PNPM_IGNORED_BUILDS: Ignored build scripts:
+# protobufjs@7.6.6` ile BAŞARISIZ oldu. Zincir (`pnpm why protobufjs` ile
+# ölçüldü): sdk-node → üç OTLP gRPC exporter'ı (logs/metrics/trace, kullanılmıyor
+# — architect K-A28-1 "EXPORTER YOK, spanProcessors: []" ama paket.json'da
+# bağımlılık olarak HÂLÂ var) → @opentelemetry/otlp-grpc-exporter-base →
+# @grpc/grpc-js → @grpc/proto-loader → protobufjs (OPSİYONEL DEĞİL, hard dep).
+# Karar: `false` — REDDEDİLDİ:
+#   1) `node_modules/.pnpm/protobufjs@7.6.6/node_modules/protobufjs/scripts/
+#      postinstall.js` İNCELENDİ (okundu, çalıştırılmadı): script yalnızca
+#      tüketen paketin package.json'ındaki sürüm aralığı öneki (`^` vs `~`)
+#      "versionScheme" ile uyuşmuyorsa stderr'e bir UYARI yazıyor — dosya
+#      yazmıyor, derleme yapmıyor, ağa çıkmıyor. Reddetmenin bedeli SIFIR
+#      (kozmetik bir uyarı metni kaybı); msgpackr-extract'tan FARKLI olarak
+#      burada performans kaybı bile yok.
+#   2) R1 disiplini (asgari izin): fonksiyonel fayda olmayan bir script'e
+#      izin vermek gerekçesiz olurdu.
+#   3) Değer `false` olduğu için karar KAYITLI; hata artık doğmuyor (kurulum
+#      exit 0 — ölçüldü).
 allowBuilds:
   '@prisma/engines': true
   prisma: true
   'msgpackr-extract': false
+  protobufjs: false
 
 catalog:
   '@eslint/js': ^10.0.1
@@ -378,3 +399,118 @@ catalog:
   # `peerDependenciesMeta`'da `optional: true` — karşılanmamış olması
   # kurulumu etkilemiyor (bilinen, bloklayıcı değil).
   '@astrojs/react': 7.1.1 # 2026-10-21 yayınlandı (latest=7.1.2 ÇOK YENİ, 2026-10-28)
+
+  # --- Gözlemlenebilirlik (ROADMAP v0.0.17, T-028/S1) — Kullanıcı Onayı (2026-11-23,
+  # tetik 3): OTel+Sentry 7-9 paket, dört enstrümantasyon adıyla seçildi (Astro uydu
+  # kümesi emsali, bkz. yukarı). OTel'in "hepsi bir arada" otomatik (toplu, onlarca
+  # enstrümantasyonu bir arada getiren) paketi BİLİNÇLİ REDDEDİLDİ — adı T-028
+  # handoff'unda kayıtlı, buraya BİLEREK yazılmadı (literal-jeton kuralı, AGENT_
+  # BASELINE.md §5: `grep -rln` taraması kendi reddetme kaydını "bulgu" sanmasın) —
+  # onlarca enstrümantasyonu tedarik zincirine sokar, allowBuilds asgarilik
+  # disiplinine aykırı.
+  #
+  # Bugün 2026-11-23. Yöntem öncekiyle AYNI: `npm view <pkg>@<sürüm> time --json` ile
+  # O SÜRÜMÜN tarihi okundu (paket geneli time.modified DEĞİL — v0.0.5 hatası
+  # tekrarlanmadı). 7 günden yeni (2026-11-16 sonrası) sürüm SEÇİLMEDİ.
+  #
+  # @opentelemetry/api: architect KISIT 1 (bağlayıcı) — iki yerde opsiyonel peer
+  # ^1.9.0 (pnpm-lock.yaml:1143 better-auth@1.7.14, :5368 vitest@5.0.5) + .npmrc:4
+  # strict-peer-dependencies=true ⇒ 2.x SEÇİLEMEZ. architect'in ölçtüğü "güvenli taban"
+  # tam 1.9.0 (Prisma'nın kendi test takımyıldızı — packages/db/node_modules/
+  # @prisma/client/package.json:158, bir devDependency; @prisma/client'ın KENDİ
+  # peerDependencies'inde @opentelemetry/api YOK, ölçüldü). ⚠⚠ S1 ÖLÇÜMÜ — 1.9.0
+  # seçilirse @sentry/node@11.12.0 ve bullmq-otel@2.0.1'in KENDİ "dependencies"i
+  # (peer DEĞİL, hard dep) @opentelemetry/api'yi "^1.9.1" istiyor; 1.9.0 bu aralığı
+  # KARŞILAMAZ ⇒ ikinci bir @opentelemetry/api kopyası doğar. ⇒ 1.9.1 seçildi: hâlâ
+  # KISIT 1'in "^1.9.0, 2.x değil" sınırı İÇİNDE (1.9.1 < 2.0.0); better-auth/vitest'in
+  # ^1.9.0 peer'ını, aşağıdaki sdk-node/instrumentation-http/instrumentation-ioredis/
+  # sdk-trace-base'in daha sıkı aralıklarını VE sentry/bullmq-otel'in ^1.9.1'ini TEK
+  # sürümde karşılıyor. `pnpm why @opentelemetry/api` ile ikinci kopya YOK doğrulandı
+  # (DoD). Yayın: 2026-03-25 (240+ gün önce) — eşik sorusu yok.
+  '@opentelemetry/api': 1.9.1
+  # @opentelemetry/sdk-node: dist-tag "latest" (0.301.2, 2026-11-20) BİLİNÇLİ ATLANDI —
+  # bu ve eşlik eden 0.300.x/0.301.x hattı @opentelemetry/api'yi ">=1.10.0 <1.11.0"
+  # istiyor (KISIT 1'i ihlal eder, 1.9.1 ile UYUMSUZ, ölçüldü). Önceki hat ("latest-2"
+  # dist-tag) 0.223.2: @opentelemetry/api peer'ı ">=1.3.0 <1.10.0" — 1.9.1'i kapsıyor.
+  # Yayın: 2026-11-12 (11 gün önce, eşik üstü). engines.node "^18.19.0 || >=20.6.0" —
+  # yerel 25.8.1 ve .nvmrc 24 kapsıyor.
+  '@opentelemetry/sdk-node': 0.223.2
+  # @opentelemetry/instrumentation-http: sdk-node ile AYNI yayın dalgası/tarihi
+  # (0.223.2, 2026-11-12) — Nest'in tek HTTP katmanı (K-A1, express adaptörü) için
+  # otomatik enstrümantasyon. @opentelemetry/api peer'ı "^1.3.0" — 1.9.1'i kapsıyor.
+  # 0.300.x+ hattı (api >=1.10.0) BİLİNÇLİ ATLANDI (yukarıdaki gerekçe).
+  '@opentelemetry/instrumentation-http': 0.223.2
+  # @opentelemetry/instrumentation-ioredis: CLAUDE.md §2 Redis+BullMQ yığınının Redis
+  # enstrümantasyonu. dist-tag "latest" (0.73.0) ve 0.72.0 BİLİNÇLİ ATLANDI — ikisi de
+  # kendi @opentelemetry/instrumentation dependency'sini 0.300.x+ hattından istiyor
+  # (api >=1.10.0 ile uyumsuz, ölçüldü). Son UYUMLU sürüm 0.71.0
+  # (@opentelemetry/instrumentation: ^0.223.0 — yukarıdaki sdk-node/instrumentation-http
+  # pinini KARŞILIYOR; api peer'ı ^1.3.0). Yayın: 2026-10-06 (48+ gün önce).
+  '@opentelemetry/instrumentation-ioredis': 0.71.0
+  # @opentelemetry/semantic-conventions: architect'in ölçtüğü güvenli taban (Prisma'nın
+  # kendi test takımyıldızı) ile BİREBİR — 1.37.0. dist-tag "latest" (1.45.0,
+  # 2026-11-06, 17 gün önce — eşik üstü) BİLİNÇLİ ATLANDI; sürüm farkı yalnızca
+  # isim/sabit eklemesi, hiçbir tüketicinin aralığını (sdk-node ^1.29.0,
+  # instrumentation-http ^1.29.0, instrumentation-ioredis ^1.33.0) etkilemiyor —
+  # Prisma'nın tuttuğu sürüme sabitlemek test edilmiş takımyıldızı bozmadan ikinci
+  # kopya riskini azaltıyor. Yayın: 2025-09-03 (çok eski, eşik sorusu yok).
+  '@opentelemetry/semantic-conventions': 1.37.0
+  # @prisma/instrumentation: @prisma/client / prisma İLE AYNI sürüme (7.10.1)
+  # kilitlendi — architect K-A28-9 (A3) "lockstep" kararı: Prisma'nın CLI/istemci/
+  # instrumentation üçlüsü birlikte test ediliyor (bkz. packages/db/node_modules/
+  # @prisma/client/runtime/client.d.ts:793). Peer'ı @opentelemetry/api "^1.8" —
+  # 1.9.1'i kapsıyor. ⚠ KENDİ "dependencies"i @opentelemetry/instrumentation'ı
+  # "^0.207.0" istiyor — yukarıdaki 0.223.2 ile UYUMSUZ (ölçüldü: `pnpm why
+  # @opentelemetry/instrumentation` ikinci, ayrı bir kopya gösteriyor). Bu
+  # @opentelemetry/api'nin İKİNCİ KOPYA YASAĞINI (A-A28-7) İHLAL ETMİYOR — o yasak
+  # yalnızca api için; @opentelemetry/instrumentation'ın ikinci kopyası S2'nin
+  # A-A28-1 (Prisma span) spike'ına RİSK olarak devredildi (handoff RİSKLER). Yayın:
+  # 2026-10-15 (39+ gün önce).
+  '@prisma/instrumentation': 7.10.1
+  # bullmq-otel: CLAUDE.md'nin "Önbellek/kuyruk: Redis + BullMQ" yığınının parçası;
+  # pnpm-workspace.yaml'da bullmq'nun dört opsiyonel peer'ından biri olarak ZATEN
+  # adıyla yazılıydı (yukarıdaki bullmq bloğu) ⇒ yeni ana bağımlılık onayı
+  # GEREKMİYOR (mekanizma T-013'ten tanıdık). Peer'ı bullmq ">=6.0.0" — 6.5.0'ı
+  # kapsıyor. Kendi "dependencies"i @opentelemetry/api'yi "^1.9.1" istiyor — bu pin
+  # yukarıdaki api seçimini (1.9.1, 1.9.0 değil) ZORUNLU KILAN ikinci ölçülmüş
+  # gerekçe. Yayın: 2026-08-18 (3+ ay önce).
+  'bullmq-otel': 2.0.1
+  # @sentry/node: Kullanıcı Onayı (2026-11-23) — K-A28-2 (architect) Sentry'nin kendi
+  # OTel kurulumunu devre dışı bırakması gerektiği için v8+ şart (bu seçenek v7'de yok).
+  # ⚠ DÜZELTME (docs, T-028, S5'in ölçümü): bu satır önceden "skipOpenTelemetrySetup ile"
+  # diyordu — ÖLÇÜLDÜ, bu SDK sürümünde (11.12.0) öyle bir alan YOK (0 eşleşme). Gerçek
+  # alan `enableOpenTelemetrySetup` (TERS POLARİTE, varsayılanı zaten `false`) —
+  # bkz. `apps/api/src/observability/sentry.ts` dosya başı yorumu. Katalog DEĞERİ
+  # (sürüm pini) bu düzeltmeden ETKİLENMEDİ, yalnızca yorum metni düzeltildi.
+  # dist-tag "latest" (11.16.0, 2026-11-20, 3 gün önce —
+  # ÇOK YENİ) BİLİNÇLİ ATLANDI; 11.13.0 (2026-11-16) tam eşik sınırında — bir önceki,
+  # daha güvenli kayıt seçildi: 11.12.0 (2026-11-10, 13 gün önce). Kendi
+  # "dependencies"i @opentelemetry/api'yi "^1.9.1" istiyor (yukarıdaki api pinini
+  # zorunlu kılan İLK ölçülmüş gerekçe). engines.node ">=20.19.0 <22.0.0 ||
+  # >=22.12.0 <23.0.0 || >=23.2.0" — yerel 25.8.1 son dala giriyor, kapsıyor.
+  '@sentry/node': 11.12.0
+  # @opentelemetry/sdk-trace-base: ⚠ TEST-ONLY devDependency — AC-53'ün bellek-içi
+  # span exporter'ı (InMemorySpanExporter) için, S2'nin regresyon pinine. architect'in
+  # K-A28-1 fail-closed yedeği de bu paketi kullanıyor (spanProcessors: [] kabul
+  # edilmezse ÜRETİME TERFİ — yeni paket DEĞİL, sınıf değişimi, yeni onay gerekmez,
+  # bkz. T-028 S1b).
+  #
+  # ⚠ DÜZELTME (T-028 düzeltme turu 1, `security` G3 — ÖLÇÜLDÜ): önceki "güvenli
+  # taban" seçimi (2.1.0, Prisma'nın test takımyıldızı) `pnpm audit`'e YENİ bir
+  # moderate ekliyordu: `@opentelemetry/core <2.8.0` — "Unbounded memory allocation
+  # in W3C Baggage propagation" (`@opentelemetry/core@2.1.0` üzerinden gelen kopya).
+  # Kurulu İKİ kopya ölçüldü: 2.1.0 (savunmasız, YALNIZCA bu devDependency'nin yolu)
+  # ve 2.12.1 (yamalı, sdk-node@0.223.2'nin KENDİ iç kopyası, üretim yolu).
+  # `W3CBaggagePropagator` küresel kurulu + Sentry her istekte `extract` ediyor
+  # (sdk.js:164-166, `CompositePropagator([W3CTraceContextPropagator,
+  # W3CBaggagePropagator])`, `spanProcessors: []` bunu ENGELLEMİYOR) ⇒ architect'in
+  # fail-closed yedeği devreye girerse kimliği doğrulanmamış bir `baggage`
+  # başlığıyla DoS riski taşıyordu. Düzeltme: 2.1.0 → 2.12.1 — ÜRETİM kopyasıyla
+  # BİREBİR AYNI sürüm, iki `core` kopyasını TEKİLLEŞTİRİR (`pnpm why
+  # @opentelemetry/core` → tek kopya, 2.12.1, ÖLÇÜLDÜ). Peer'ı @opentelemetry/api
+  # ">=1.3.0 <1.10.0" — 1.9.1'i kapsıyor (yukarıdaki KISIT 1 ile uyumlu). 7 günlük
+  # sürüm yaşı O SÜRÜMÜN (2.12.1) kendi yayın tarihinden doğrulandı: `npm view
+  # @opentelemetry/sdk-trace-base@2.12.1 time` → 2026-11-09, bugün 2026-11-24 → 15
+  # gün, eşik üstü — `minimumReleaseAgeExclude` izin kaydı GEREKMİYOR. Bu bir sürüm
+  # yükseltmesi, yeni bağımlılık DEĞİL.
+  '@opentelemetry/sdk-trace-base': 2.12.1

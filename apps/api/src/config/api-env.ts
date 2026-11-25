@@ -27,6 +27,17 @@
 // alan adı reddi BURADA YAPILMAZ — `../auth/trusted-origins.ts`'in TÜRETME
 // fonksiyonunda yapılır (o dosyanın dosya başı yorumuna bak, gerekçe: `create-
 // test-app.ts`'in `API_ENV` provider override'ı bu şemayı HİÇ ÇALIŞTIRMAZ).
+//
+// GÜNCELLEME (ROADMAP v0.0.17, T-028/S5, architect K-A28-2): `SENTRY_DSN`
+// EKLENDİ — TEK yeni anahtar, OPSİYONEL, varsayılan KAPALI (tanımsız).
+// `infraEnvSchema`'ya EKLENMEDİ (K-E8 emsali — `apps/api`'ye özgü bir alan,
+// `observability/sentry.ts`'in `startSentry()`'si bunu ÇAĞIRANDAN (S6'nın
+// `main.ts`'i, `app.get(API_ENV)` üzerinden) parametre olarak alır, KENDİSİ
+// `process.env`'i OKUMAZ). ⚠⚠ `.env.example`'a YENİ ANAHTAR EKLENMEDİ
+// (`guards.sh`'in `.env`↔`.env.example` anahtar adı sapması kontrolü FAIL
+// verir ve kök `.env` DEĞİŞTİRİLEMEZ) — alan tanımsız kaldığı sürece
+// `startSentry()` NO-OP'tur (AC-57), bu yüzden operatör müdahalesi ZORUNLU
+// DEĞİLDİR.
 
 import { databaseAuthEnvSchema, infraEnvSchema } from '@arkesoft/config/env'
 import { z } from 'zod'
@@ -224,6 +235,15 @@ export const apiEnvSchema = infraEnvSchema.extend({
         }
       }
     }),
+
+  // --- Sentry (ROADMAP v0.0.17, T-028/S5, architect K-A28-2) — OPSİYONEL ----
+  // Verilmezse `observability/sentry.ts`'in `startSentry()`'si NO-OP'tur
+  // (AC-57) — ağa hiç çıkılmaz, soket açılmaz, zarf üretilmez. `z.url()`
+  // tanımsızlığı KABUL EDER (`.optional()`); TANIMLIYSA geçerli bir URL
+  // olmak ZORUNDADIR (boş dize KABUL EDİLMEZ — "tanımsız" ile "boş dize"
+  // ayrımı `startSentry()`'nin kendisinde İKİNCİ bir savunma katmanı olarak
+  // AYRICA kontrol edilir, dosya başı yorumuna bkz.).
+  SENTRY_DSN: z.url('geçerli bir URL olmalı').optional(),
 })
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>

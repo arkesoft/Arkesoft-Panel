@@ -1,6 +1,6 @@
 {
   "name": "@arkesoft/theme-sdk",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "private": true,
   "type": "module",
   "description": "Tema sözleşmesi, theme.json şeması ve ayar migration API’si",
